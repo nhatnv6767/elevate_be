@@ -20,7 +20,7 @@ public class User {
     @Id
     @GeneratedValue(generator = "uuid2")
     @GenericGenerator(name = "uuid2", strategy = "uuid2")
-    @Column(columnDefinition = "VARCHAR(36)")
+    @Column(columnDefinition = "VARCHAR(36)", name = "user_id")
     private String userId;
 
     @Column(unique = true, nullable = false, length = 50)
