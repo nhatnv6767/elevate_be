@@ -1,6 +1,5 @@
 package com.elevatebanking.entity.user;
 
-import com.elevatebanking.entity.User;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

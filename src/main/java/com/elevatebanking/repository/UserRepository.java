@@ -1,6 +1,6 @@
 package com.elevatebanking.repository;
 
-import com.elevatebanking.entity.User;
+import com.elevatebanking.entity.user.User;
 import com.elevatebanking.entity.enums.UserStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
