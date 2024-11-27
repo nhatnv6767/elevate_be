@@ -1,9 +1,9 @@
 package com.elevatebanking.entity.base.interfaces;
 
-import jakarta.transaction.Status;
+import com.elevatebanking.entity.enums.UserStatus;
 
 public interface Statusable {
-    Status getStatus();
+    UserStatus getStatus();
 
-    void setStatus(Status status);
+    void setStatus(UserStatus status);
 }

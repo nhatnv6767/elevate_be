@@ -1,21 +1,20 @@
 package com.elevatebanking.entity.user;
 
+import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.base.AuditableEntity;
 import com.elevatebanking.entity.base.EntityConstants;
 import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.UserStatus;
 import jakarta.persistence.*;
-import jakarta.transaction.Status;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import org.hibernate.annotations.GenericGenerator;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -25,58 +24,53 @@ import java.util.Set;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
 public class User extends AuditableEntity implements Statusable {
-    @Id
-    @GeneratedValue(generator = "uuid2")
-    @GenericGenerator(name = "uuid2", strategy = "uuid2")
-    @Column(columnDefinition = "VARCHAR(36)", name = "user_id")
-    private String userId;
+    // @Id
+    // @GeneratedValue(generator = "uuid2")
+    // @GenericGenerator(name = "uuid2", strategy = "uuid2")
+    // @Column(columnDefinition = "VARCHAR(36)", name = "user_id")
+    // private String userId;
 
     @NotBlank(message = EntityConstants.REQUIRED_FIELD)
-    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
-    @Pattern(regexp = "^[a-zA-Z0-9._-]{3,50}$", message = "Username can only contain letters, numbers, dots, underscores and hyphens")
-    @Column(unique = true, nullable = false, length = 50)
+    @Size(min = EntityConstants.USERNAME_MIN_LENGTH, max = EntityConstants.USERNAME_MAX_LENGTH)
+    @Pattern(regexp = EntityConstants.USERNAME_PATTERN)
+    @Column(unique = true, nullable = false, length = EntityConstants.USERNAME_MAX_LENGTH)
     private String username;
 
-    @NotBlank(message = "Password is required")
+    @NotBlank(message = EntityConstants.REQUIRED_FIELD)
     @Column(nullable = false)
     private String password;
 
-    @NotBlank(message = "Full name is required")
-    @Size(min = 2, max = 100, message = "Full name must be between 2 and 100 characters")
-    @Column(name = "full_name", nullable = false, length = 100)
+    @NotBlank(message = EntityConstants.REQUIRED_FIELD)
+    @Size(min = EntityConstants.NAME_MIN_LENGTH, max = EntityConstants.NAME_MAX_LENGTH)
+    @Column(name = "full_name", nullable = false, length = EntityConstants.NAME_MAX_LENGTH)
     private String fullName;
 
     @NotBlank(message = EntityConstants.REQUIRED_FIELD)
-    @Email(regexp = EntityConstants.EMAIL_REGEX, message = EntityConstants.INVALID_EMAIL)
+    @Email(regexp = EntityConstants.EMAIL_PATTERN, message = EntityConstants.INVALID_EMAIL)
     @Column(unique = true, nullable = false)
     private String email;
 
-    @NotBlank(message = "Phone number is required")
-    @Pattern(regexp = "^\\+?[0-9]{10,15}$", message = "Invalid phone number format")
-    @Column(unique = true, nullable = false, length = 15)
+    @NotBlank(message = EntityConstants.REQUIRED_FIELD)
+    @Pattern(regexp = EntityConstants.PHONE_PATTERN, message = EntityConstants.INVALID_PHONE)
+    @Column(unique = true, nullable = false, length = EntityConstants.PHONE_MAX_LENGTH)
     private String phone;
 
-    @NotNull(message = "Date of birth is required")
+    @NotNull(message = EntityConstants.REQUIRED_FIELD)
     @Past(message = "Date of birth must be in the past")
     @Column(name = "date_of_birth", nullable = false)
     private LocalDate dateOfBirth;
 
-    @NotBlank(message = "Identity number is required")
-    @Pattern(regexp = "^[0-9]{9,12}$", message = "Invalid identity number format")
+    @NotBlank(message = EntityConstants.REQUIRED_FIELD)
+    @Pattern(regexp = EntityConstants.IDENTITY_NUMBER_PATTERN)
     @Column(name = "identity_number", unique = true, nullable = false, length = 20)
     private String identityNumber;
 
-    @NotNull(message = "Status is required")
+    @NotNull(message = EntityConstants.REQUIRED_FIELD)
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status = UserStatus.ACTIVE;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
     @NotNull(message = "User must have at least one role")
     @Size(min = 1, message = "User must have at least one role")
@@ -88,19 +82,46 @@ public class User extends AuditableEntity implements Statusable {
     )
     private Set<Role> roles = new HashSet<>();
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<Account> accounts = new HashSet<>();
 
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private LoyaltyPoints loyaltyPoints;
 
     @Override
-    public void setStatus(Status status) {
-        
+    public void setStatus(UserStatus status) {
+        if (status instanceof UserStatus) {
+            this.status = (UserStatus) status;
+        }
+    }
+
+    // Helper methods
+    public void addRole(Role role) {
+        roles.add(role);
+        role.getUsers().add(this);
+    }
+
+    public void removeRole(Role role) {
+        roles.remove(role);
+        role.getUsers().remove(this);
+    }
+
+    public void addAccount(Account account) {
+        accounts.add(account);
+        account.setUser(this);
+    }
+
+    public void removeAccount(Account account) {
+        accounts.remove(account);
+        account.setUser(null);
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        if (loyaltyPoints == null) {
+            loyaltyPoints = new LoyaltyPoints();
+            loyaltyPoints.setUser(this);
+        }
     }
 }
 
