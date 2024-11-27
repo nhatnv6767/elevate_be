@@ -1,4 +1,4 @@
-package com.elevatebanking.entity;
+package com.elevatebanking.entity.user;
 
 import jakarta.persistence.*;
 import lombok.Getter;
