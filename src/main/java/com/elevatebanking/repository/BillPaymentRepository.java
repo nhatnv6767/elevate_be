@@ -20,6 +20,9 @@ public interface BillPaymentRepository extends JpaRepository<BillPayment, String
     @Query("SELECT bp FROM BillPayment bp WHERE bp.account.user.id = :userId")
     List<BillPayment> findByUserId(@Param("userId") String userId);
 
-    @Query("SELECT COUNT(bp) from BillPayment bp WHERE bp.biller.id = :billerId AND bp.status = 'COMPLETED'")
-    Long countCompletedPaymentsByBiller(@Param("billerId") String billerId);
+    @Query("SELECT COUNT(bp) from BillPayment bp WHERE bp.biller.id = :billerId AND bp.status = :status")
+    Long countPaymentsByBillerAndStatus(
+        @Param("billerId") String billerId,
+        @Param("status") PaymentStatus status
+    );
 }

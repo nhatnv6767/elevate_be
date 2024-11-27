@@ -17,8 +17,11 @@ public interface SavingsAccountRepository extends JpaRepository<SavingsAccount, 
 
     List<SavingsAccount> findByStatus(SavingsStatus status);
 
-    @Query("SELECT sa FROM SavingsAccount sa WHERE sa.status = 'ACTIVE' AND sa.maturityDate <= :date")
-    List<SavingsAccount> findMaturityDueAccounts(@Param("date") LocalDate date);
+    @Query("SELECT sa FROM SavingsAccount sa WHERE sa.status = :status AND sa.maturityDate <= :date")
+    List<SavingsAccount> findByStatusAndMaturityDateBefore(
+        @Param("status") SavingsStatus status,
+        @Param("date") LocalDate date
+    );
 
     @Query("SELECT SUM(sa.principalAmount) FROM SavingsAccount sa WHERE sa.account.id = :accountId")
     BigDecimal getTotalSavingsByAccountId(@Param("accountId") String accountId);
