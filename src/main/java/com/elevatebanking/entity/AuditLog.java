@@ -1,5 +1,6 @@
 package com.elevatebanking.entity;
 
+import com.elevatebanking.entity.user.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;

@@ -1,5 +1,6 @@
 package com.elevatebanking.entity;
 
+import com.elevatebanking.entity.enums.EventStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Getter;

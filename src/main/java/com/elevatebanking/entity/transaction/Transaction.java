@@ -1,5 +1,8 @@
-package com.elevatebanking.entity;
+package com.elevatebanking.entity.transaction;
 
+import com.elevatebanking.entity.account.Account;
+import com.elevatebanking.entity.enums.TransactionStatus;
+import com.elevatebanking.entity.enums.TransactionType;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Getter;

@@ -1,5 +1,6 @@
-package com.elevatebanking.entity;
+package com.elevatebanking.entity.transaction;
 
+import com.elevatebanking.entity.enums.PointTransactionType;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;

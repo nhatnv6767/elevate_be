@@ -1,5 +1,8 @@
-package com.elevatebanking.entity;
+package com.elevatebanking.entity.transaction;
 
+import com.elevatebanking.entity.Biller;
+import com.elevatebanking.entity.account.Account;
+import com.elevatebanking.entity.enums.PaymentStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;

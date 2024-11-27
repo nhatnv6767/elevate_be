@@ -1,4 +1,4 @@
-package com.elevatebanking.entity;
+package com.elevatebanking.entity.enums;
 
 public enum TierStatus {
     BRONZE, SILVER, GOLD, PLATINUM
