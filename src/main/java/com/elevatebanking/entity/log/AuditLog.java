@@ -10,7 +10,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.GenericGenerator;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
@@ -21,7 +20,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class AuditLog extends AuditableEntity{
+public class AuditLog extends AuditableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
@@ -36,8 +35,12 @@ public class AuditLog extends AuditableEntity{
     private String details;
 
     @Pattern(regexp = "^([0-9]{1,3}\\.){3}[0-9]{1,3}$", message = "Invalid IP address format")
-    @Column(name = "ip_address", length = 45)
+    @Column(name = "ip_address")
     private String ipAddress;
+
+    @Size(max = 255)
+    @Column(name = "user_agent")
+    private String userAgent;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

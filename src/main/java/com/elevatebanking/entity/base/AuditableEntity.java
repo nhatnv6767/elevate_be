@@ -9,8 +9,28 @@ import jakarta.persistence.MappedSuperclass;
 public abstract class AuditableEntity extends BaseEntity implements Auditable {
     @Column(name = "created_by")
     private String createdBy;
-    
+
     @Column(name = "updated_by")
     private String updatedBy;
-    
+
+    @Override
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    @Override
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    @Override
+    public String getUpdatedBy() {
+        return updatedBy;
+    }
+
+    @Override
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
 }

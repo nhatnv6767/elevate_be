@@ -1,7 +1,9 @@
 package com.elevatebanking.entity.user;
 
-import com.elevatebanking.entity.User;
 import com.elevatebanking.entity.base.BaseEntity;
+import com.elevatebanking.entity.base.EntityConstants;
+import com.elevatebanking.entity.base.interfaces.Status;
+import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.TierStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.AssertTrue;
@@ -10,11 +12,8 @@ import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.GenericGenerator;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "loyalty_points")
@@ -22,7 +21,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class LoyaltyPoints extends BaseEntity{
+public class LoyaltyPoints extends BaseEntity implements Statusable {
 
     @NotNull(message = "User is required")
     @OneToOne(fetch = FetchType.LAZY)
@@ -49,9 +48,24 @@ public class LoyaltyPoints extends BaseEntity{
     @Column(name = "tier_status")
     private TierStatus tierStatus = TierStatus.BRONZE;
 
-    @AssertTrue(message = "Invalid points calculation")
+    @AssertTrue(message = EntityConstants.INVALID_POINTS_CALCULATION)
     private boolean isValidPointsCalculation() {
         return totalPoints == pointsEarned - pointsSpent;
+    }
+
+
+    @Override
+    public Status getStatus() {
+        return tierStatus;
+    }
+
+    @Override
+    public void setStatus(Status status) {
+        if (status instanceof TierStatus) {
+            this.tierStatus = (TierStatus) status;
+        } else {
+            throw new IllegalArgumentException("Status must be TierStatus");
+        }
     }
 }
 

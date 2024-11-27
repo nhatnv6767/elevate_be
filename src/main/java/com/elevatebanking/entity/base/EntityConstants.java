@@ -35,4 +35,8 @@ public class EntityConstants {
     public static final String PASSWORD_PATTERN = "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$";
 
     public static final String INVALID_PASSWORD = "Password must be at least 8 characters, contain letters and numbers";
+
+    public static final String INVALID_TIER_STATUS = "Invalid tier status";
+    public static final String INVALID_ACCOUNT_STATUS = "Invalid account status";
+    public static final String INVALID_POINTS_CALCULATION = "Total points must equal earned minus spent points";
 }

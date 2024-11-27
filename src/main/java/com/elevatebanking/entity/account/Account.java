@@ -1,6 +1,7 @@
 package com.elevatebanking.entity.account;
 
 import com.elevatebanking.entity.base.BaseEntity;
+import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.AccountStatus;
 import com.elevatebanking.entity.user.User;
 import jakarta.persistence.*;
@@ -19,7 +20,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Setter
 @NoArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class Account extends BaseEntity{
+public class Account extends BaseEntity implements Statusable{
 
 
     @NotNull(message = "User is required")

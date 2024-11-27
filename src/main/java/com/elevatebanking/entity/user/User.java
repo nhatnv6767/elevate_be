@@ -1,6 +1,6 @@
 package com.elevatebanking.entity.user;
 
-import com.elevatebanking.entity.Status;
+import com.elevatebanking.entity.base.interfaces.Status;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.base.AuditableEntity;
 import com.elevatebanking.entity.base.EntityConstants;
