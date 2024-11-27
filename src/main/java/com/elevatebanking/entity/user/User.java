@@ -2,8 +2,10 @@ package com.elevatebanking.entity.user;
 
 import com.elevatebanking.entity.base.AuditableEntity;
 import com.elevatebanking.entity.base.EntityConstants;
+import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.UserStatus;
 import jakarta.persistence.*;
+import jakarta.transaction.Status;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -23,7 +25,7 @@ import java.util.Set;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class User extends AuditableEntity {
+public class User extends AuditableEntity implements Statusable {
     @Id
     @GeneratedValue(generator = "uuid2")
     @GenericGenerator(name = "uuid2", strategy = "uuid2")
@@ -94,6 +96,11 @@ public class User extends AuditableEntity {
 
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+    }
+
+    @Override
+    public void setStatus(Status status) {
+        
     }
 }
 

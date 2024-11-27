@@ -1,6 +1,7 @@
 package com.elevatebanking.entity.account;
 
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.entity.user.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
