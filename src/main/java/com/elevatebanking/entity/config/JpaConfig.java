@@ -1,28 +1,38 @@
 package com.elevatebanking.entity.config;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Optional;
+
 import org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy;
 import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.auditing.DateTimeProvider;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 @Configuration
-@EnableJpaAuditing(auditorAwareRef = "auditorAware")
+@EnableJpaAuditing
 @EnableTransactionManagement
 public class JpaConfig {
     @Bean
     public AuditorAware<String> auditorAware() {
         return new AuditorAwareImpl();
     }
+
+    @Bean
+    public DateTimeProvider dateTimeProvider() {
+        return () -> Optional.of(LocalDateTime.now(ZoneId.systemDefault()));
+    }
     
-    @Bean 
+    @Bean
     public PhysicalNamingStrategy physicalNamingStrategy() {
         return new CamelCaseToUnderscoresNamingStrategy();
     }
-    
+
     @Bean
     public HibernatePropertiesCustomizer hibernatePropertiesCustomizer() {
         return (properties) -> {

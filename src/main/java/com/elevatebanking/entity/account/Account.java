@@ -48,11 +48,11 @@ public class Account extends BaseEntity implements Statusable {
     @Column(nullable = false)
     private AccountStatus status = AccountStatus.ACTIVE;
 
-    @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<Transaction> transactions = new HashSet<>();
+    @OneToMany(mappedBy = "fromAccount", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<Transaction> outgoingTransactions = new HashSet<>();
 
-    @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<SavingsAccount> savingsAccounts = new HashSet<>();
+    @OneToMany(mappedBy = "toAccount", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<Transaction> incomingTransactions = new HashSet<>();
 
 
     @Override
@@ -68,24 +68,24 @@ public class Account extends BaseEntity implements Statusable {
         this.status = (AccountStatus) status;
     }
 
-    public void addTransaction(Transaction transaction) {
-        transactions.add(transaction);
+    public void addOutgoingTransaction(Transaction transaction) {
+        outgoingTransactions.add(transaction);
         transaction.setFromAccount(this);
     }
-
-    public void removeTransaction(Transaction transaction) {
-        transactions.remove(transaction);
+    
+    public void removeOutgoingTransaction(Transaction transaction) {
+        outgoingTransactions.remove(transaction);
         transaction.setFromAccount(null);
     }
-
-    public void addSavingsAccount(SavingsAccount savingsAccount) {
-        savingsAccounts.add(savingsAccount);
-        savingsAccount.setAccount(this);
+    
+    public void addIncomingTransaction(Transaction transaction) {
+        incomingTransactions.add(transaction);
+        transaction.setToAccount(this);
     }
-
-    public void removeSavingsAccount(SavingsAccount savingsAccount) {
-        savingsAccounts.remove(savingsAccount);
-        savingsAccount.setAccount(null);
+    
+    public void removeIncomingTransaction(Transaction transaction) {
+        incomingTransactions.remove(transaction);
+        transaction.setToAccount(null);
     }
 
     public Account(User user, String accountNumber) {
