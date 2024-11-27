@@ -1,4 +1,4 @@
-package com.elevatebanking.entity;
+package com.elevatebanking.entity.log;
 
 import com.elevatebanking.entity.enums.EventStatus;
 import jakarta.persistence.*;
