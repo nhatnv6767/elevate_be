@@ -41,6 +41,9 @@ dependencies {
     // https://mvnrepository.com/artifact/org.postgresql/postgresql
     implementation group: 'org.postgresql', name: 'postgresql', version: '42.7.4'
 
+    // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-devtools
+    implementation group: 'org.springframework.boot', name: 'spring-boot-devtools', version: '3.4.0'
+
 
     // JWT
     implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
