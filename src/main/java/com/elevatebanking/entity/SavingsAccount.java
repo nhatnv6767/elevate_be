@@ -83,6 +83,3 @@ public class SavingsAccount {
 }
 
 
-enum SavingsStatus {
-    ACTIVE, MATURED, CLOSED, TERMINATED
-}

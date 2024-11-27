@@ -61,6 +61,3 @@ public class LoyaltyPoints {
     }
 }
 
-enum TierStatus {
-    BRONZE, SILVER, GOLD, PLATINUM
-}

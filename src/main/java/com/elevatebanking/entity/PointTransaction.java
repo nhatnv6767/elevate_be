@@ -50,6 +50,3 @@ public class PointTransaction {
 }
 
 
-enum PointTransactionType {
-    EARNED, SPENT, EXPIRED, ADJUSTED
-}

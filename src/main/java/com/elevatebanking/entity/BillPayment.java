@@ -57,6 +57,4 @@ public class BillPayment {
     private LocalDateTime createdAt;
 }
 
-enum PaymentStatus {
-    PENDING, COMPLETED, FAILED
-}
+

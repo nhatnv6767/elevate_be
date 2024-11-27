@@ -58,6 +58,3 @@ public class Account {
 }
 
 
-enum AccountStatus {
-    ACTIVE, INACTIVE, FROZEN
-}

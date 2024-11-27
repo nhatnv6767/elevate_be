@@ -47,6 +47,3 @@ public class Biller {
 }
 
 
-enum BillerStatus {
-    ACTIVE, INACTIVE
-}

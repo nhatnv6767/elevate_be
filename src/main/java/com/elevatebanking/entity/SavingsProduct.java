@@ -63,6 +63,3 @@ public class SavingsProduct {
     private LocalDateTime createdAt;
 }
 
-enum ProductStatus {
-    ACTIVE, INACTIVE
-}

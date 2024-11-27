@@ -67,6 +67,3 @@ public class EventLog {
 }
 
 
-enum EventStatus {
-    PENDING, PROCESSED, FAILED, RETRY
-}
