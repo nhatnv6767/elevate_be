@@ -1,6 +1,9 @@
 package com.elevatebanking.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -22,12 +25,17 @@ public class Biller {
     @Column(name = "biller_id", columnDefinition = "VARCHAR(36)")
     private String id;
 
-    @Column(name = "biller_name", nullable = false, length = 100)
+    @NotBlank(message = "Biller name is required")
+    @Size(min = 2, max = 100, message = "Biller name must be between 2 and 100 characters")
+    @Column(name = "biller_name", length = 100, nullable = false)
     private String billerName;
 
+    @NotBlank(message = "Category is required")
+    @Size(min = 2, max = 50, message = "Category must be between 2 and 50 characters")
     @Column(length = 50, nullable = false)
     private String category;
 
+    @NotNull(message = "Status is required")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private BillerStatus status = BillerStatus.ACTIVE;

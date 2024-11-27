@@ -1,6 +1,9 @@
 package com.elevatebanking.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -24,12 +27,15 @@ public class AuditLog {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @NotBlank(message = "Action is required")
+    @Size(min = 1, max = 50, message = "Action must be between 1 and 50 characters")
     @Column(length = 50, nullable = false)
     private String action;
 
     @Column(columnDefinition = "jsonb")
     private String details;
 
+    @Pattern(regexp = "^([0-9]{1,3}\\.){3}[0-9]{1,3}$", message = "Invalid IP address format")
     @Column(name = "ip_address", length = 45)
     private String ipAddress;
 

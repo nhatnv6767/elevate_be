@@ -1,6 +1,7 @@
 package com.elevatebanking.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -24,16 +25,23 @@ public class Account {
     @Column(name = "account_id", columnDefinition = "VARCHAR(36)")
     private String id;
 
+    @NotNull(message = "User is required")
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "account_number", unique = true, nullable = false, length = 20)
+    @NotBlank(message = "Account number is required")
+    @Pattern(regexp = "^[0-9]{10,20}$", message = "Invalid account number format")
+    @Column(name = "account_number", length = 20, unique = true, nullable = false)
     private String accountNumber;
 
+    @NotNull(message = "Balance is required")
+    @DecimalMin(value = "0.00", message = "Balance cannot be negative")
+    @Digits(integer = 18, fraction = 2, message = "Invalid balance format")
     @Column(nullable = false, precision = 20, scale = 2)
     private BigDecimal balance = BigDecimal.ZERO;
 
+    @NotNull(message = "Status is required")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AccountStatus status = AccountStatus.ACTIVE;
