@@ -1,6 +1,7 @@
 package com.elevatebanking.entity.user;
 
 import com.elevatebanking.entity.User;
+import com.elevatebanking.entity.base.BaseEntity;
 import com.elevatebanking.entity.enums.TierStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.AssertTrue;
@@ -11,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.GenericGenerator;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -19,13 +21,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-public class LoyaltyPoints {
-
-    @Id
-    @GeneratedValue(generator = "uuid2")
-    @GenericGenerator(name = "uuid2", strategy = "uuid2")
-    @Column(name = "point_id", columnDefinition = "VARCHAR(36)")
-    private String id;
+@EntityListeners(AuditingEntityListener.class)
+public class LoyaltyPoints extends BaseEntity{
 
     @NotNull(message = "User is required")
     @OneToOne(fetch = FetchType.LAZY)
@@ -51,11 +48,6 @@ public class LoyaltyPoints {
     @Enumerated(EnumType.STRING)
     @Column(name = "tier_status")
     private TierStatus tierStatus = TierStatus.BRONZE;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
 
     @AssertTrue(message = "Invalid points calculation")
     private boolean isValidPointsCalculation() {

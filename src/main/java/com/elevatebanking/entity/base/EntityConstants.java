@@ -27,4 +27,12 @@ public class EntityConstants {
     public static final String INVALID_EMAIL = "Invalid email format";
     public static final String INVALID_PHONE = "Invalid phone number format";
     public static final String INVALID_USERNAME = "Username can only contain letters, numbers, dots, underscores and hyphens";
+
+    public static final String PAST_DATE_MESSAGE = "Date must be in the past";
+    public static final String INVALID_POINTS = "Invalid points calculation";
+    public static final String INVALID_IDENTITY = "Invalid identity number format";
+
+    public static final String PASSWORD_PATTERN = "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$";
+
+    public static final String INVALID_PASSWORD = "Password must be at least 8 characters, contain letters and numbers";
 }

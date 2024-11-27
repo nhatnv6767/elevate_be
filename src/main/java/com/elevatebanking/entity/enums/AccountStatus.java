@@ -1,5 +1,7 @@
 package com.elevatebanking.entity.enums;
 
-public enum AccountStatus {
+import com.elevatebanking.entity.Status;
+
+public enum AccountStatus implements Status {
     ACTIVE, INACTIVE, FROZEN
 }

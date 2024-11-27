@@ -1,5 +1,7 @@
 package com.elevatebanking.entity.enums;
 
-public enum UserStatus {
+import com.elevatebanking.entity.Status;
+
+public enum UserStatus implements Status {
     ACTIVE, INACTIVE, LOCKED
 }

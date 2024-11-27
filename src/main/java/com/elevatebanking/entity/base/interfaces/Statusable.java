@@ -1,9 +1,10 @@
 package com.elevatebanking.entity.base.interfaces;
 
-import com.elevatebanking.entity.enums.UserStatus;
+
+import com.elevatebanking.entity.Status;
 
 public interface Statusable {
-    UserStatus getStatus();
+    Status getStatus();
 
-    void setStatus(UserStatus status);
+    void setStatus(Status status);
 }

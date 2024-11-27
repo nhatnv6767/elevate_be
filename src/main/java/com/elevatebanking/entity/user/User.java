@@ -1,5 +1,6 @@
 package com.elevatebanking.entity.user;
 
+import com.elevatebanking.entity.Status;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.base.AuditableEntity;
 import com.elevatebanking.entity.base.EntityConstants;
@@ -26,11 +27,6 @@ import java.util.Set;
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
 public class User extends AuditableEntity implements Statusable {
-    // @Id
-    // @GeneratedValue(generator = "uuid2")
-    // @GenericGenerator(name = "uuid2", strategy = "uuid2")
-    // @Column(columnDefinition = "VARCHAR(36)", name = "user_id")
-    // private String userId;
 
     @NotBlank(message = EntityConstants.REQUIRED_FIELD)
     @Size(min = EntityConstants.USERNAME_MIN_LENGTH, max = EntityConstants.USERNAME_MAX_LENGTH)
@@ -39,6 +35,7 @@ public class User extends AuditableEntity implements Statusable {
     private String username;
 
     @NotBlank(message = EntityConstants.REQUIRED_FIELD)
+    @Pattern(regexp = EntityConstants.PASSWORD_PATTERN, message = EntityConstants.INVALID_PASSWORD)
     @Column(nullable = false)
     private String password;
 
@@ -89,9 +86,11 @@ public class User extends AuditableEntity implements Statusable {
     private LoyaltyPoints loyaltyPoints;
 
     @Override
-    public void setStatus(UserStatus status) {
+    public void setStatus(Status status) {
         if (status instanceof UserStatus) {
             this.status = (UserStatus) status;
+        } else {
+            throw new IllegalArgumentException("Status must be UserStatus");
         }
     }
 

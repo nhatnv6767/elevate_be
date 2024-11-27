@@ -1,5 +1,6 @@
 package com.elevatebanking.entity.account;
 
+import com.elevatebanking.entity.base.BaseEntity;
 import com.elevatebanking.entity.enums.AccountStatus;
 import com.elevatebanking.entity.user.User;
 import jakarta.persistence.*;
@@ -7,25 +8,19 @@ import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.GenericGenerator;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "accounts")
 @Getter
 @Setter
 @NoArgsConstructor
-public class Account {
+@EntityListeners(AuditingEntityListener.class)
+public class Account extends BaseEntity{
 
-    @Id
-    @GeneratedValue(generator = "uuid2")
-    @GenericGenerator(name = "uuid2", strategy = "uuid2")
-    @Column(name = "account_id", columnDefinition = "VARCHAR(36)")
-    private String id;
 
     @NotNull(message = "User is required")
     @ManyToOne(fetch = FetchType.LAZY)
@@ -47,14 +42,6 @@ public class Account {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AccountStatus status = AccountStatus.ACTIVE;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 
 
 }

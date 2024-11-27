@@ -1,10 +1,12 @@
 package com.elevatebanking.entity.base;
 
+import com.elevatebanking.entity.base.interfaces.Auditable;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
 
 @MappedSuperclass
-public class AuditableEntity extends BaseEntity {
+public abstract class AuditableEntity extends BaseEntity implements Auditable {
     @Column(name = "created_by")
     private String createdBy;
     
