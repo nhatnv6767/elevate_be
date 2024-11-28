@@ -31,4 +31,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
+
+    // findPendingTransactionsOlderThan(timeout)
+    @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :timeout")
+    List<Transaction> findPendingTransactionsOlderThan(@Param("timeout") LocalDateTime timeout);
+    
 }
