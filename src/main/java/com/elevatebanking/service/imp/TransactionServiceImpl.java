@@ -46,13 +46,15 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount, String description) {
-        // Validate accounts and balance
-        accountService.validateAccount(fromAccountId, amount);
-        accountService.validateAccount(toAccountId, null);
+        
 
         Transaction transaction = null;
 
         try {
+
+            // Validate accounts and balance
+            accountService.validateAccount(fromAccountId, amount);
+            accountService.validateAccount(toAccountId, null);
 
             transaction = new Transaction();
             transaction.setFromAccount(accountService.getAccountById(fromAccountId).get());
@@ -66,22 +68,33 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.initiated");
 
-            // Execute transfer
-            BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
-            BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
+            try {
+                // Execute transfer
+                BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
+                BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
 
-            accountService.updateBalance(fromAccountId, fromBalance);
-            accountService.updateBalance(toAccountId, toBalance);
+                accountService.updateBalance(fromAccountId, fromBalance);
+                accountService.updateBalance(toAccountId, toBalance);
 
-            // update transaction status
-            transaction.setStatus(TransactionStatus.COMPLETED);
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.completed");
+                // update transaction status
+                transaction.setStatus(TransactionStatus.COMPLETED);
+                transaction = transactionRepository.save(transaction);
+                publishTransactionEvent(transaction, "transaction.completed");
+            } catch (Exception e) {
+                log.error("Error processing transfer: {}", e.getMessage());
+                transaction.setStatus(TransactionStatus.FAILED);
+                transaction = transactionRepository.save(transaction);
+                publishTransactionEvent(transaction, "transaction.failed");
+            }
 
             // publish event
 //            kafkaTemplate.send("elevate.transactions",transaction);
             return transaction;
-        } catch (Exception e) {
+        } catch(IllegalArgumentException e){
+            log.error("Validation error: {}", e.getMessage());
+            throw e;
+        }
+        catch (Exception e) {
             log.error("Error processing transfer: {}", e.getMessage());
             if (transaction != null) {
                 transaction.setStatus(TransactionStatus.FAILED);
@@ -191,10 +204,10 @@ public class TransactionServiceImpl implements ITransactionService {
 
     private void validateTransactionAmount(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Amount must be greater than 0");
+            throw new InvalidOperationException("Amount must be greater than 0");
         }
         if (amount.compareTo(SINGLE_TRANSFER_LIMIT) > 0) {
-            throw new IllegalArgumentException("Amount exceeds single transfer limit");
+            throw new InvalidOperationException("Amount exceeds single transfer limit");
         }
     }
 
@@ -225,7 +238,7 @@ public class TransactionServiceImpl implements ITransactionService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         if (dailyTotal.add(amount).compareTo(DAILY_TRANSFER_LIMIT) > 0) {
-            throw new IllegalArgumentException("Daily transfer limit exceeded");
+            throw new InvalidOperationException("Daily transfer limit exceeded");
         }
     }
 
