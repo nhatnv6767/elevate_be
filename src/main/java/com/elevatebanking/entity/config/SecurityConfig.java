@@ -1,5 +1,8 @@
 package com.elevatebanking.entity.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -14,7 +17,12 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties(SecurityProperties.class)
 public class SecurityConfig {
+
+    @Autowired
+    private SecurityProperties securityProperties;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -23,9 +31,9 @@ public class SecurityConfig {
     @Bean
     public UserDetailsService userDetailsService() {
         UserDetails user = User.builder()
-                .username("admin")
-                .password(passwordEncoder().encode("123456"))  // Mã hóa password
-                .roles("USER")
+                .username(securityProperties.getUsername())
+                .password(passwordEncoder().encode(securityProperties.getPassword()))  // encrypt password
+                .roles(securityProperties.getRoles())
                 .build();
         return new InMemoryUserDetailsManager(user);
     }
