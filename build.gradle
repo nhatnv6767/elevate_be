@@ -2,7 +2,26 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.2.3'
     id 'io.spring.dependency-management' version '1.1.4'
+    id 'com.bmuschko.docker-remote-api' version '9.3.1'
 }
+docker {
+    host = 'tcp://192.168.1.113:2375'
+    registryCredentials {
+        url = 'https://index.docker.io/v1/'
+    }
+}
+task composeUp(type: com.bmuschko.gradle.docker.tasks.DockerComposeUp) {
+    composeFiles.from 'docker-compose.yml'
+    useDockerComposeV2 = true
+}
+
+task composeDown(type: com.bmuschko.gradle.docker.tasks.DockerComposeDown) {
+    composeFiles.from 'docker-compose.yml'
+    removeContainers = true
+    removeVolumes = true
+}
+
+bootRun.dependsOn composeUp
 
 group = 'com'
 version = '0.0.1-SNAPSHOT'
