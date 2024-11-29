@@ -46,16 +46,13 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount, String description) {
-        
-
         Transaction transaction = null;
-
         try {
-
-            // Validate accounts and balance
+            // Validate accounts and balance trước khi tạo transaction
             accountService.validateAccount(fromAccountId, amount);
             accountService.validateAccount(toAccountId, null);
 
+            // Tạo transaction sau khi validate thành công
             transaction = new Transaction();
             transaction.setFromAccount(accountService.getAccountById(fromAccountId).get());
             transaction.setToAccount(accountService.getAccountById(toAccountId).get());
@@ -64,46 +61,42 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction.setDescription(description);
             transaction.setStatus(TransactionStatus.PENDING);
 
-            // save initial transaction
+            // Lưu transaction
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.initiated");
 
             try {
-                // Execute transfer
+                // Thực hiện chuyển tiền
                 BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
                 BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
 
                 accountService.updateBalance(fromAccountId, fromBalance);
                 accountService.updateBalance(toAccountId, toBalance);
 
-                // update transaction status
+                // Cập nhật trạng thái thành công
                 transaction.setStatus(TransactionStatus.COMPLETED);
                 transaction = transactionRepository.save(transaction);
                 publishTransactionEvent(transaction, "transaction.completed");
-            } catch (Exception e) {
-                log.error("Error processing transfer: {}", e.getMessage());
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.failed");
-            }
 
-            // publish event
-//            kafkaTemplate.send("elevate.transactions",transaction);
-            return transaction;
-        } catch(IllegalArgumentException e){
+                return transaction;
+            } catch (Exception e) {
+                // Xử lý lỗi khi thực hiện giao dịch
+                if (transaction != null) {
+                    transaction.setStatus(TransactionStatus.FAILED);
+                    transaction = transactionRepository.save(transaction);
+                    publishTransactionEvent(transaction, "transaction.failed");
+                }
+                throw new RuntimeException("Error executing transfer", e);
+            }
+        } catch (IllegalArgumentException e) {
+            // Xử lý lỗi validate
             log.error("Validation error: {}", e.getMessage());
             throw e;
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
+            // Xử lý các lỗi khác
             log.error("Error processing transfer: {}", e.getMessage());
-            if (transaction != null) {
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.failed");
-            }
-            throw new RuntimeException("Error processing transfer");
+            throw new RuntimeException("Error processing transfer", e);
         }
-
     }
 
     @Override

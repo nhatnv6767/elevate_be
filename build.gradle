@@ -2,26 +2,18 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.2.3'
     id 'io.spring.dependency-management' version '1.1.4'
-    id 'com.bmuschko.docker-remote-api' version '9.3.1'
-}
-docker {
-    host = 'tcp://192.168.1.113:2375'
-    registryCredentials {
-        url = 'https://index.docker.io/v1/'
-    }
-}
-task composeUp(type: com.bmuschko.gradle.docker.tasks.DockerComposeUp) {
-    composeFiles.from 'docker-compose.yml'
-    useDockerComposeV2 = true
+    id 'com.avast.gradle.docker-compose' version '0.16.12'
 }
 
-task composeDown(type: com.bmuschko.gradle.docker.tasks.DockerComposeDown) {
-    composeFiles.from 'docker-compose.yml'
-    removeContainers = true
-    removeVolumes = true
+dockerCompose {
+    useComposeFiles = ['docker-compose.yml']
+    startedServices = ['postgres', 'redis', 'zookeeper', 'kafka']
+    isRequiredBy(tasks.bootRun)
+    
+    // Cấu hình cho Windows
+    environment.put 'DOCKER_HOST', 'tcp://192.168.1.113:2375'
+    environment.put 'COMPOSE_CONVERT_WINDOWS_PATHS', 'true'
 }
-
-bootRun.dependsOn composeUp
 
 group = 'com'
 version = '0.0.1-SNAPSHOT'
@@ -57,12 +49,10 @@ dependencies {
 
     // Database
     runtimeOnly 'org.postgresql:postgresql'
-    // https://mvnrepository.com/artifact/org.postgresql/postgresql
-    implementation group: 'org.postgresql', name: 'postgresql', version: '42.7.4'
+    implementation 'org.postgresql:postgresql:42.7.4'
 
-    // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-devtools
-    implementation group: 'org.springframework.boot', name: 'spring-boot-devtools', version: '3.4.0'
-
+    // DevTools
+    implementation 'org.springframework.boot:spring-boot-devtools'
 
     // JWT
     implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
@@ -77,12 +67,12 @@ dependencies {
     annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
 
     // Test dependencies
-    testImplementation 'org.springframework.security:spring-security-test'
-
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.mockito:mockito-junit-jupiter'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+    testImplementation 'com.h2database:h2'
 }
 
 sourceSets {
@@ -106,7 +96,6 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-// Equivalent to maven-compiler-plugin configuration
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
     options.compilerArgs += [
@@ -114,12 +103,10 @@ tasks.withType(JavaCompile) {
     ]
 }
 
-// Equivalent to spring-boot-maven-plugin configuration
 springBoot {
     buildInfo()
 }
 
-// Configure annotation processors order (similar to maven annotationProcessorPaths)
 tasks.withType(JavaCompile) {
     options.annotationProcessorPath = configurations.annotationProcessor
 }
