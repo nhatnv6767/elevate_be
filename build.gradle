@@ -2,7 +2,26 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.2.3'
     id 'io.spring.dependency-management' version '1.1.4'
+    id 'com.bmuschko.docker-remote-api' version '9.3.1'
 }
+docker {
+    host = 'tcp://192.168.1.113:2375'
+    registryCredentials {
+        url = 'https://index.docker.io/v1/'
+    }
+}
+task composeUp(type: com.bmuschko.gradle.docker.tasks.DockerComposeUp) {
+    composeFiles.from 'docker-compose.yml'
+    useDockerComposeV2 = true
+}
+
+task composeDown(type: com.bmuschko.gradle.docker.tasks.DockerComposeDown) {
+    composeFiles.from 'docker-compose.yml'
+    removeContainers = true
+    removeVolumes = true
+}
+
+bootRun.dependsOn composeUp
 
 group = 'com'
 version = '0.0.1-SNAPSHOT'
@@ -58,8 +77,29 @@ dependencies {
     annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
 
     // Test dependencies
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.mockito:mockito-junit-jupiter'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+    }
+    test {
+        java {
+            srcDirs = ['src/test/java']
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
 }
 
 tasks.named('test') {
