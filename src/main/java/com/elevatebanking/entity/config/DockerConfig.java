@@ -1,6 +1,8 @@
 package com.elevatebanking.entity.config;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.async.ResultCallback;
+import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
@@ -13,10 +15,9 @@ import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import com.github.dockerjava.api.command.CreateContainerResponse;
-import com.github.dockerjava.api.model.HostConfig;
-import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 
+import java.io.Closeable;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -27,12 +28,9 @@ import java.net.InetSocketAddress;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.github.dockerjava.api.model.Network;
 import jakarta.annotation.PreDestroy;
-import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.command.LogContainerCmd;
-import com.github.dockerjava.api.model.ExposedPort;
 
 @Configuration
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -160,6 +158,13 @@ public class DockerConfig {
             // Khởi động container
             dockerClient.startContainerCmd(container.getId()).exec();
 
+            logContainerOutput(dockerClient, container.getId());
+
+            // Kiểm tra container status
+            InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(container.getId()).exec();
+            if (!containerInfo.getState().getRunning()) {
+                throw new RuntimeException("Container failed to start: " + containerInfo.getState().getError());
+            }
             // Đợi container khởi động
             Thread.sleep(10000);
 
@@ -176,38 +181,43 @@ public class DockerConfig {
     }
 
     private boolean waitForPostgresqlContainer() {
-        int maxAttempts = 60; // 5 minutes total
-        for (int i = 0; i < maxAttempts; i++) {
+        int attempts = 0;
+        while (attempts < 60) { // 5 phút timeout
             try {
-                log.info("Attempt {} to connect to PostgreSQL...", i + 1);
+                log.info("Attempting to connect to PostgreSQL (attempt {})", attempts + 1);
 
-                // Test port first
+                // Kiểm tra port
                 try (Socket socket = new Socket()) {
                     socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
+                    log.info("Port 5432 is open");
                 }
 
-                // Test database connection
+                // Kiểm tra database connection
                 try (Connection conn = DriverManager.getConnection(
                         "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
-                        "root", "123456"
+                        "root",
+                        "123456"
                 )) {
                     if (conn.isValid(5)) {
                         log.info("Successfully connected to PostgreSQL");
-                        // Wait additional time for PostgreSQL to fully initialize
-                        Thread.sleep(5000);
+                        Thread.sleep(5000); // Wait additional time for full initialization
                         return true;
                     }
                 }
             } catch (Exception e) {
-                log.warn("Failed to connect, retrying in 5 seconds... ({})", e.getMessage());
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
+                log.warn("Failed to connect: {}", e.getMessage());
+            }
+
+            attempts++;
+            try {
+                Thread.sleep(5000); // Wait 5 seconds before next attempt
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
             }
         }
+
+        log.error("Failed to connect to PostgreSQL after {} attempts", attempts);
         return false;
     }
 
@@ -307,6 +317,44 @@ public class DockerConfig {
         }
         if (!isRunning) {
             throw new RuntimeException("Container không thể khởi động sau 60 giây");
+        }
+    }
+
+    private void logContainerOutput(DockerClient dockerClient, String containerId) {
+        try {
+            LogContainerCmd logContainerCmd = dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withFollowStream(true)
+                    .withTailAll();
+
+            logContainerCmd.exec(new ResultCallback<Frame>() {
+                @Override
+                public void onStart(Closeable closeable) {
+
+                }
+
+                @Override
+                public void onNext(Frame frame) {
+                    log.info(new String(frame.getPayload()));
+                }
+
+
+                @Override
+                public void close() {
+                }
+
+                @Override
+                public void onError(Throwable throwable) {
+                    log.error("Error in container logs", throwable);
+                }
+
+                @Override
+                public void onComplete() {
+                }
+            });
+        } catch (Exception e) {
+            log.error("Error getting container logs", e);
         }
     }
 }
