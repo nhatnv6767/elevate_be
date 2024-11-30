@@ -9,6 +9,7 @@ import com.github.dockerjava.transport.DockerHttpClient;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -35,6 +36,7 @@ import com.github.dockerjava.api.model.ExposedPort;
 
 @Configuration
 @Order(Ordered.HIGHEST_PRECEDENCE)
+@DependsOn("dockerConfig")
 public class DockerConfig {
 
     @Value("${docker.host:tcp://192.168.1.128:2375}")
@@ -49,8 +51,10 @@ public class DockerConfig {
 
     @PostConstruct
     public void initializeDockerServices() throws Exception {
+        log.info("Initializing Docker services...");
+
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost("unix:///var/run/docker.sock")
+                .withDockerHost("tcp://192.168.1.128:2375")
                 .withDockerTlsVerify(false)
                 .build();
 
@@ -64,10 +68,57 @@ public class DockerConfig {
 
         DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
 
-        createPostgresContainer(dockerClient);
-        boolean isReady = waitForPostgresqlContainer();
-        if (!isReady) {
-            throw new RuntimeException("PostgreSQL không sẵn sàng sau khi khởi tạo");
+        try {
+            // Pull image first
+            log.info("Pulling PostgreSQL image...");
+            dockerClient.pullImageCmd("postgres:latest")
+                    .exec(new PullImageResultCallback())
+                    .awaitCompletion();
+
+            // Remove existing container if any
+            List<Container> existingContainers = dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton("elevate-banking-postgres"))
+                    .withShowAll(true)
+                    .exec();
+
+            for (Container container : existingContainers) {
+                log.info("Removing existing container: {}", container.getId());
+                dockerClient.removeContainerCmd(container.getId())
+                        .withForce(true)
+                        .exec();
+            }
+
+            // Create new container
+            log.info("Creating PostgreSQL container...");
+            CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
+                    .withName("elevate-banking-postgres")
+                    .withEnv(
+                            "POSTGRES_DB=elevate_banking",
+                            "POSTGRES_USER=root",
+                            "POSTGRES_PASSWORD=123456",
+                            "POSTGRES_HOST_AUTH_METHOD=trust"
+                    )
+                    .withHostConfig(HostConfig.newHostConfig()
+                            .withPortBindings(PortBinding.parse("5432:5432"))
+                            .withPublishAllPorts(true))
+                    .withExposedPorts(ExposedPort.tcp(5432))
+                    .exec();
+
+            // Start container
+            log.info("Starting PostgreSQL container...");
+            dockerClient.startContainerCmd(container.getId()).exec();
+
+            // Wait for PostgreSQL to be ready
+            log.info("Waiting for PostgreSQL to be ready...");
+            if (!waitForPostgresqlContainer()) {
+                throw new RuntimeException("PostgreSQL failed to start");
+            }
+
+            log.info("PostgreSQL container is ready!");
+
+        } catch (Exception e) {
+            log.error("Failed to initialize Docker services", e);
+            throw e;
         }
     }
 
@@ -101,6 +152,7 @@ public class DockerConfig {
                     .withHostConfig(HostConfig.newHostConfig()
                             .withNetworkMode("bridge")
                             .withPortBindings(PortBinding.parse("5432:5432"))
+                            .withPublishAllPorts(true)
                             .withMemory(512 * 1024 * 1024L))
                     .withExposedPorts(ExposedPort.tcp(5432))
                     .exec();
@@ -124,22 +176,32 @@ public class DockerConfig {
     }
 
     private boolean waitForPostgresqlContainer() {
-        for (int i = 0; i < MAX_RETRIES; i++) {
-            try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress("192.168.1.128", 5432), 5000);
+        int maxAttempts = 60; // 5 minutes total
+        for (int i = 0; i < maxAttempts; i++) {
+            try {
+                log.info("Attempt {} to connect to PostgreSQL...", i + 1);
+
+                // Test port first
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
+                }
+
+                // Test database connection
                 try (Connection conn = DriverManager.getConnection(
                         "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
-                        "root", "123456")) {
-                    if (conn.isValid(10)) {
-                        log.info("PostgreSQL đã sẵn sàng sau {} lần thử", i + 1);
+                        "root", "123456"
+                )) {
+                    if (conn.isValid(5)) {
+                        log.info("Successfully connected to PostgreSQL");
+                        // Wait additional time for PostgreSQL to fully initialize
                         Thread.sleep(5000);
                         return true;
                     }
                 }
             } catch (Exception e) {
-                log.warn("Lần thử {}: {}", i + 1, e.getMessage());
+                log.warn("Failed to connect, retrying in 5 seconds... ({})", e.getMessage());
                 try {
-                    Thread.sleep(RETRY_DELAY);
+                    Thread.sleep(5000);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     return false;
