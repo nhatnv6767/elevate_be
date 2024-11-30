@@ -42,11 +42,12 @@ public class DockerConfig {
     private static final int CONTAINER_STARTUP_TIMEOUT = 120;
     private static final int CONNECTION_TIMEOUT = 2000;
     private static final int RETRY_DELAY = 1000;
+    private static final int MAX_RETRIES = 30;
 
     @PostConstruct
-    public void initializeDockerServices() {
+    public void initializeDockerServices() throws Exception {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost(dockerHost)
+                .withDockerHost("unix:///var/run/docker.sock")
                 .withDockerTlsVerify(false)
                 .build();
 
@@ -61,7 +62,10 @@ public class DockerConfig {
         DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
 
         createPostgresContainer(dockerClient);
-        waitForPostgresqlContainer();
+        boolean isReady = waitForPostgresqlContainer();
+        if (!isReady) {
+            throw new RuntimeException("PostgreSQL không sẵn sàng sau khi khởi tạo");
+        }
     }
 
     private void createPostgresContainer(DockerClient dockerClient) {
@@ -126,32 +130,29 @@ public class DockerConfig {
         }
     }
 
-    private void waitForPostgresqlContainer() {
-        int maxAttempts = 120;
-        int attempt = 0;
-        while (attempt < maxAttempts) {
+    private boolean waitForPostgresqlContainer() {
+        for (int i = 0; i < MAX_RETRIES; i++) {
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress("192.168.1.128", 5432), 2000);
-                Thread.sleep(10000);
+                socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
                 try (Connection conn = DriverManager.getConnection(
                         "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
-                        "root",
-                        "123456")) {
+                        "root", "123456")) {
                     if (conn.isValid(5)) {
-                        return;
+                        log.info("PostgreSQL đã sẵn sàng sau {} lần thử", i + 1);
+                        return true;
                     }
                 }
             } catch (Exception e) {
-                log.warn("Attempt {} failed to connect to PostgreSQL: {}", attempt, e.getMessage());
-                attempt++;
+                log.warn("Lần thử {}: {}", i + 1, e.getMessage());
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(RETRY_DELAY);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
+                    return false;
                 }
             }
         }
-        throw new RuntimeException("PostgreSQL container không sẵn sàng sau 240 giây");
+        return false;
     }
 
     private boolean isContainerRunning(DockerClient dockerClient, String containerName) {
