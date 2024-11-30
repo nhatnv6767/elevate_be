@@ -96,13 +96,16 @@ public class DockerConfig {
     }
 
     public void initializeDockerServices() throws Exception {
+        initializeDockerNetwork();
+
         log.info("Initializing Docker services...");
+
 
         try {
 
             for (String service : REQUIRED_SERVICES) {
                 String containerName = "elevate-banking-" + service;
-                if (!isContainerRunningAndHealthy(containerName)) {
+                if (!isContainerRunning(containerName)) {
                     createAndStartContainer(service);
                 }
             }
@@ -231,24 +234,6 @@ public class DockerConfig {
             }
         } catch (Exception e) {
             log.error("Error during cleanup", e);
-        }
-    }
-
-
-    private boolean isContainerRunningAndHealthy(String containerName) {
-        try {
-            List<Container> containers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton(containerName))
-                    .withShowAll(true)
-                    .exec();
-
-            if (!containers.isEmpty()) {
-                Container container = containers.get(0);
-                return "running".equalsIgnoreCase(container.getState());
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
         }
     }
 
@@ -457,6 +442,38 @@ public class DockerConfig {
             log.info("Successfully connected to Kafka");
         } catch (Exception e) {
             throw new RuntimeException("Failed to connect to Kafka", e);
+        }
+    }
+
+    private boolean isContainerRunning(String containerName) {
+        try {
+            List<Container> containers = dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withShowAll(true)
+                    .exec();
+            return !containers.isEmpty() && "running".equalsIgnoreCase(containers.get(0).getState());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void initializeDockerNetwork() {
+        try {
+            List<Network> networks = dockerClient.listNetworksCmd()
+                    .withNameFilter("elevate-banking-network")
+                    .exec();
+            if (networks.isEmpty()) {
+                dockerClient.createNetworkCmd()
+                        .withName("elevate-banking-network")
+                        .withDriver("bridge")
+                        .exec();
+                log.info("Created network: elevate-banking-network");
+            } else {
+                log.info("Network elevate-banking-network already exists");
+            }
+        } catch (Exception e) {
+            log.error("Failed to initialize Docker network", e);
+            throw new RuntimeException("Failed to initialize Docker network", e);
         }
     }
 }
