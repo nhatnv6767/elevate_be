@@ -40,6 +40,8 @@ public class JpaConfig {
             properties.put("hibernate.order_inserts", true);
             properties.put("hibernate.order_updates", true);
             properties.put("hibernate.jdbc.batch_versioned_data", true);
+            properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
+            properties.put("hibernate.connection.provider_class", "org.hibernate.hikaricp.internal.HikariCPConnectionProvider");
         };
     }
 }

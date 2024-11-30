@@ -9,27 +9,33 @@ dockerCompose {
     useComposeFiles = ['docker-compose.yml']
     startedServices = ['postgres', 'redis', 'zookeeper', 'kafka']
     isRequiredBy(tasks.bootRun)
-    
+
     // Cấu hình kết nối đến Docker remote
     environment.put 'DOCKER_HOST', 'tcp://192.168.1.128:2375'
-    
+
     // Kiểm tra health check
     waitForTcpPorts = true
-    
+
     // Cấu hình scale
     scale = [
-        postgres: 1,
-        redis: 1,
-        zookeeper: 1,
-        kafka: 1
+            postgres : 1,
+            redis    : 1,
+            zookeeper: 1,
+            kafka    : 1
     ]
-    
+
     // Thêm biến môi trường
     environment.put 'DOCKER_TLS_VERIFY', '0'
     environment.put 'COMPOSE_PROJECT_NAME', 'elevate-banking'
 
     // Cấu hình timeout thông qua environment
     environment.put 'COMPOSE_HTTP_TIMEOUT', '300'
+
+    removeVolumes = true
+    removeOrphans = true
+
+    captureContainersOutput = true
+
 }
 
 // Thêm task để kiểm tra kết nối Docker
@@ -115,6 +121,12 @@ dependencies {
     // Optional but recommended for better API docs
     implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
     implementation 'org.openapitools:jackson-databind-nullable:0.2.6'
+
+    // Docker Java Client
+    implementation platform('com.github.docker-java:docker-java-bom:3.3.4')
+    implementation 'com.github.docker-java:docker-java-core'
+    implementation 'com.github.docker-java:docker-java-transport-httpclient5'
+
 }
 
 sourceSets {
