@@ -15,7 +15,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 @Configuration
-@EnableJpaAuditing
+@EnableJpaAuditing(auditorAwareRef = "auditorAware", dateTimeProviderRef = "dateTimeProvider")
 @EnableTransactionManagement
 public class JpaConfig {
     @Bean
@@ -41,7 +41,8 @@ public class JpaConfig {
             properties.put("hibernate.order_updates", true);
             properties.put("hibernate.jdbc.batch_versioned_data", true);
             properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-            properties.put("hibernate.connection.provider_class", "org.hibernate.hikaricp.internal.HikariCPConnectionProvider");
+            properties.put("hibernate.physical_naming_strategy", 
+                          "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy");
         };
     }
 }

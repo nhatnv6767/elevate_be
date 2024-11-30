@@ -6,6 +6,7 @@ import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
+import com.github.dockerjava.core.command.CreateContainerCmdImpl;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import jakarta.annotation.PostConstruct;
@@ -23,14 +24,11 @@ import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.net.Socket;
 import java.net.InetSocketAddress;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -246,6 +244,22 @@ public class DockerConfig {
                     .exec(new PullImageResultCallback())
                     .awaitCompletion();
 
+            // Remove existing container if any
+            dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withShowAll(true)
+                    .exec()
+                    .forEach(container -> {
+                        try {
+                            dockerClient.removeContainerCmd(container.getId())
+                                    .withForce(true)
+                                    .exec();
+                            log.info("Removed existing container: {}", containerName);
+                            Thread.sleep(2000);
+                        } catch (Exception e) {
+                            log.warn("Failed to remove container: {}", e.getMessage());
+                        }
+                    });
             // Create container with persistent volume
             CreateContainerResponse container = dockerClient.createContainerCmd(getImageName(service))
                     .withName(containerName)
@@ -264,11 +278,67 @@ public class DockerConfig {
         }
     }
 
+    private CreateContainerResponse createKafkaContainer(String service) {
+        String containerName = "elevate-banking-" + service;
+        String networkName = "elevate-banking-network";
+
+        // Tạo host config
+        HostConfig hostConfig = HostConfig.newHostConfig()
+                .withNetworkMode(networkName)
+                .withPortBindings(
+                        PortBinding.parse("9092:9092"),
+                        PortBinding.parse("29092:29092")
+                )
+                .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
+
+        // Tạo container với network aliases thông qua environment variables
+        List<String> env = getEnvironmentVariables(service);
+        env.add("KAFKA_ADVERTISED_HOST_NAME=kafka");
+
+        CreateContainerResponse container = dockerClient.createContainerCmd(getImageName(service))
+                .withName(containerName)
+                .withHostConfig(hostConfig)
+                .withEnv(env)
+                .exec();
+
+        // Kết nối container với network
+        try {
+            dockerClient.connectToNetworkCmd()
+                    .withNetworkId(networkName)
+                    .withContainerId(container.getId())
+                    .exec();
+
+            // Start container sau khi kết nối network
+            dockerClient.startContainerCmd(container.getId()).exec();
+
+        } catch (Exception e) {
+            log.error("Failed to setup Kafka container", e);
+            // Cleanup nếu có lỗi
+            dockerClient.removeContainerCmd(container.getId()).withForce(true).exec();
+            throw new RuntimeException("Failed to setup Kafka container", e);
+        }
+
+        return container;
+    }
+
     private HostConfig createHostConfig(String service) {
-        return HostConfig.newHostConfig()
-                .withPortBindings(getPortBindings(service))
-                .withBinds(createBinds(service))
+        HostConfig config = HostConfig.newHostConfig()
                 .withNetworkMode("elevate-banking-network");
+
+        switch (service) {
+            case "kafka":
+                return HostConfig.newHostConfig()
+                        .withNetworkMode("elevate-banking-network")
+                        .withPortBindings(Arrays.asList(
+                                PortBinding.parse("9092:9092"),
+                                PortBinding.parse("29092:29092")
+                        ))
+                        // Thêm DNS aliases
+                        .withNetworkMode(String.valueOf(Arrays.asList("kafka")))
+                        .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
+            // ... other cases ...
+        }
+        return config;
     }
 
     private List<Bind> createBinds(String service) {
@@ -303,17 +373,69 @@ public class DockerConfig {
                         "POSTGRES_USER=root",
                         "POSTGRES_PASSWORD=123456"
                 );
-            // Add configs for other services
+            case "zookeeper":
+                return Arrays.asList(
+                        "ZOOKEEPER_CLIENT_PORT=2181",
+                        "ZOOKEEPER_TICK_TIME=2000",
+                        "ALLOW_ANONYMOUS_LOGIN=yes"
+                );
+            case "kafka":
+                return Arrays.asList(
+                        "KAFKA_BROKER_ID=1",
+                        // Sử dụng internal IP thay vì hostname
+                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
+                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://172.18.0.4:9092,EXTERNAL://192.168.1.128:29092",
+                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT",
+                        "KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL",
+                        // Sử dụng container name với network alias
+                        "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
+                        "KAFKA_BROKER_ID=1",
+                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
+                        "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
+                        "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
+                        // Thêm timeout dài hơn cho khởi động
+                        "KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=60000",
+                        "KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=60000"
+                );
+            case "redis":
+                return Arrays.asList(
+                        // Cấu hình cơ bản
+                        "REDIS_PORT=6379",
+                        "REDIS_BIND_ADDRESS=0.0.0.0",
+
+                        // Cấu hình bảo mật
+                        "REDIS_PASSWORD=123456", // Thay thế bằng mật khẩu thực
+                        "REDIS_ALLOW_EMPTY_PASSWORD=no",
+
+                        // Cấu hình hiệu suất
+                        "REDIS_MAXMEMORY=2gb",
+                        "REDIS_MAXMEMORY_POLICY=allkeys-lru",
+
+                        // Cấu hình persistence
+                        "REDIS_SAVE_TO_DISK=yes",
+                        "REDIS_AOF_ENABLED=yes",
+
+                        // Cấu hình timeout
+                        "REDIS_TIMEOUT=300",
+
+                        // Cấu hình giới hạn kết nối
+                        "REDIS_MAXCLIENTS=10000",
+
+                        // Cấu hình TLS/SSL (nếu cần)
+                        "REDIS_TLS_PORT=6380",
+                        "REDIS_TLS_ENABLED=no"
+                );
             default:
                 return Collections.emptyList();
         }
     }
 
     private void waitForServiceToBeReady(String service) {
-        int maxAttempts = 60;
+        int maxRetries = 30;
+        int retryDelay = 2000;
         int attempt = 0;
 
-        while (attempt < maxAttempts) {
+        while (attempt < maxRetries) {
             try {
                 switch (service) {
                     case "postgres":
@@ -323,24 +445,39 @@ public class DockerConfig {
                         checkRedisConnection();
                         break;
                     case "zookeeper":
-                        checkZookeeperConnection();
+                        if (checkZookeeperConnection()) {
+                            log.info("Successfully connected to Zookeeper");
+                            return;
+                        }
                         break;
                     case "kafka":
+                        if (attempt == 0) {
+                            Thread.sleep(10000); // Đợi 10s cho Zookeeper khởi động hoàn toàn
+                        }
                         checkKafkaConnection();
                         break;
+                }
+                attempt++;
+                if (attempt < maxRetries) {
+                    log.info("Retrying {} connection in {} ms...", service, retryDelay);
+                    Thread.sleep(retryDelay);
                 }
                 return;
             } catch (Exception e) {
                 attempt++;
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Service check interrupted", ie);
+                log.warn("Service {} check failed (attempt {}/{}): {}",
+                        service, attempt, maxRetries, e.getMessage());
+                if (attempt < maxRetries) {
+                    try {
+                        Thread.sleep(retryDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
             }
         }
-        throw new RuntimeException(service + " failed to start after " + maxAttempts + " attempts");
+        throw new RuntimeException(service + " failed to start after " + maxRetries + " attempts");
     }
 
     private String getImageName(String service) {
@@ -399,6 +536,7 @@ public class DockerConfig {
         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
         redisConfig.setHostName("192.168.1.128");
         redisConfig.setPort(6379);
+        redisConfig.setPassword("123456");
 
         try {
             LettuceConnectionFactory redisConnectionFactory = new LettuceConnectionFactory(redisConfig);
@@ -406,6 +544,8 @@ public class DockerConfig {
             RedisConnection connection = redisConnectionFactory.getConnection();
             if (connection.ping() != null) {
                 log.info("Successfully connected to Redis");
+                connection.close();
+                redisConnectionFactory.destroy();
                 return;
             }
             throw new RuntimeException("Failed to connect to Redis");
@@ -458,13 +598,33 @@ public class DockerConfig {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:29092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
 
-        try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-            producer.partitionsFor("__consumer_offsets"); // Check if Kafka is accessible
-            log.info("Successfully connected to Kafka");
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to connect to Kafka", e);
+        int maxRetries = 5;
+        int retryCount = 0;
+        Exception lastException = null;
+        while (retryCount < maxRetries) {
+            try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
+                // Kiểm tra kết nối bằng cách lấy cluster metadata
+                producer.partitionsFor("_kafka_healthcheck");
+                log.info("Successfully connected to Kafka");
+                return;
+            } catch (Exception e) {
+                lastException = e;
+                retryCount++;
+                log.warn("Failed to connect to Kafka (attempt {}/{}): {}",
+                        retryCount, maxRetries, e.getMessage());
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Kafka connection check interrupted", ie);
+                }
+            }
         }
+
+        throw new RuntimeException("Failed to connect to Kafka after " + maxRetries +
+                " attempts. Last error: " + lastException.getMessage(), lastException);
     }
 
     private boolean isContainerRunning(String containerName) {

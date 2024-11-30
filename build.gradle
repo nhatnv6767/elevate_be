@@ -133,12 +133,24 @@ dependencies {
     implementation platform('com.github.docker-java:docker-java-bom:3.3.4')
     implementation 'com.github.docker-java:docker-java-core'
     implementation 'com.github.docker-java:docker-java-transport-httpclient5'
+    // https://mvnrepository.com/artifact/com.github.docker-java/docker-java
+    implementation group: 'com.github.docker-java', name: 'docker-java', version: '3.4.0'
 
 
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.3'
     implementation 'org.apache.httpcomponents.core5:httpcore5:5.2.3'
     implementation 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.3'
 
+    // Thêm JAXB API
+    implementation 'javax.xml.bind:jaxb-api:2.3.1'
+    implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
+    
+    // Thêm Jakarta XML Binding API
+    implementation 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.0'
+    implementation 'org.glassfish.jaxb:jaxb-runtime:4.0.0'
+    
+    // Jackson JAXB annotations
+    implementation 'com.fasterxml.jackson.module:jackson-module-jaxb-annotations'
 
 }
 
