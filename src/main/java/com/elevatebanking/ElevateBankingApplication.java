@@ -3,6 +3,7 @@ package com.elevatebanking;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.DependsOn;
 
 import com.elevatebanking.config.DockerConfig;
@@ -29,11 +30,14 @@ import org.springframework.boot.ApplicationRunner;
 //}
 
 @SpringBootApplication
-@EnableConfigurationProperties
 public class ElevateBankingApplication {
     public static void main(String[] args) {
         SpringApplication app = new SpringApplication(ElevateBankingApplication.class);
         app.setRegisterShutdownHook(true);
-        app.run(args);
+
+        ConfigurableApplicationContext context = app.run(args);
+
+        // Ensure Docker services are initialized first
+        context.getBean(DockerConfig.class);
     }
 }

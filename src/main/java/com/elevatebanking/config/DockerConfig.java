@@ -34,11 +34,12 @@ import com.github.dockerjava.api.command.LogContainerCmd;
 
 @Configuration
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@DependsOn("dockerConfig")
+//@DependsOn("dockerConfig")
 public class DockerConfig {
 
     @Value("${docker.host:tcp://192.168.1.128:2375}")
     private String dockerHost;
+    private final DockerClient dockerClient;
 
     private static final Logger log = LoggerFactory.getLogger(DockerConfig.class);
 
@@ -47,10 +48,7 @@ public class DockerConfig {
     private static final int RETRY_DELAY = 10000;
     private static final int MAX_RETRIES = 60;
 
-    @PostConstruct
-    public void initializeDockerServices() throws Exception {
-        log.info("Initializing Docker services...");
-
+    public DockerConfig() {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
                 .withDockerHost("tcp://192.168.1.128:2375")
                 .withDockerTlsVerify(false)
@@ -64,16 +62,15 @@ public class DockerConfig {
                 .responseTimeout(Duration.ofSeconds(45))
                 .build();
 
-        DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
+        this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
+    }
+
+    @PostConstruct
+    public void initializeDockerServices() throws Exception {
+        log.info("Initializing Docker services...");
 
         try {
-            // Pull image first
-            log.info("Pulling PostgreSQL image...");
-            dockerClient.pullImageCmd("postgres:latest")
-                    .exec(new PullImageResultCallback())
-                    .awaitCompletion();
-
-            // Remove existing container if any
+            // Xóa container cũ nếu tồn tại
             List<Container> existingContainers = dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton("elevate-banking-postgres"))
                     .withShowAll(true)
@@ -86,15 +83,20 @@ public class DockerConfig {
                         .exec();
             }
 
-            // Create new container
-            log.info("Creating PostgreSQL container...");
+            // Pull image
+            dockerClient.pullImageCmd("postgres:latest")
+                    .exec(new PullImageResultCallback())
+                    .awaitCompletion();
+
+            // Create container
             CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
                     .withName("elevate-banking-postgres")
                     .withEnv(
                             "POSTGRES_DB=elevate_banking",
                             "POSTGRES_USER=root",
                             "POSTGRES_PASSWORD=123456",
-                            "POSTGRES_HOST_AUTH_METHOD=trust"
+                            "POSTGRES_HOST_AUTH_METHOD=trust",
+                            "POSTGRES_INITDB_ARGS=--auth-host=trust"
                     )
                     .withHostConfig(HostConfig.newHostConfig()
                             .withPortBindings(PortBinding.parse("5432:5432"))
@@ -103,11 +105,9 @@ public class DockerConfig {
                     .exec();
 
             // Start container
-            log.info("Starting PostgreSQL container...");
             dockerClient.startContainerCmd(container.getId()).exec();
 
             // Wait for PostgreSQL to be ready
-            log.info("Waiting for PostgreSQL to be ready...");
             if (!waitForPostgresqlContainer()) {
                 throw new RuntimeException("PostgreSQL failed to start");
             }
@@ -181,43 +181,38 @@ public class DockerConfig {
     }
 
     private boolean waitForPostgresqlContainer() {
-        int attempts = 0;
-        while (attempts < 60) { // 5 phút timeout
-            try {
-                log.info("Attempting to connect to PostgreSQL (attempt {})", attempts + 1);
+        int maxAttempts = 60;
+        int attempt = 0;
 
-                // Kiểm tra port
+        while (attempt < maxAttempts) {
+            try {
+                attempt++;
+                log.info("Attempt {} to connect to PostgreSQL", attempt);
+
                 try (Socket socket = new Socket()) {
                     socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
-                    log.info("Port 5432 is open");
-                }
+                    Thread.sleep(5000);  // Đợi thêm 5s sau khi port đã mở
 
-                // Kiểm tra database connection
-                try (Connection conn = DriverManager.getConnection(
-                        "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
-                        "root",
-                        "123456"
-                )) {
-                    if (conn.isValid(5)) {
-                        log.info("Successfully connected to PostgreSQL");
-                        Thread.sleep(5000); // Wait additional time for full initialization
-                        return true;
+                    // Test database connection
+                    try (Connection conn = DriverManager.getConnection(
+                            "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
+                            "root", "123456")) {
+                        if (conn.isValid(5)) {
+                            log.info("Successfully connected to PostgreSQL");
+                            return true;
+                        }
                     }
                 }
             } catch (Exception e) {
                 log.warn("Failed to connect: {}", e.getMessage());
-            }
-
-            attempts++;
-            try {
-                Thread.sleep(5000); // Wait 5 seconds before next attempt
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
             }
         }
-
-        log.error("Failed to connect to PostgreSQL after {} attempts", attempts);
         return false;
     }
 
