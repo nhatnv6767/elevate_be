@@ -82,6 +82,13 @@ dependencies {
     implementation 'org.springframework.kafka:spring-kafka'
     implementation 'org.testcontainers:testcontainers:1.19.6'
 
+    // For Zookeeper connection check
+    implementation 'org.apache.curator:curator-framework:5.1.0'
+    implementation 'org.apache.curator:curator-recipes:5.1.0'
+
+    // For Kafka connection check
+    implementation 'org.apache.kafka:kafka-clients'
+
     // Database
     runtimeOnly 'org.postgresql:postgresql'
     implementation 'org.postgresql:postgresql:42.7.4'

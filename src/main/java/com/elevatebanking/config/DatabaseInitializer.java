@@ -32,17 +32,17 @@ import java.util.Collections;
 public class DatabaseInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseInitializer.class);
     private final DockerClient dockerClient;
-    @Value("${docker.host}")
+    @Value("${docker.host:tcp://192.168.1.128:2375}")
     private String dockerHost;
 
-    @Autowired
-    public DatabaseInitializer(DockerClient dockerClient) {
-        this.dockerClient = dockerClient;
-    }
+//    @Autowired
+//    public DatabaseInitializer(DockerClient dockerClient) {
+//        this.dockerClient = dockerClient;
+//    }
 
     public DatabaseInitializer(@Value("${docker.host:tcp://192.168.1.128:2375}") String dockerHost) {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost(dockerHost)
+                .withDockerHost("tcp://192.168.1.128:2375")
                 .withDockerTlsVerify(false)
                 .build();
 

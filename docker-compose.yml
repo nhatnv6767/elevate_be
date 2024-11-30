@@ -53,3 +53,10 @@ networks:
 
 volumes:
   postgres_data:
+    external: false  # Will be created if not exists
+  redis_data:
+    external: false
+  zookeeper_data:
+    external: false
+  kafka_data:
+    external: false
