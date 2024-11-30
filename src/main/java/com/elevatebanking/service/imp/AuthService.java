@@ -55,11 +55,25 @@ public class AuthService implements IAuthService {
 
     @Override
     public AuthDTOs.AuthResponse refreshToken(String token) {
-        return null;
+        if (!tokenProvider.validateToken(token)) {
+            throw new UnauthorizedException("Invalid token");
+        }
+
+        String username = tokenProvider.getUsernameFromToken(token);
+        User user = userRepository.findByUsername(username).orElseThrow(() -> new UnauthorizedException("User not found"));
+        return AuthDTOs.AuthResponse.builder()
+                .userId(user.getId())
+                .username(username)
+                .accessToken(tokenProvider.generateToken(username))
+                .refreshToken(tokenProvider.generateRefreshToken(username))
+                .expiresIn(tokenProvider.getExpirationTime())
+                .roles(user.getRoles().stream().map(role -> role.getName()).toArray(String[]::new))
+                .build();
     }
 
     @Override
     public void logout(String token) {
+        tokenProvider.blacklistToken(token);
 
     }
 
