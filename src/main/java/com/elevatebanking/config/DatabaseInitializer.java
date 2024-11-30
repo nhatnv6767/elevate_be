@@ -45,7 +45,7 @@ public class DatabaseInitializer implements InitializingBean {
                 .withDockerTlsVerify(false)
                 .build();
 
-        // Tạo HTTP client với các cấu hình cụ thể
+        // Create HTTP client with specific configurations
         DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
                 .dockerHost(config.getDockerHost())
                 .sslConfig(config.getSSLConfig())

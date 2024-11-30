@@ -54,7 +54,7 @@ public class DockerConfig {
     @PostConstruct
     public void init() throws Exception {
         initializeDockerClient();
-        // Sau khi khởi tạo Docker client, bắt đầu khởi tạo services
+        // After initializing Docker client, start initializing services
         initializeDockerServices();
     }
 
@@ -108,7 +108,7 @@ public class DockerConfig {
                 }
             }
 
-            // Xóa container cũ nếu tồn tại
+            // Remove old container if exists
             List<Container> existingContainers = dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton("elevate-banking-postgres"))
                     .withShowAll(true)
@@ -169,7 +169,7 @@ public class DockerConfig {
 
                 try (Socket socket = new Socket()) {
                     socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
-                    Thread.sleep(5000);  // Đợi thêm 5s sau khi port đã mở
+                    Thread.sleep(5000);  // Wait additional 5s after port is open
 
                     // Test database connection
                     try (Connection conn = DriverManager.getConnection(
@@ -282,7 +282,7 @@ public class DockerConfig {
         String containerName = "elevate-banking-" + service;
         String networkName = "elevate-banking-network";
 
-        // Tạo host config
+        // Create host config
         HostConfig hostConfig = HostConfig.newHostConfig()
                 .withNetworkMode(networkName)
                 .withPortBindings(
@@ -291,7 +291,7 @@ public class DockerConfig {
                 )
                 .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
-        // Tạo container với network aliases thông qua environment variables
+        // Create container with network aliases through environment variables
         List<String> env = getEnvironmentVariables(service);
         env.add("KAFKA_ADVERTISED_HOST_NAME=kafka");
 
@@ -301,19 +301,19 @@ public class DockerConfig {
                 .withEnv(env)
                 .exec();
 
-        // Kết nối container với network
+        // Connect container to network
         try {
             dockerClient.connectToNetworkCmd()
                     .withNetworkId(networkName)
                     .withContainerId(container.getId())
                     .exec();
 
-            // Start container sau khi kết nối network
+            // Start container after connecting to network
             dockerClient.startContainerCmd(container.getId()).exec();
 
         } catch (Exception e) {
             log.error("Failed to setup Kafka container", e);
-            // Cleanup nếu có lỗi
+            // Cleanup if error occurs
             dockerClient.removeContainerCmd(container.getId()).withForce(true).exec();
             throw new RuntimeException("Failed to setup Kafka container", e);
         }
@@ -333,7 +333,7 @@ public class DockerConfig {
                                 PortBinding.parse("9092:9092"),
                                 PortBinding.parse("29092:29092")
                         ))
-                        // Thêm DNS aliases
+                        // Add DNS aliases
                         .withNetworkMode(String.valueOf(Arrays.asList("kafka")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
             // ... other cases ...
@@ -382,46 +382,46 @@ public class DockerConfig {
             case "kafka":
                 return Arrays.asList(
                         "KAFKA_BROKER_ID=1",
-                        // Sử dụng internal IP thay vì hostname
+                        // Use internal IP instead of hostname
                         "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
                         "KAFKA_ADVERTISED_LISTENERS=INTERNAL://172.18.0.4:9092,EXTERNAL://192.168.1.128:29092",
                         "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT",
                         "KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL",
-                        // Sử dụng container name với network alias
+                        // Use container name with network alias
                         "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
                         "KAFKA_BROKER_ID=1",
                         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
                         "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
                         "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
-                        // Thêm timeout dài hơn cho khởi động
+                        // Add longer timeout for startup
                         "KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=60000",
                         "KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=60000"
                 );
             case "redis":
                 return Arrays.asList(
-                        // Cấu hình cơ bản
+                        // Basic configuration
                         "REDIS_PORT=6379",
                         "REDIS_BIND_ADDRESS=0.0.0.0",
 
-                        // Cấu hình bảo mật
-                        "REDIS_PASSWORD=123456", // Thay thế bằng mật khẩu thực
+                        // Security configuration
+                        "REDIS_PASSWORD=123456", // Replace with actual password
                         "REDIS_ALLOW_EMPTY_PASSWORD=no",
 
-                        // Cấu hình hiệu suất
+                        // Performance configuration
                         "REDIS_MAXMEMORY=2gb",
                         "REDIS_MAXMEMORY_POLICY=allkeys-lru",
 
-                        // Cấu hình persistence
+                        // Persistence configuration
                         "REDIS_SAVE_TO_DISK=yes",
                         "REDIS_AOF_ENABLED=yes",
 
-                        // Cấu hình timeout
+                        // Timeout configuration
                         "REDIS_TIMEOUT=300",
 
-                        // Cấu hình giới hạn kết nối
+                        // Connection limit configuration
                         "REDIS_MAXCLIENTS=10000",
 
-                        // Cấu hình TLS/SSL (nếu cần)
+                        // TLS/SSL configuration (if needed)
                         "REDIS_TLS_PORT=6380",
                         "REDIS_TLS_ENABLED=no"
                 );
@@ -452,7 +452,7 @@ public class DockerConfig {
                         break;
                     case "kafka":
                         if (attempt == 0) {
-                            Thread.sleep(10000); // Đợi 10s cho Zookeeper khởi động hoàn toàn
+                            Thread.sleep(10000); // Wait 10s for Zookeeper to fully start
                         }
                         checkKafkaConnection();
                         break;
@@ -605,7 +605,7 @@ public class DockerConfig {
         Exception lastException = null;
         while (retryCount < maxRetries) {
             try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-                // Kiểm tra kết nối bằng cách lấy cluster metadata
+                // Check connection by getting cluster metadata
                 producer.partitionsFor("_kafka_healthcheck");
                 log.info("Successfully connected to Kafka");
                 return;
