@@ -93,7 +93,7 @@ public class DockerConfig {
                             "POSTGRES_PASSWORD=123456"
                     )
                     .withHostConfig(HostConfig.newHostConfig()
-                            .withNetworkMode("elevate-banking-network")
+                            .withNetworkMode("host")
                             .withPortBindings(PortBinding.parse("5432:5432"))
                             .withMemory(512 * 1024 * 1024L)
                             .withCpuCount(1L))
@@ -110,7 +110,7 @@ public class DockerConfig {
             int attempts = 0;
             while (!isReady && attempts < 60) {
                 try (Socket socket = new Socket()) {
-                    socket.connect(new InetSocketAddress("localhost", 5432), 1000);
+                    socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
                     isReady = true;
                 } catch (Exception e) {
                     Thread.sleep(1000);
@@ -131,10 +131,10 @@ public class DockerConfig {
         int attempt = 0;
         while (attempt < maxAttempts) {
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress("localhost", 5432), 2000);
+                socket.connect(new InetSocketAddress("192.168.1.128", 5432), 2000);
                 Thread.sleep(10000);
                 try (Connection conn = DriverManager.getConnection(
-                        "jdbc:postgresql://localhost:5432/elevate_banking",
+                        "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
                         "root",
                         "123456")) {
                     if (conn.isValid(5)) {
@@ -142,6 +142,7 @@ public class DockerConfig {
                     }
                 }
             } catch (Exception e) {
+                log.warn("Attempt {} failed to connect to PostgreSQL: {}", attempt, e.getMessage());
                 attempt++;
                 try {
                     Thread.sleep(2000);
