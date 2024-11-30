@@ -50,27 +50,46 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DockerConfig {
 
-    //    @Value("${docker.host:tcp://192.168.1.128:2375}")
-    @Value("${docker.host:tcp://192.168.1.128:2375}")
-    private String dockerHost;
-    private final DockerClient dockerClient;
     private static final List<String> REQUIRED_SERVICES = Arrays.asList(
             "postgres", "redis", "zookeeper", "kafka"
     );
+    @Value("${docker.host:tcp://192.168.1.128:2375}")
+    private String dockerHost;
+    private DockerClient dockerClient;
+
     private static final Logger log = LoggerFactory.getLogger(DockerConfig.class);
 
-    @Autowired
-    public DockerConfig(@Value("${docker.host:tcp://192.168.1.128:2375}") String dockerHost) {
-        log.info("Initializing Docker with host: {}", dockerHost);
+//    @Autowired
+//    public DockerConfig(@Value("${docker.host:tcp://192.168.1.128:2375}") String dockerHost) {
+//        log.info("Initializing Docker with host: {}", dockerHost);
+//
+//        // Check if services exist and are running
+//        for (String service : REQUIRED_SERVICES) {
+//            String containerName = "elevate-banking-" + service;
+//            if (!isContainerRunningAndHealthy(containerName)) {
+//                createAndStartContainer(service);
+//            }
+//        }
+//
+//        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
+//                .withDockerHost(dockerHost)
+//                .withDockerTlsVerify(false)
+//                .build();
+//
+//        DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+//                .dockerHost(config.getDockerHost())
+//                .sslConfig(config.getSSLConfig())
+//                .maxConnections(100)
+//                .connectionTimeout(Duration.ofSeconds(30))
+//                .responseTimeout(Duration.ofSeconds(45))
+//                .build();
+//
+//        this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
+//    }
 
-        // Check if services exist and are running
-        for (String service : REQUIRED_SERVICES) {
-            String containerName = "elevate-banking-" + service;
-            if (!isContainerRunningAndHealthy(containerName)) {
-                createAndStartContainer(service);
-            }
-        }
-
+    @PostConstruct
+    public void init() throws Exception {
+        // Khởi tạo Docker client
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
                 .withDockerHost(dockerHost)
                 .withDockerTlsVerify(false)
@@ -85,6 +104,9 @@ public class DockerConfig {
                 .build();
 
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
+
+        // Sau khi khởi tạo Docker client, bắt đầu khởi tạo services
+        initializeDockerServices();
     }
 
     @Bean
