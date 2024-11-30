@@ -2,7 +2,6 @@ package com.elevatebanking.config;
 
 import com.fasterxml.jackson.databind.ser.std.StringSerializer;
 import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
@@ -23,7 +22,6 @@ import org.springframework.core.annotation.Order;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 
-import java.io.Closeable;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,8 +36,6 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.annotation.PreDestroy;
-import com.github.dockerjava.api.command.InspectContainerResponse;
-import com.github.dockerjava.api.command.LogContainerCmd;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -59,7 +55,12 @@ public class DockerConfig {
 
     @PostConstruct
     public void init() throws Exception {
-        // Khởi tạo Docker client
+        initializeDockerClient();
+        // Sau khi khởi tạo Docker client, bắt đầu khởi tạo services
+        initializeDockerServices();
+    }
+
+    private void initializeDockerClient() {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
                 .withDockerHost(dockerHost)
                 .withDockerTlsVerify(false)
@@ -74,17 +75,26 @@ public class DockerConfig {
                 .build();
 
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
-
-        // Sau khi khởi tạo Docker client, bắt đầu khởi tạo services
-        initializeDockerServices();
     }
 
     @Bean
     public DockerClient dockerClient() {
-        return this.dockerClient;
+        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
+                .withDockerHost(dockerHost)
+                .withDockerTlsVerify(false)
+                .build();
+
+        DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+                .dockerHost(config.getDockerHost())
+                .sslConfig(config.getSSLConfig())
+                .maxConnections(100)
+                .connectionTimeout(Duration.ofSeconds(30))
+                .responseTimeout(Duration.ofSeconds(45))
+                .build();
+
+        return DockerClientImpl.getInstance(config, httpClient);
     }
 
-    @PostConstruct
     public void initializeDockerServices() throws Exception {
         log.info("Initializing Docker services...");
 
@@ -147,66 +157,6 @@ public class DockerConfig {
         }
     }
 
-    private void createPostgresContainer(DockerClient dockerClient) {
-        String containerName = "elevate-banking-postgres";
-        try {
-            // Xóa container cũ nếu tồn tại
-            List<Container> containers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton(containerName))
-                    .withShowAll(true)
-                    .exec();
-            if (!containers.isEmpty()) {
-                String containerId = containers.get(0).getId();
-                dockerClient.removeContainerCmd(containerId).withForce(true).exec();
-            }
-
-            // Pull image và tạo container
-            dockerClient.pullImageCmd("postgres:latest")
-                    .exec(new PullImageResultCallback())
-                    .awaitCompletion();
-
-            CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
-                    .withName(containerName)
-                    .withEnv(
-                            "POSTGRES_DB=elevate_banking",
-                            "POSTGRES_USER=root",
-                            "POSTGRES_PASSWORD=123456",
-                            "POSTGRES_HOST_AUTH_METHOD=trust",
-                            "LISTEN_ADDRESSES=*"
-                    )
-                    .withHostConfig(HostConfig.newHostConfig()
-                            .withNetworkMode("bridge")
-                            .withPortBindings(PortBinding.parse("5432:5432"))
-                            .withPublishAllPorts(true)
-                            .withMemory(512 * 1024 * 1024L))
-                    .withExposedPorts(ExposedPort.tcp(5432))
-                    .exec();
-
-            // Khởi động container
-            dockerClient.startContainerCmd(container.getId()).exec();
-
-            logContainerOutput(dockerClient, container.getId());
-
-            // Kiểm tra container status
-            InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(container.getId()).exec();
-            if (!containerInfo.getState().getRunning()) {
-                throw new RuntimeException("Container failed to start: " + containerInfo.getState().getError());
-            }
-            // Đợi container khởi động
-            Thread.sleep(10000);
-
-            // Kiểm tra logs
-            LogContainerCmd logContainerCmd = dockerClient.logContainerCmd(container.getId())
-                    .withStdOut(true)
-                    .withStdErr(true)
-                    .withTail(50);
-
-
-        } catch (Exception e) {
-            throw new RuntimeException("Không thể tạo PostgreSQL container", e);
-        }
-    }
-
     private boolean waitForPostgresqlContainer() {
         int maxAttempts = 60;
         int attempt = 0;
@@ -241,43 +191,6 @@ public class DockerConfig {
             }
         }
         return false;
-    }
-
-    private boolean isContainerRunning(DockerClient dockerClient, String containerName) {
-        try {
-            List<Container> containers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton(containerName))
-                    .withShowAll(true)
-                    .exec();
-
-            if (!containers.isEmpty()) {
-                String state = containers.get(0).getState();
-                if (!"running".equalsIgnoreCase(state)) {
-                    dockerClient.startContainerCmd(containers.get(0).getId()).exec();
-                    Thread.sleep(5000);
-                }
-                return true;
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private void checkAndCreateNetwork(DockerClient dockerClient) {
-        try {
-            List<Network> networks = dockerClient.listNetworksCmd().exec();
-            boolean networkExists = networks.stream()
-                    .anyMatch(n -> n.getName().equals("elevate-banking-network"));
-            if (!networkExists) {
-                dockerClient.createNetworkCmd()
-                        .withName("elevate-banking-network")
-                        .withDriver("bridge")
-                        .exec();
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Không thể tạo network", e);
-        }
     }
 
     @PreDestroy
@@ -318,65 +231,6 @@ public class DockerConfig {
             }
         } catch (Exception e) {
             log.error("Error during cleanup", e);
-        }
-    }
-
-    private void waitForContainerToStart(DockerClient dockerClient, String containerId) {
-        boolean isRunning = false;
-        int attempts = 0;
-        while (!isRunning && attempts < 30) {
-            try {
-                InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(containerId).exec();
-                isRunning = containerInfo.getState().getRunning();
-                if (!isRunning) {
-                    Thread.sleep(2000);
-                    attempts++;
-                }
-            } catch (Exception e) {
-                log.warn("Lỗi khi kiểm tra trạng thái container: {}", e.getMessage());
-                attempts++;
-            }
-        }
-        if (!isRunning) {
-            throw new RuntimeException("Container không thể khởi động sau 60 giây");
-        }
-    }
-
-    private void logContainerOutput(DockerClient dockerClient, String containerId) {
-        try {
-            LogContainerCmd logContainerCmd = dockerClient.logContainerCmd(containerId)
-                    .withStdOut(true)
-                    .withStdErr(true)
-                    .withFollowStream(true)
-                    .withTailAll();
-
-            logContainerCmd.exec(new ResultCallback<Frame>() {
-                @Override
-                public void onStart(Closeable closeable) {
-
-                }
-
-                @Override
-                public void onNext(Frame frame) {
-                    log.info(new String(frame.getPayload()));
-                }
-
-
-                @Override
-                public void close() {
-                }
-
-                @Override
-                public void onError(Throwable throwable) {
-                    log.error("Error in container logs", throwable);
-                }
-
-                @Override
-                public void onComplete() {
-                }
-            });
-        } catch (Exception e) {
-            log.error("Error getting container logs", e);
         }
     }
 
@@ -468,10 +322,6 @@ public class DockerConfig {
             default:
                 return Collections.emptyList();
         }
-    }
-
-    private Volume getVolumes(String service) {
-        return new Volume("/data/" + service);
     }
 
     private void waitForServiceToBeReady(String service) {
