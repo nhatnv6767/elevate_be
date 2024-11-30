@@ -127,6 +127,12 @@ dependencies {
     implementation 'com.github.docker-java:docker-java-core'
     implementation 'com.github.docker-java:docker-java-transport-httpclient5'
 
+
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.3'
+    implementation 'org.apache.httpcomponents.core5:httpcore5:5.2.3'
+    implementation 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.3'
+
+
 }
 
 sourceSets {

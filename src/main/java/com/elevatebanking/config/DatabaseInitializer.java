@@ -5,6 +5,8 @@ import com.github.dockerjava.api.command.PullImageResultCallback;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
+import com.github.dockerjava.transport.DockerHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
@@ -19,6 +21,7 @@ import org.testcontainers.shaded.com.github.dockerjava.core.DockerClientImpl;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.time.Duration;
 import java.util.Collections;
 
 @Component
@@ -34,7 +37,16 @@ public class DatabaseInitializer implements InitializingBean {
                 .withDockerTlsVerify(false)
                 .build();
 
-        dockerClient = DockerClientImpl.getInstance(config);
+        // Tạo HTTP client với các cấu hình cụ thể
+        DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+                .dockerHost(config.getDockerHost())
+                .sslConfig(config.getSSLConfig())
+                .maxConnections(100)
+                .connectionTimeout(Duration.ofSeconds(30))
+                .responseTimeout(Duration.ofSeconds(45))
+                .build();
+
+        this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
     }
 
     @Override
@@ -43,48 +55,60 @@ public class DatabaseInitializer implements InitializingBean {
     }
 
     private void initializePostgres() throws Exception {
-        String containerName = "elevate-banking-postgres";
+        try {
 
-        // Remove existing container
-        dockerClient.listContainersCmd()
-                .withNameFilter(Collections.singleton(containerName))
-                .withShowAll(true)
-                .exec()
-                .forEach(container -> {
-                    try {
-                        dockerClient.removeContainerCmd(container.getId())
-                                .withForce(true)
-                                .exec();
-                        log.info("Removed existing container: {}", container.getId());
-                    } catch (Exception e) {
-                        log.warn("Failed to remove container: {}", e.getMessage());
-                    }
-                });
+            log.info("Starting PostgreSQL initialization...");
 
-        // Pull image
-        dockerClient.pullImageCmd("postgres:latest")
-                .exec(new PullImageResultCallback())
-                .awaitCompletion();
+            // Check Docker connectivity first
+            dockerClient.pingCmd().exec();
+            log.info("Docker connection successful");
 
-        // Create container
-        var container = dockerClient.createContainerCmd("postgres:latest")
-                .withName(containerName)
-                .withEnv(
-                        "POSTGRES_DB=elevate_banking",
-                        "POSTGRES_USER=root",
-                        "POSTGRES_PASSWORD=123456",
-                        "LISTEN_ADDRESSES=*"
-                )
-                .withHostConfig(HostConfig.newHostConfig()
-                        .withPortBindings(PortBinding.parse("5432:5432")))
-                .withExposedPorts(ExposedPort.tcp(5432))
-                .exec();
+            String containerName = "elevate-banking-postgres";
 
-        // Start container
-        dockerClient.startContainerCmd(container.getId()).exec();
+            // Remove existing container
+            dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withShowAll(true)
+                    .exec()
+                    .forEach(container -> {
+                        try {
+                            dockerClient.removeContainerCmd(container.getId())
+                                    .withForce(true)
+                                    .exec();
+                            log.info("Removed existing container: {}", container.getId());
+                        } catch (Exception e) {
+                            log.warn("Failed to remove container: {}", e.getMessage());
+                        }
+                    });
 
-        // Wait for PostgreSQL to be ready
-        waitForPostgres();
+            // Pull image
+            dockerClient.pullImageCmd("postgres:latest")
+                    .exec(new PullImageResultCallback())
+                    .awaitCompletion();
+
+            // Create container
+            var container = dockerClient.createContainerCmd("postgres:latest")
+                    .withName(containerName)
+                    .withEnv(
+                            "POSTGRES_DB=elevate_banking",
+                            "POSTGRES_USER=root",
+                            "POSTGRES_PASSWORD=123456",
+                            "LISTEN_ADDRESSES=*"
+                    )
+                    .withHostConfig(HostConfig.newHostConfig()
+                            .withPortBindings(PortBinding.parse("5432:5432")))
+                    .withExposedPorts(ExposedPort.tcp(5432))
+                    .exec();
+
+            // Start container
+            dockerClient.startContainerCmd(container.getId()).exec();
+
+            // Wait for PostgreSQL to be ready
+            waitForPostgres();
+        } catch (Exception e) {
+            log.error("Error initializing Postgres", e);
+            throw e;
+        }
     }
 
     private void waitForPostgres() throws Exception {
