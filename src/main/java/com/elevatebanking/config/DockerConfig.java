@@ -414,21 +414,43 @@ public class DockerConfig {
         }
     }
 
-    private void checkZookeeperConnection() {
-        try {
-            CuratorFramework client = CuratorFrameworkFactory.newClient(
-                    "192.168.1.128:2181",
-                    new ExponentialBackoffRetry(1000, 3));
-            client.start();
-            if (client.blockUntilConnected(5, TimeUnit.SECONDS)) {
-                log.info("Successfully connected to Zookeeper");
-                client.close();
-                return;
+    private boolean checkZookeeperConnection() {
+        int maxRetries = 5;
+        int retryDelay = 1000; // in milliseconds
+
+        for (int retry = 1; retry <= maxRetries; retry++) {
+            try {
+                CuratorFramework client = CuratorFrameworkFactory.newClient(
+                        "192.168.1.128:2181",
+                        new ExponentialBackoffRetry(1000, 3));
+
+                client.start();
+
+                if (client.blockUntilConnected(5, TimeUnit.SECONDS)) {
+                    log.info("Successfully connected to Zookeeper");
+                    client.close();
+                    return true;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to connect to Zookeeper (attempt {} of {}): {}", retry, maxRetries, e.getMessage());
             }
-            throw new RuntimeException("Failed to connect to Zookeeper");
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to connect to Zookeeper", e);
+
+            if (retry < maxRetries) {
+                log.info("Retrying Zookeeper connection in {} ms...", retryDelay);
+                try {
+                    Thread.sleep(retryDelay);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Retry interrupted", e);
+                    return false;
+                }
+            } else {
+                log.error("Failed to connect to Zookeeper after {} attempts", maxRetries);
+                return false;
+            }
         }
+
+        return false;
     }
 
     private void checkKafkaConnection() {
