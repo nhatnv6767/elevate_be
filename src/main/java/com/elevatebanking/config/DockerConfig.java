@@ -9,7 +9,9 @@ import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
@@ -34,23 +36,19 @@ import com.github.dockerjava.api.command.LogContainerCmd;
 
 @Configuration
 @Order(Ordered.HIGHEST_PRECEDENCE)
-//@DependsOn("dockerConfig")
 public class DockerConfig {
 
-    @Value("${docker.host:tcp://192.168.1.128:2375}")
+    @Value("${docker.host}")
     private String dockerHost;
     private final DockerClient dockerClient;
 
     private static final Logger log = LoggerFactory.getLogger(DockerConfig.class);
 
-    private static final int CONTAINER_STARTUP_TIMEOUT = 120;
-    private static final int CONNECTION_TIMEOUT = 2000;
-    private static final int RETRY_DELAY = 10000;
-    private static final int MAX_RETRIES = 60;
-
-    public DockerConfig() {
+    @Autowired
+    public DockerConfig(@Value("${docker.host}") String dockerHost) {
+        log.info("Initializing Docker with host: {}", dockerHost);
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost("tcp://192.168.1.128:2375")
+                .withDockerHost(dockerHost)
                 .withDockerTlsVerify(false)
                 .build();
 
@@ -63,6 +61,11 @@ public class DockerConfig {
                 .build();
 
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
+    }
+
+    @Bean
+    public DockerClient dockerClient() {
+        return this.dockerClient;
     }
 
     @PostConstruct

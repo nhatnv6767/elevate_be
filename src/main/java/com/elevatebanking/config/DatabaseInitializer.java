@@ -7,9 +7,11 @@ import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
@@ -25,11 +27,18 @@ import java.time.Duration;
 import java.util.Collections;
 
 @Component
-@DependsOn("dockerConfig")
 @Order(Ordered.HIGHEST_PRECEDENCE)
+@DependsOn("dockerConfig")
 public class DatabaseInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseInitializer.class);
     private final DockerClient dockerClient;
+    @Value("${docker.host}")
+    private String dockerHost;
+
+    @Autowired
+    public DatabaseInitializer(DockerClient dockerClient) {
+        this.dockerClient = dockerClient;
+    }
 
     public DatabaseInitializer(@Value("${docker.host:tcp://192.168.1.128:2375}") String dockerHost) {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
@@ -54,14 +63,20 @@ public class DatabaseInitializer implements InitializingBean {
         initializePostgres();
     }
 
+    @PostConstruct
     private void initializePostgres() throws Exception {
         try {
 
             log.info("Starting PostgreSQL initialization...");
 
-            // Check Docker connectivity first
-            dockerClient.pingCmd().exec();
-            log.info("Docker connection successful");
+            // Test Docker connection first
+            try {
+                dockerClient.pingCmd().exec();
+                log.info("Docker connection successful");
+            } catch (Exception e) {
+                log.error("Failed to connect to Docker: {}", e.getMessage());
+                throw new RuntimeException("Docker connection failed", e);
+            }
 
             String containerName = "elevate-banking-postgres";
 
