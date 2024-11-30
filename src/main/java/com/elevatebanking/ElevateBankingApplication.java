@@ -14,34 +14,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.support.GenericApplicationContext;
 
-//@SpringBootApplication
-//@EnableConfigurationProperties
-//@DependsOn({"dockerConfig"})
-//public class ElevateBankingApplication {
-//
-//    @Bean
-//    public ApplicationRunner initializationRunner(DockerConfig dockerConfig) {
-//        return args -> {
-//            // Đảm bảo DockerConfig được khởi tạo trước
-//        };
-//    }
-//
-//    public static void main(String[] args) {
-//        SpringApplication.run(ElevateBankingApplication.class, args);
-//    }
-//
-//}
-
 @SpringBootApplication
 public class ElevateBankingApplication {
     public static void main(String[] args) {
-//        SpringApplication app = new SpringApplication(ElevateBankingApplication.class);
-//        app.setRegisterShutdownHook(true);
-//
-//        ConfigurableApplicationContext context = app.run(args);
-//
-//        // Ensure Docker services are initialized first
-//        context.getBean(DockerConfig.class);
 
         SpringApplication application = new SpringApplication(ElevateBankingApplication.class);
 
