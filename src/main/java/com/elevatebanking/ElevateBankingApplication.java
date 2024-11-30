@@ -1,15 +1,22 @@
 package com.elevatebanking;
 
+import com.elevatebanking.config.DatabaseInitializer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.support.GenericApplicationContext;
 
 @SpringBootApplication
-@EnableConfigurationProperties 
 public class ElevateBankingApplication {
-
     public static void main(String[] args) {
-        SpringApplication.run(ElevateBankingApplication.class, args);
-    }
 
+        SpringApplication application = new SpringApplication(ElevateBankingApplication.class);
+
+        // Add wait for services
+        application.addInitializers((ApplicationContextInitializer<GenericApplicationContext>) ctx -> {
+            ctx.registerBean("databaseInitializer", DatabaseInitializer.class);
+        });
+
+        application.run(args);
+    }
 }

@@ -9,11 +9,45 @@ dockerCompose {
     useComposeFiles = ['docker-compose.yml']
     startedServices = ['postgres', 'redis', 'zookeeper', 'kafka']
     isRequiredBy(tasks.bootRun)
-    
-    // Cấu hình cho Windows
-    environment.put 'DOCKER_HOST', 'tcp://192.168.1.113:2375'
-    environment.put 'COMPOSE_CONVERT_WINDOWS_PATHS', 'true'
+
+    // Cấu hình kết nối đến Docker remote
+    environment.put 'DOCKER_HOST', 'tcp://192.168.1.128:2375'
+
+    // Kiểm tra health check
+    waitForTcpPorts = true
+
+    // Cấu hình scale
+    scale = [
+            postgres : 1,
+            redis    : 1,
+            zookeeper: 1,
+            kafka    : 1
+    ]
+
+    // Thêm biến môi trường
+    environment.put 'DOCKER_TLS_VERIFY', '0'
+    environment.put 'COMPOSE_PROJECT_NAME', 'elevate-banking'
+
+    // Cấu hình timeout thông qua environment
+    environment.put 'COMPOSE_HTTP_TIMEOUT', '300'
+
+    removeVolumes = true
+    removeOrphans = true
+
+    captureContainersOutput = true
+
 }
+
+// Thêm task để kiểm tra kết nối Docker
+task checkDockerConnection {
+    doLast {
+        def process = "curl http://192.168.1.128:2375/version".execute()
+        println "Docker connection check result: ${process.text}"
+    }
+}
+
+// Chạy kiểm tra kết nối trước khi start
+tasks.bootRun.dependsOn checkDockerConnection
 
 group = 'com'
 version = '0.0.1-SNAPSHOT'
@@ -46,6 +80,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.testcontainers:testcontainers:1.19.6'
+
+    // For Zookeeper connection check
+    implementation 'org.apache.curator:curator-framework:5.1.0'
+    implementation 'org.apache.curator:curator-recipes:5.1.0'
+
+    // For Kafka connection check
+    implementation 'org.apache.kafka:kafka-clients'
 
     // Database
     runtimeOnly 'org.postgresql:postgresql'
@@ -73,6 +115,43 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
     testImplementation 'com.h2database:h2'
+
+    // OpenAPI 3 Dependencies
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
+    implementation 'org.springdoc:springdoc-openapi-starter-common:2.3.0'
+    implementation 'org.springdoc:springdoc-openapi-ui:1.7.0'
+
+    // Swagger Annotations
+    implementation 'io.swagger.core.v3:swagger-annotations:2.2.20'
+    implementation 'io.swagger.core.v3:swagger-models:2.2.20'
+
+    // Optional but recommended for better API docs
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+    implementation 'org.openapitools:jackson-databind-nullable:0.2.6'
+
+    // Docker Java Client
+    implementation platform('com.github.docker-java:docker-java-bom:3.3.4')
+    implementation 'com.github.docker-java:docker-java-core'
+    implementation 'com.github.docker-java:docker-java-transport-httpclient5'
+    // https://mvnrepository.com/artifact/com.github.docker-java/docker-java
+    implementation group: 'com.github.docker-java', name: 'docker-java', version: '3.4.0'
+
+
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.3'
+    implementation 'org.apache.httpcomponents.core5:httpcore5:5.2.3'
+    implementation 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.3'
+
+    // Thêm JAXB API
+    implementation 'javax.xml.bind:jaxb-api:2.3.1'
+    implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
+    
+    // Thêm Jakarta XML Binding API
+    implementation 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.0'
+    implementation 'org.glassfish.jaxb:jaxb-runtime:4.0.0'
+    
+    // Jackson JAXB annotations
+    implementation 'com.fasterxml.jackson.module:jackson-module-jaxb-annotations'
+
 }
 
 sourceSets {
