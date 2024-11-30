@@ -1,4 +1,4 @@
-package com.elevatebanking.entity.config;
+package com.elevatebanking.config;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
