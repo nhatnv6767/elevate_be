@@ -74,14 +74,18 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       bootstrap-servers: 192.168.1.128:29092
-    consumer:
-      group-id: elevate-banking-group
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      bootstrap-servers: 192.168.1.128:29092
       properties:
-        spring.json.trusted.packages: "com.elevatebanking.event"
+        spring.json.add.type.headers: false
+        spring.json.trusted.packages: "*"
+        max.block.ms: 5000
+#    consumer:
+#      group-id: elevate-banking-group
+#      auto-offset-reset: earliest
+#      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+#      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+#      bootstrap-servers: 192.168.1.128:29092
+#      properties:
+#        spring.json.trusted.packages: "com.elevatebanking.event"
 
 
 # Application Security Configuration
