@@ -72,14 +72,14 @@ spring:
 
   # Kafka Configuration
   kafka:
-    bootstrap-servers: 192.168.1.128:29092
+    bootstrap-servers: 192.168.1.128:9092
     producer:
       retry.backoff.ms: 1000
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       retries: 3
-      bootstrap-servers: 192.168.1.128:29092
+      bootstrap-servers: 192.168.1.128:9092
       properties:
         spring.json.add.type.headers: false
         spring.json.trusted.packages: "*"
@@ -89,7 +89,7 @@ spring:
     consumer:
       properties:
         security.protocol: PLAINTEXT
-      bootstrap-servers: 192.168.1.128:29092
+      bootstrap-servers: 192.168.1.128:9092
       group-id: elevate-banking-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer

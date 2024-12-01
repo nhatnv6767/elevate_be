@@ -2,6 +2,7 @@ package com.elevatebanking.config;
 
 import com.fasterxml.jackson.databind.ser.std.StringSerializer;
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
@@ -14,6 +15,7 @@ import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -32,6 +34,9 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.annotation.PreDestroy;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -50,6 +55,9 @@ public class DockerConfig {
     private DockerClient dockerClient;
 
     private static final Logger log = LoggerFactory.getLogger(DockerConfig.class);
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     @PostConstruct
     public void init() throws Exception {
@@ -206,8 +214,11 @@ public class DockerConfig {
         try {
             // 1. Khởi động PostgreSQL và đợi sẵn sàng
             handlePostgresContainer();
-            waitForServiceToBeReady("postgres");
             log.info("PostgreSQL is ready");
+            Thread.sleep(5000);
+            // Khởi tạo schema database
+            initializeDatabaseSchema();
+            log.info("Database schema initialized successfully");
 
             // 2. Khởi động Redis và đợi sẵn sàng
             String redisContainer = "elevate-banking-redis";
@@ -223,6 +234,7 @@ public class DockerConfig {
                 createAndStartContainer("zookeeper");
             }
             waitForServiceToBeReady("zookeeper");
+            Thread.sleep(10000);
             log.info("Zookeeper is ready");
 
             // 4. Khởi động Kafka và đợi sẵn sàng
@@ -230,7 +242,7 @@ public class DockerConfig {
             if (!isContainerRunning(kafkaContainer)) {
                 createAndStartContainer("kafka");
             }
-            Thread.sleep(15000); // Đợi thêm cho Kafka khởi động hoàn toàn
+            Thread.sleep(20000); // Đợi thêm cho Kafka khởi động hoàn toàn
             waitForServiceToBeReady("kafka");
             log.info("Kafka is ready");
 
@@ -242,80 +254,54 @@ public class DockerConfig {
 
     private void handlePostgresContainer() {
         try {
-            // Remove old container if exists
+            String containerName = "elevate-banking-postgres";
+
+            // Kiểm tra container đang chạy
+            if (isContainerRunning(containerName)) {
+                log.info("PostgreSQL container is already running");
+                return;
+            }
+
+            // Chỉ xóa container cũ nếu nó không running
             List<Container> existingContainers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton("elevate-banking-postgres"))
+                    .withNameFilter(Collections.singleton(containerName))
                     .withShowAll(true)
                     .exec();
 
             for (Container container : existingContainers) {
-                log.info("Removing existing container: {}", container.getId());
-                dockerClient.removeContainerCmd(container.getId())
-                        .withForce(true)
-                        .exec();
+                if (!"running".equalsIgnoreCase(container.getState())) {
+                    log.info("Removing stopped container: {}", container.getId());
+                    dockerClient.removeContainerCmd(container.getId())
+                            .withForce(true)
+                            .exec();
+                }
             }
 
-            // Pull image
-            dockerClient.pullImageCmd("postgres:latest")
-                    .exec(new PullImageResultCallback())
-                    .awaitCompletion();
+            // Tạo volume nếu chưa có
+            String volumeName = "postgres-data-volume";
+            try {
+                dockerClient.inspectVolumeCmd(volumeName).exec();
+            } catch (NotFoundException e) {
+                dockerClient.createVolumeCmd().withName(volumeName).exec();
+            }
 
-            // Create and start container
+            // Create container with volume mount
             CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
-                    .withName("elevate-banking-postgres")
+                    .withName(containerName)
                     .withEnv(getEnvironmentVariables("postgres"))
                     .withHostConfig(HostConfig.newHostConfig()
                             .withPortBindings(PortBinding.parse("5432:5432"))
-                            .withPublishAllPorts(true))
+                            .withBinds(new Bind(volumeName, new Volume("/var/lib/postgresql/data")))
+                            .withNetworkMode(NETWORK_NAME))
                     .withExposedPorts(ExposedPort.tcp(5432))
                     .exec();
 
             dockerClient.startContainerCmd(container.getId()).exec();
-
-            // Wait for PostgreSQL
             waitForServiceToBeReady("postgres");
-            log.info("PostgreSQL container is ready!");
-
         } catch (Exception e) {
             log.error("Failed to initialize PostgreSQL container", e);
             throw new RuntimeException("Failed to initialize PostgreSQL container", e);
         }
-    }
-
-    private boolean waitForPostgresqlContainer() {
-        int maxAttempts = 60;
-        int attempt = 0;
-
-        while (attempt < maxAttempts) {
-            try {
-                attempt++;
-                log.info("Attempt {} to connect to PostgreSQL", attempt);
-
-                try (Socket socket = new Socket()) {
-                    socket.connect(new InetSocketAddress("192.168.1.128", 5432), 1000);
-                    Thread.sleep(5000);  // Wait additional 5s after port is open
-
-                    // Test database connection
-                    try (Connection conn = DriverManager.getConnection(
-                            "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
-                            "root", "123456")) {
-                        if (conn.isValid(5)) {
-                            log.info("Successfully connected to PostgreSQL");
-                            return true;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to connect: {}", e.getMessage());
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-        }
-        return false;
     }
 
     @PreDestroy
@@ -474,20 +460,15 @@ public class DockerConfig {
             case "kafka":
                 return Arrays.asList(
                         "KAFKA_BROKER_ID=1",
-                        // Use internal IP instead of hostname
-                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9092",
-                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://172.18.0.4:9092,EXTERNAL://192.168.1.128:9092",
-                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT",
-                        "KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL",
-                        // Use container name with network alias
+                        "KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092",
+                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://elevate-banking-kafka:29092,EXTERNAL://localhost:9092",
+                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
+                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
                         "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
-                        "KAFKA_BROKER_ID=1",
                         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
-                        "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1",
-                        "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1",
-                        // Add longer timeout for startup
-                        "KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=60000",
-                        "KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=60000"
+                        "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
+                        "KAFKA_NUM_PARTITIONS=1",
+                        "KAFKA_DEFAULT_REPLICATION_FACTOR=1"
 
 
                 );
@@ -707,13 +688,15 @@ public class DockerConfig {
 
     private void checkKafkaConnection() {
         Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "elevate-banking-kafka:29092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "30000");
-        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000");
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "60000");
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "60000"); 
         props.put(ProducerConfig.CLIENT_ID_CONFIG, "docker-config-client");
         props.put("security.protocol", "PLAINTEXT");
+        props.put("retries", "5");
+        props.put("retry.backoff.ms", "1000");
 
         int maxRetries = 30;
         int retryCount = 0;
@@ -750,6 +733,32 @@ public class DockerConfig {
             return !containers.isEmpty() && "running".equalsIgnoreCase(containers.get(0).getState());
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private void initializeDatabaseSchema() {
+        try {
+            // Đợi một chút để đảm bảo PostgreSQL hoàn toàn sẵn sàng
+            Thread.sleep(2000);
+
+            EntityManager em = entityManagerFactory.createEntityManager();
+            try {
+                em.getTransaction().begin();
+
+                // JPA sẽ tự động tạo các bảng dựa trên các entity
+                em.createNativeQuery("SELECT 1").getSingleResult();
+
+                em.getTransaction().commit();
+                log.info("Database schema created successfully");
+
+            } finally {
+                if (em != null && em.isOpen()) {
+                    em.close();
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to initialize database schema", e);
+            throw new RuntimeException("Database schema initialization failed", e);
         }
     }
 
