@@ -3,10 +3,10 @@ package com.elevatebanking.config;
 import com.fasterxml.jackson.databind.ser.std.StringSerializer;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.*;
+import com.github.dockerjava.api.model.Network;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
-import com.github.dockerjava.core.command.CreateContainerCmdImpl;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import jakarta.annotation.PostConstruct;
@@ -16,7 +16,6 @@ import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -45,6 +44,8 @@ public class DockerConfig {
     private static final List<String> REQUIRED_SERVICES = Arrays.asList(
             "postgres", "redis", "zookeeper", "kafka"
     );
+
+    private static final String NETWORK_NAME = "elevate-banking-network";
     @Value("${docker.host:tcp://192.168.1.128:2375}")
     private String dockerHost;
     private DockerClient dockerClient;
@@ -54,9 +55,59 @@ public class DockerConfig {
     @PostConstruct
     public void init() throws Exception {
         initializeDockerClient();
-        // After initializing Docker client, start initializing services
+        initializeDockerNetwork();
         initializeDockerServices();
     }
+
+    private void initializeDockerNetwork() {
+        try {
+            // Kiểm tra network đã tồn tại chưa
+            List<Network> networks = dockerClient.listNetworksCmd()
+                    .withFilter("name", Arrays.asList(NETWORK_NAME))
+                    .exec();
+
+            if (networks.isEmpty()) {
+                // Tạo network mới nếu chưa tồn tại
+                dockerClient.createNetworkCmd()
+                        .withName(NETWORK_NAME)
+                        .withDriver("bridge")
+                        .exec();
+                log.info("Created Docker network: {}", NETWORK_NAME);
+            } else {
+                log.info("Docker network {} already exists", NETWORK_NAME);
+            }
+        } catch (Exception e) {
+            log.error("Failed to initialize Docker network", e);
+            throw new RuntimeException("Failed to initialize Docker network", e);
+        }
+    }
+
+    private HostConfig createHostConfig(String service) {
+        switch (service) {
+            case "redis":
+                return HostConfig.newHostConfig()
+                        .withNetworkMode(NETWORK_NAME)
+                        .withPortBindings(PortBinding.parse("6379:6379"));
+            case "zookeeper":
+                return HostConfig.newHostConfig()
+                        .withNetworkMode(NETWORK_NAME)
+                        .withPortBindings(PortBinding.parse("2181:2181"));
+
+            case "kafka":
+                return HostConfig.newHostConfig()
+                        .withNetworkMode(NETWORK_NAME)
+                        .withPortBindings(
+                                PortBinding.parse("9092:9092"),
+                                PortBinding.parse("29092:29092")
+                        )
+                        .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
+
+            default:
+                return HostConfig.newHostConfig()
+                        .withNetworkMode(NETWORK_NAME);
+        }
+    }
+
 
     private void initializeDockerClient() {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
@@ -74,24 +125,6 @@ public class DockerConfig {
 
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
     }
-
-//    @Bean
-//    public DockerClient dockerClient() {
-//        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-//                .withDockerHost(dockerHost)
-//                .withDockerTlsVerify(false)
-//                .build();
-//
-//        DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
-//                .dockerHost(config.getDockerHost())
-//                .sslConfig(config.getSSLConfig())
-//                .maxConnections(100)
-//                .connectionTimeout(Duration.ofSeconds(30))
-//                .responseTimeout(Duration.ofSeconds(45))
-//                .build();
-//
-//        return DockerClientImpl.getInstance(config, httpClient);
-//    }
 
     public void initializeDockerServices() throws Exception {
         initializeDockerNetwork();
@@ -237,13 +270,7 @@ public class DockerConfig {
 
     private void createAndStartContainer(String service) {
         String containerName = "elevate-banking-" + service;
-
         try {
-            // Pull image if needed
-            dockerClient.pullImageCmd(getImageName(service))
-                    .exec(new PullImageResultCallback())
-                    .awaitCompletion();
-
             // Remove existing container if any
             dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton(containerName))
@@ -255,12 +282,18 @@ public class DockerConfig {
                                     .withForce(true)
                                     .exec();
                             log.info("Removed existing container: {}", containerName);
-                            Thread.sleep(2000);
+                            Thread.sleep(2000); // Wait for container cleanup
                         } catch (Exception e) {
                             log.warn("Failed to remove container: {}", e.getMessage());
                         }
                     });
-            // Create container with persistent volume
+
+            // Pull image if needed
+            dockerClient.pullImageCmd(getImageName(service))
+                    .exec(new PullImageResultCallback())
+                    .awaitCompletion();
+
+            // Create container
             CreateContainerResponse container = dockerClient.createContainerCmd(getImageName(service))
                     .withName(containerName)
                     .withHostConfig(createHostConfig(service))
@@ -270,10 +303,11 @@ public class DockerConfig {
             // Start container
             dockerClient.startContainerCmd(container.getId()).exec();
 
-            // Wait for service to be ready
+            // Wait for container to be ready
             waitForServiceToBeReady(service);
+            log.info("Successfully started {} container", service);
         } catch (Exception e) {
-            log.error("Failed to initialize " + service, e);
+            log.error("Failed to initialize {}", service, e);
             throw new RuntimeException("Failed to initialize " + service, e);
         }
     }
@@ -321,25 +355,25 @@ public class DockerConfig {
         return container;
     }
 
-    private HostConfig createHostConfig(String service) {
-        HostConfig config = HostConfig.newHostConfig()
-                .withNetworkMode("elevate-banking-network");
-
-        switch (service) {
-            case "kafka":
-                return HostConfig.newHostConfig()
-                        .withNetworkMode("elevate-banking-network")
-                        .withPortBindings(Arrays.asList(
-                                PortBinding.parse("9092:9092"),
-                                PortBinding.parse("29092:29092")
-                        ))
-                        // Add DNS aliases
-                        .withNetworkMode(String.valueOf(Arrays.asList("kafka")))
-                        .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
-            // ... other cases ...
-        }
-        return config;
-    }
+//    private HostConfig createHostConfig(String service) {
+//        HostConfig config = HostConfig.newHostConfig()
+//                .withNetworkMode("elevate-banking-network");
+//
+//        switch (service) {
+//            case "kafka":
+//                return HostConfig.newHostConfig()
+//                        .withNetworkMode("elevate-banking-network")
+//                        .withPortBindings(Arrays.asList(
+//                                PortBinding.parse("9092:9092"),
+//                                PortBinding.parse("29092:29092")
+//                        ))
+//                        // Add DNS aliases
+//                        .withNetworkMode(String.valueOf(Arrays.asList("kafka")))
+//                        .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
+//            // ... other cases ...
+//        }
+//        return config;
+//    }
 
     private List<Bind> createBinds(String service) {
         String volumeName = String.format("elevate-banking_%s_data", service);
@@ -376,11 +410,12 @@ public class DockerConfig {
             case "zookeeper":
                 return Arrays.asList(
                         "ZOOKEEPER_CLIENT_PORT=2181",
-                        "ZOOKEEPER_TICK_TIME=2000",
-                        "ALLOW_ANONYMOUS_LOGIN=yes"
+                        "ZOOKEEPER_TICK_TIME=2000"
+//                        "ALLOW_ANONYMOUS_LOGIN=yes"
                 );
             case "kafka":
                 return Arrays.asList(
+                        /* previous configuration
                         "KAFKA_BROKER_ID=1",
                         // Use internal IP instead of hostname
                         "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
@@ -396,8 +431,21 @@ public class DockerConfig {
                         // Add longer timeout for startup
                         "KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=60000",
                         "KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=60000"
+                        */
+
+                        "KAFKA_BROKER_ID=1",
+                        "KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181",
+                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://192.168.1.128:29092",
+                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT",
+                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
+                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1"
                 );
             case "redis":
+                return Arrays.asList(
+                        "REDIS_PASSWORD=123456",
+                        "ALLOW_EMPTY_PASSWORD=no"
+                );
+            case "redis-baaaa":
                 return Arrays.asList(
                         // Basic configuration
                         "REDIS_PORT=6379",
@@ -536,7 +584,7 @@ public class DockerConfig {
         RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
         redisConfig.setHostName("192.168.1.128");
         redisConfig.setPort(6379);
-        redisConfig.setPassword("123456");
+//        redisConfig.setPassword("123456");
 
         try {
             LettuceConnectionFactory redisConnectionFactory = new LettuceConnectionFactory(redisConfig);
@@ -639,23 +687,23 @@ public class DockerConfig {
         }
     }
 
-    private void initializeDockerNetwork() {
-        try {
-            List<Network> networks = dockerClient.listNetworksCmd()
-                    .withNameFilter("elevate-banking-network")
-                    .exec();
-            if (networks.isEmpty()) {
-                dockerClient.createNetworkCmd()
-                        .withName("elevate-banking-network")
-                        .withDriver("bridge")
-                        .exec();
-                log.info("Created network: elevate-banking-network");
-            } else {
-                log.info("Network elevate-banking-network already exists");
-            }
-        } catch (Exception e) {
-            log.error("Failed to initialize Docker network", e);
-            throw new RuntimeException("Failed to initialize Docker network", e);
-        }
-    }
+//    private void initializeDockerNetwork() {
+//        try {
+//            List<Network> networks = dockerClient.listNetworksCmd()
+//                    .withNameFilter("elevate-banking-network")
+//                    .exec();
+//            if (networks.isEmpty()) {
+//                dockerClient.createNetworkCmd()
+//                        .withName("elevate-banking-network")
+//                        .withDriver("bridge")
+//                        .exec();
+//                log.info("Created network: elevate-banking-network");
+//            } else {
+//                log.info("Network elevate-banking-network already exists");
+//            }
+//        } catch (Exception e) {
+//            log.error("Failed to initialize Docker network", e);
+//            throw new RuntimeException("Failed to initialize Docker network", e);
+//        }
+//    }
 }
