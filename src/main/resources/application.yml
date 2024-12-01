@@ -36,8 +36,8 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-        hbm2ddl:
-          auto: update
+        #        hbm2ddl:
+        #          auto: update
         jdbc:
           lob:
             non_contextual_creation: true
@@ -48,6 +48,15 @@ spring:
     redis:
       host: 192.168.1.128
       port: 6379
+      database: 0
+      timeout: 60000
+      connect-timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
     jpa:
       repositories:
         bootstrap-mode: deferred

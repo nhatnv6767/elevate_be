@@ -162,13 +162,14 @@ public class DockerConfig {
             // Create container
             CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
                     .withName("elevate-banking-postgres")
-                    .withEnv(
-                            "POSTGRES_DB=elevate_banking",
-                            "POSTGRES_USER=root",
-                            "POSTGRES_PASSWORD=123456",
-                            "POSTGRES_HOST_AUTH_METHOD=trust",
-                            "POSTGRES_INITDB_ARGS=--auth-host=trust"
-                    )
+                    .withEnv(getEnvironmentVariables("postgres"))
+//                    .withEnv(
+//                            "POSTGRES_DB=elevate_banking",
+//                            "POSTGRES_USER=root",
+//                            "POSTGRES_PASSWORD=123456",
+//                            "POSTGRES_HOST_AUTH_METHOD=trust",
+//                            "POSTGRES_INITDB_ARGS=--auth-host=trust"
+//                    )
                     .withHostConfig(HostConfig.newHostConfig()
                             .withPortBindings(PortBinding.parse("5432:5432"))
                             .withPublishAllPorts(true))
@@ -355,26 +356,6 @@ public class DockerConfig {
         return container;
     }
 
-//    private HostConfig createHostConfig(String service) {
-//        HostConfig config = HostConfig.newHostConfig()
-//                .withNetworkMode("elevate-banking-network");
-//
-//        switch (service) {
-//            case "kafka":
-//                return HostConfig.newHostConfig()
-//                        .withNetworkMode("elevate-banking-network")
-//                        .withPortBindings(Arrays.asList(
-//                                PortBinding.parse("9092:9092"),
-//                                PortBinding.parse("29092:29092")
-//                        ))
-//                        // Add DNS aliases
-//                        .withNetworkMode(String.valueOf(Arrays.asList("kafka")))
-//                        .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
-//            // ... other cases ...
-//        }
-//        return config;
-//    }
-
     private List<Bind> createBinds(String service) {
         String volumeName = String.format("elevate-banking_%s_data", service);
         switch (service) {
@@ -413,9 +394,18 @@ public class DockerConfig {
                         "ZOOKEEPER_TICK_TIME=2000"
 //                        "ALLOW_ANONYMOUS_LOGIN=yes"
                 );
+            case "kafkaBACK":
+                return Arrays.asList(
+                        "KAFKA_BROKER_ID=1",
+                        "KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181",
+                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
+                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://0.0.0.0:9092,PLAINTEXT_HOST://192.168.1.128:29092",
+                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT",
+                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
+                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1"
+                );
             case "kafka":
                 return Arrays.asList(
-                        /* previous configuration
                         "KAFKA_BROKER_ID=1",
                         // Use internal IP instead of hostname
                         "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
@@ -431,21 +421,16 @@ public class DockerConfig {
                         // Add longer timeout for startup
                         "KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS=60000",
                         "KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS=60000"
-                        */
 
-                        "KAFKA_BROKER_ID=1",
-                        "KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181",
-                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://192.168.1.128:29092",
-                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT",
-                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
-                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1"
+
                 );
             case "redis":
                 return Arrays.asList(
-                        "REDIS_PASSWORD=123456",
-                        "ALLOW_EMPTY_PASSWORD=no"
+                        "REDIS_PASSWORD=",
+                        "ALLOW_EMPTY_PASSWORD=yes",
+                        "REDIS_BIND=0.0.0.0"
                 );
-            case "redis-baaaa":
+            case "redisBACK":
                 return Arrays.asList(
                         // Basic configuration
                         "REDIS_PORT=6379",
@@ -581,23 +566,36 @@ public class DockerConfig {
     }
 
     private void checkRedisConnection() {
-        RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
-        redisConfig.setHostName("192.168.1.128");
-        redisConfig.setPort(6379);
-//        redisConfig.setPassword("123456");
-
         try {
+            // first check if the port is open
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress("192.168.1.128", 6379), 1000);
+                Thread.sleep(2000);
+            }
+
+            // after the port is open, check if we can connect to Redis
+            RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration();
+            redisConfig.setHostName("192.168.1.128");
+            redisConfig.setPort(6379);
+
             LettuceConnectionFactory redisConnectionFactory = new LettuceConnectionFactory(redisConfig);
             redisConnectionFactory.afterPropertiesSet();
-            RedisConnection connection = redisConnectionFactory.getConnection();
-            if (connection.ping() != null) {
-                log.info("Successfully connected to Redis");
-                connection.close();
+
+            try {
+                RedisConnection connection = redisConnectionFactory.getConnection();
+                if (connection.ping() != null) {
+                    log.info("Successfully connected to Redis");
+                    connection.close();
+                    redisConnectionFactory.destroy();
+                    return;
+                }
+            } finally {
                 redisConnectionFactory.destroy();
-                return;
             }
-            throw new RuntimeException("Failed to connect to Redis");
+
+            throw new RuntimeException("Failed to connect to Redis - ping failed");
         } catch (Exception e) {
+            log.error("Redis connection check failed", e);
             throw new RuntimeException("Failed to connect to Redis", e);
         }
     }
