@@ -1,0 +1,126 @@
+spring:
+  application:
+    name: ElevateBanking
+
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://192.168.1.128:5432/elevate_banking
+    username: root
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      auto-commit: true
+      connection-test-query: SELECT 1
+      validation-timeout: 5000
+      socket-timeout: 60000
+      initialization-fail-timeout: 0
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 300000
+      connection-timeout: 60000
+      max-lifetime: 1800000
+      keepalive-time: 30000
+      leak-detection-threshold: 60000
+      data-source-properties:
+        ssl: false
+        sslmode: disable
+
+  # JPA/Hibernate Configuration
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    generate-ddl: true
+    open-in-view: false
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          lob.non_contextual_creation: true
+        temp:
+          use_jdbc_metadata_defaults: false
+        default_schema: public
+        hbm2ddl:
+          auto: create-drop
+    hibernate:
+      ddl-auto: update
+
+  # Redis Configuration
+  data:
+    redis:
+      host: 192.168.1.128
+      port: 6379
+    jpa:
+      repositories:
+        bootstrap-mode: deferred
+
+  # SQL Configuration
+  sql:
+    init:
+      platform: postgresql
+      mode: never
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: 192.168.1.128:29092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: elevate-banking-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.elevatebanking.event
+
+# Application Security Configuration
+app:
+  security:
+    admin:
+      username: admin
+      password: 123456
+      roles: USER
+  docker:
+    enabled: true
+
+# Docker Configuration
+docker:
+  host: tcp://192.168.1.128:2375
+  api:
+    version: 1.41
+  connection:
+    timeout: 30000
+  response:
+    timeout: 45000
+
+# Swagger/SpringDoc Configuration
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operationsSorter: alpha
+    tags-sorter: alpha
+    doc-expansion: none
+    tryItOutEnabled: true
+  api-docs:
+    path: /api-docs
+    enabled: true
+  writer-with-default-pretty-printer: true
+  show-actuator: true
+  cache:
+    disabled: false
+  group-configs:
+    - group: auth
+      paths-to-match: /api/v1/auth/**
+    - group: accounts
+      paths-to-match: /api/v1/accounts/**
+    - group: transactions
+      paths-to-match: /api/v1/transactions/**
+
+# JWT Configuration
+jwt:
+  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
+  expiration: 3600000
+  refresh-expiration: 86400000

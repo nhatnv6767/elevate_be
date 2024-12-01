@@ -3,11 +3,14 @@ package com.elevatebanking.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+
+import jakarta.persistence.EntityManagerFactory;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -15,19 +18,22 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 1)
-@DependsOn("databaseInitializer")
+@Order(Ordered.HIGHEST_PRECEDENCE + 2)
+@DependsOn({"databaseInitializer", "databaseInitializationConfig"})
 public class DatabaseSchemaInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
-    
+
     @Value("${spring.datasource.url}")
     private String dbUrl;
-    
+
     @Value("${spring.datasource.username}")
     private String dbUsername;
-    
+
     @Value("${spring.datasource.password}")
     private String dbPassword;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     @Override
     public void afterPropertiesSet() throws Exception {
@@ -65,7 +71,7 @@ public class DatabaseSchemaInitializer implements InitializingBean {
             // Check if essential tables exist
             DatabaseMetaData metaData = conn.getMetaData();
             String[] tables = {"users", "accounts", "transactions", "roles"};
-            
+
             for (String table : tables) {
                 try (ResultSet rs = metaData.getTables(null, null, table, new String[]{"TABLE"})) {
                     if (!rs.next()) {
@@ -75,7 +81,7 @@ public class DatabaseSchemaInitializer implements InitializingBean {
                     log.info("Table '{}' exists", table);
                 }
             }
-            
+
             log.info("All required tables exist");
             return true;
         } catch (Exception e) {

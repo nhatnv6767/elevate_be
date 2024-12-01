@@ -82,7 +82,7 @@ jwt.secret=your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
 jwt.expiration=3600000
 jwt.refresh-expiration=86400000
 # JPA Configuration
-spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.hibernate.ddl-auto=update
 spring.jpa.properties.hibernate.hbm2ddl.auto=create-drop
 # Database Configuration
 spring.datasource.url=jdbc:postgresql://192.168.1.128:5432/elevate_banking
@@ -94,6 +94,7 @@ spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 # Database Initialization
-spring.sql.init.mode=always
 spring.sql.init.platform=postgresql
 spring.jpa.defer-datasource-initialization=true
+spring.sql.init.mode=never
+spring.jpa.open-in-view=false
