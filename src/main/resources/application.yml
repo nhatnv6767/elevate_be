@@ -37,8 +37,9 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-        #        hbm2ddl:
-        #          auto: update
+        hbm2ddl:
+          auto: create
+          import_files: data.sql
         jdbc:
           lob:
             non_contextual_creation: true
@@ -67,22 +68,32 @@ spring:
     init:
       platform: postgresql
       mode: always
+      continue-on-error: true
 
   # Kafka Configuration
   kafka:
     bootstrap-servers: 192.168.1.128:29092
     producer:
-      retries: 3
       retry.backoff.ms: 1000
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
       bootstrap-servers: 192.168.1.128:29092
       properties:
         spring.json.add.type.headers: false
         spring.json.trusted.packages: "*"
         max.block.ms: 5000
+        request.timeout.ms: 5000
+        retry.backoff.ms: 1000
     consumer:
+      properties:
+        security.protocol: PLAINTEXT
+      bootstrap-servers: 192.168.1.128:29092
+      group-id: elevate-banking-group
       auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 #    consumer:
 #      group-id: elevate-banking-group
 #      auto-offset-reset: earliest

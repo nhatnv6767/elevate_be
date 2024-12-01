@@ -96,8 +96,7 @@ public class DockerConfig {
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
                         .withPortBindings(
-                                PortBinding.parse("9092:9092"),
-                                PortBinding.parse("29092:29092")
+                                PortBinding.parse("9092:9092")
                         )
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
@@ -322,8 +321,7 @@ public class DockerConfig {
         HostConfig hostConfig = HostConfig.newHostConfig()
                 .withNetworkMode(networkName)
                 .withPortBindings(
-                        PortBinding.parse("9092:9092"),
-                        PortBinding.parse("29092:29092")
+                        PortBinding.parse("9092:9092")
                 )
                 .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
@@ -375,8 +373,8 @@ public class DockerConfig {
                 return Arrays.asList(
                         "KAFKA_BROKER_ID=1",
                         "KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181",
-                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
-                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://0.0.0.0:9092,PLAINTEXT_HOST://192.168.1.128:29092",
+                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9092",
+                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://0.0.0.0:9092,PLAINTEXT_HOST://192.168.1.128:9092",
                         "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT",
                         "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
                         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1"
@@ -385,8 +383,8 @@ public class DockerConfig {
                 return Arrays.asList(
                         "KAFKA_BROKER_ID=1",
                         // Use internal IP instead of hostname
-                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092",
-                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://172.18.0.4:9092,EXTERNAL://192.168.1.128:29092",
+                        "KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9092",
+                        "KAFKA_ADVERTISED_LISTENERS=INTERNAL://172.18.0.4:9092,EXTERNAL://192.168.1.128:9092",
                         "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT",
                         "KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL",
                         // Use container name with network alias
@@ -515,8 +513,7 @@ public class DockerConfig {
                 return new PortBinding[]{PortBinding.parse("2181:2181")};
             case "kafka":
                 return new PortBinding[]{
-                        PortBinding.parse("9092:9092"),
-                        PortBinding.parse("29092:29092")
+                        PortBinding.parse("9092:9092")
                 };
             default:
                 return new PortBinding[]{};
@@ -618,10 +615,13 @@ public class DockerConfig {
 
     private void checkKafkaConnection() {
         Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:29092");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:29092"); // Thay đổi port
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "10000");
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "10000");
+        props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "2000");
+        props.put("security.protocol", "PLAINTEXT");
 
         int maxRetries = 30;
         int retryCount = 0;
@@ -652,7 +652,7 @@ public class DockerConfig {
 
     private void waitForKafka() {
         Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:29092");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");

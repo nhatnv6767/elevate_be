@@ -6,28 +6,28 @@ INSERT INTO public.roles (role_name, description, created_at, updated_at) VALUES
                                                                        ('ROLE_MANAGER', 'Bank manager', NOW(), NOW());
 
 -- Insert users
-INSERT INTO users (id, username, password, full_name, email, phone, date_of_birth, identity_number, status, created_at, updated_at, version) VALUES
+INSERT INTO public.users (id, username, password, full_name, email, phone, date_of_birth, identity_number, status, created_at, updated_at, version) VALUES
                                                                                                                                                  ('u1', 'admin1', '$2a$10$rPiEAgSK4ANCa8RxMNM8T.LqsGk.czPCa7OXoicX7CsWqHxQxwh1O', 'Admin User', 'admin@bank.com', '0901234567', '1990-01-01', '123456789012', 'ACTIVE', NOW(), NOW(), 0),
                                                                                                                                                  ('u2', 'customer1', '$2a$10$rPiEAgSK4ANCa8RxMNM8T.LqsGk.czPCa7OXoicX7CsWqHxQxwh1O', 'John Doe', 'john@example.com', '0901234568', '1992-03-15', '123456789013', 'ACTIVE', NOW(), NOW(), 0),
                                                                                                                                                  ('u3', 'customer2', '$2a$10$rPiEAgSK4ANCa8RxMNM8T.LqsGk.czPCa7OXoicX7CsWqHxQxwh1O', 'Jane Smith', 'jane@example.com', '0901234569', '1995-07-20', '123456789014', 'ACTIVE', NOW(), NOW(), 0),
                                                                                                                                                  ('u4', 'staff1', '$2a$10$rPiEAgSK4ANCa8RxMNM8T.LqsGk.czPCa7OXoicX7CsWqHxQxwh1O', 'Staff One', 'staff1@bank.com', '0901234570', '1988-12-10', '123456789015', 'ACTIVE', NOW(), NOW(), 0);
 
 -- Insert user_roles
-INSERT INTO user_roles (user_id, role_id) VALUES
+INSERT INTO public.user_roles (user_id, role_id) VALUES
                                               ('u1', 1), -- admin role
                                               ('u2', 2), -- customer role
                                               ('u3', 2), -- customer role
                                               ('u4', 3); -- staff role
 
 -- Insert accounts
-INSERT INTO accounts (id, user_id, account_number, balance, status, created_at, updated_at, version) VALUES
+INSERT INTO public.accounts (id, user_id, account_number, balance, status, created_at, updated_at, version) VALUES
                                                                                                          ('a1', 'u2', '0012024030100001', 1000000.00, 'ACTIVE', NOW(), NOW(), 0),
                                                                                                          ('a2', 'u2', '0012024030100002', 500000.00, 'ACTIVE', NOW(), NOW(), 0),
                                                                                                          ('a3', 'u3', '0012024030100003', 750000.00, 'ACTIVE', NOW(), NOW(), 0),
                                                                                                          ('a4', 'u3', '0012024030100004', 250000.00, 'ACTIVE', NOW(), NOW(), 0);
 
 -- Insert transactions cho TRANSFER
-INSERT INTO transactions (
+INSERT INTO public.transactions (
     transaction_id,
     from_account_id,
     to_account_id,
@@ -45,7 +45,7 @@ INSERT INTO transactions (
       ('t5', 'a1', 'a4', 250000.00, 'TRANSFER', 'PENDING', 'Đang xử lý', NOW(), NOW());
 
 -- Insert transactions cho DEPOSIT
-INSERT INTO transactions (
+INSERT INTO public.transactions (
     transaction_id,
     to_account_id,
     amount,
@@ -60,7 +60,7 @@ INSERT INTO transactions (
       ('t8', 'a3', 1500000.00, 'DEPOSIT', 'PENDING', 'Nạp tiền đang xử lý', NOW(), NOW());
 
 -- Insert transactions cho WITHDRAWAL
-INSERT INTO transactions (
+INSERT INTO public.transactions (
     transaction_id,
     from_account_id,
     amount,
@@ -76,7 +76,7 @@ INSERT INTO transactions (
 
 
 -- Insert loyalty_points
-INSERT INTO loyalty_points (
+INSERT INTO public.loyalty_points (
     id,
     user_id,
     total_points,
@@ -93,7 +93,7 @@ INSERT INTO loyalty_points (
       ('lp4', 'u4', 5000, 5500, 500, 'PLATINUM', NOW(), NOW(), 0);
 
 -- Insert point_transactions chỉ cho các user hiện có
-INSERT INTO point_transactions (
+INSERT INTO public.point_transactions (
     transaction_id,
     user_id,
     points,
