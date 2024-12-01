@@ -218,41 +218,90 @@ public class DockerConfig {
 //         }
 //     }
 
+    private void handleExistingContainer(String containerName, String service, int port) {
+        try {
+            // Kiểm tra container có tồn tại không
+            List<Container> containers = dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withShowAll(true)
+                    .exec();
+
+            if (containers.isEmpty()) {
+                // Nếu không tồn tại, tạo mới
+                log.info("Creating new {} container", service);
+                createAndStartContainer(service);
+            } else {
+                Container container = containers.get(0);
+                String state = container.getState();
+
+                if ("running".equalsIgnoreCase(state)) {
+                    log.info("{} container is already running", service);
+                } else {
+                    // Nếu container tồn tại nhưng không chạy, start lại
+                    log.info("Starting existing {} container", service);
+                    dockerClient.startContainerCmd(container.getId()).exec();
+                }
+            }
+
+            // Đợi port ready
+            waitForPort(port);
+
+        } catch (Exception e) {
+            log.error("Error handling {} container: {}", service, e.getMessage());
+            throw new RuntimeException("Failed to handle " + service + " container", e);
+        }
+    }
+
+    private void waitForPort(int port) {
+        int maxAttempts = 10;
+        int attempt = 0;
+        while (attempt < maxAttempts) {
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress("192.168.1.128", port), 1000);
+                log.info("Port {} is available", port);
+                return;
+            } catch (Exception e) {
+                attempt++;
+                if (attempt < maxAttempts) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+        throw new RuntimeException("Port " + port + " not available after " + maxAttempts + " attempts");
+    }
+
     public void initializeDockerServices() throws Exception {
         log.info("Initializing Docker services...");
 
         try {
-            // 1. Khởi động PostgreSQL và đợi sẵn sàng
-            handlePostgresContainer();
+            // 1. Kiểm tra và khởi động PostgreSQL
+            handleExistingContainer("elevate-banking-postgres", "postgres", 5432);
             log.info("PostgreSQL is ready");
-            Thread.sleep(5000);
-            // Khởi tạo schema database
+            Thread.sleep(2000); // Đợi ngắn để DB ổn định
+
+            // Khởi tạo schema database nếu cần
             initializeDatabaseSchema();
             log.info("Database schema initialized successfully");
 
-            // 2. Khởi động Redis và đợi sẵn sàng
-            String redisContainer = "elevate-banking-redis";
-            if (!isContainerRunning(redisContainer)) {
-                createAndStartContainer("redis");
-            }
+            // 2. Kiểm tra và khởi động Redis
+            handleExistingContainer("elevate-banking-redis", "redis", 6379);
             waitForServiceToBeReady("redis");
             log.info("Redis is ready");
 
-            // 3. Khởi động Zookeeper và đợi sẵn sàng
-            String zookeeperContainer = "elevate-banking-zookeeper";
-            if (!isContainerRunning(zookeeperContainer)) {
-                createAndStartContainer("zookeeper");
-            }
+            // 3. Kiểm tra và khởi động Zookeeper
+            handleExistingContainer("elevate-banking-zookeeper", "zookeeper", 2181);
             waitForServiceToBeReady("zookeeper");
-            Thread.sleep(10000);
+            Thread.sleep(5000);
             log.info("Zookeeper is ready");
 
-            // 4. Khởi động Kafka và đợi sẵn sàng
-            String kafkaContainer = "elevate-banking-kafka";
-            if (!isContainerRunning(kafkaContainer)) {
-                createAndStartContainer("kafka");
-            }
-            Thread.sleep(20000); // Đợi thêm cho Kafka khởi động hoàn toàn
+            // 4. Kiểm tra và khởi động Kafka
+            handleExistingContainer("elevate-banking-kafka", "kafka", 9092);
+            Thread.sleep(5000);
             waitForServiceToBeReady("kafka");
             log.info("Kafka is ready");
 
@@ -314,48 +363,69 @@ public class DockerConfig {
         }
     }
 
+
     @PreDestroy
     public void cleanup() {
         try {
-            DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                    .withDockerHost(dockerHost)
-                    .withDockerTlsVerify(false)
-                    .build();
-
-            DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
-                    .dockerHost(config.getDockerHost())
-                    .sslConfig(config.getSSLConfig())
-                    .maxConnections(100)
-                    .connectionTimeout(Duration.ofSeconds(30))
-                    .responseTimeout(Duration.ofSeconds(45))
-                    .build();
-
-            DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
-
-            // Remove container
+            // Chỉ dừng các container nếu cần, không xóa
             List<Container> containers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton("elevate-banking-postgres"))
+                    .withNameFilter(Collections.singleton("elevate-banking"))
                     .withShowAll(true)
                     .exec();
-            if (!containers.isEmpty()) {
-                // dockerClient.removeContainerCmd(containers.get(0).getId())
-                //         .withForce(true)
-                //         .exec();
-                dockerClient.stopContainerCmd(containers.get(0).getId())
-                        .exec();
-            }
 
-            // Remove network
-            List<Network> networks = dockerClient.listNetworksCmd()
-                    .withNameFilter("elevate-banking-network")
-                    .exec();
-            if (!networks.isEmpty()) {
-                dockerClient.removeNetworkCmd(networks.get(0).getId()).exec();
+            for (Container container : containers) {
+                if ("running".equalsIgnoreCase(container.getState())) {
+                    log.info("Stopping container: {}", container.getNames()[0]);
+                    dockerClient.stopContainerCmd(container.getId()).exec();
+                }
             }
         } catch (Exception e) {
             log.error("Error during cleanup", e);
         }
     }
+
+//    @PreDestroy
+//    public void cleanup() {
+//        try {
+//            DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
+//                    .withDockerHost(dockerHost)
+//                    .withDockerTlsVerify(false)
+//                    .build();
+//
+//            DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+//                    .dockerHost(config.getDockerHost())
+//                    .sslConfig(config.getSSLConfig())
+//                    .maxConnections(100)
+//                    .connectionTimeout(Duration.ofSeconds(30))
+//                    .responseTimeout(Duration.ofSeconds(45))
+//                    .build();
+//
+//            DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
+//
+//            // Remove container
+//            List<Container> containers = dockerClient.listContainersCmd()
+//                    .withNameFilter(Collections.singleton("elevate-banking-postgres"))
+//                    .withShowAll(true)
+//                    .exec();
+//            if (!containers.isEmpty()) {
+//                // dockerClient.removeContainerCmd(containers.get(0).getId())
+//                //         .withForce(true)
+//                //         .exec();
+//                dockerClient.stopContainerCmd(containers.get(0).getId())
+//                        .exec();
+//            }
+//
+//            // Remove network
+//            List<Network> networks = dockerClient.listNetworksCmd()
+//                    .withNameFilter("elevate-banking-network")
+//                    .exec();
+//            if (!networks.isEmpty()) {
+//                dockerClient.removeNetworkCmd(networks.get(0).getId()).exec();
+//            }
+//        } catch (Exception e) {
+//            log.error("Error during cleanup", e);
+//        }
+//    }
 
     private void createAndStartContainer(String service) {
         String containerName = "elevate-banking-" + service;
