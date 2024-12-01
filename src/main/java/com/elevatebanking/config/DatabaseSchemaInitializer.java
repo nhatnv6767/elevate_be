@@ -35,11 +35,11 @@ public class DatabaseSchemaInitializer implements InitializingBean {
     public void afterPropertiesSet() throws Exception {
         Thread.sleep(5000); // Đợi schema được tạo xong
 
-        if (!verifyDatabaseSchema()) {
-            throw new RuntimeException("Database schema verification failed");
-        }
+//        if (!verifyDatabaseSchema()) {
+        throw new RuntimeException("Database schema verification failed");
+//        }
 
-        log.info("Database schema verified successfully!");
+//        log.info("Database schema verified successfully!");
     }
 
     private boolean verifyDatabaseSchema() {

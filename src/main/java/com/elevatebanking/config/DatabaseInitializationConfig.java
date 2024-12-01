@@ -25,7 +25,7 @@ public class DatabaseInitializationConfig {
             // Kiểm tra kết nối database
             var em = entityManagerFactory.createEntityManager();
             try {
-                em.getTransaction().begin();
+//                em.getTransaction().begin();
                 // Thực hiện một query đơn giản để test kết nối
                 em.createNativeQuery("SELECT 1").getSingleResult();
                 em.getTransaction().commit();
