@@ -17,10 +17,6 @@ public class ElevateBankingApplication {
         // Add wait for services
         application.addInitializers((ApplicationContextInitializer<GenericApplicationContext>) ctx -> {
             ctx.registerBean("databaseInitializer", DatabaseInitializer.class);
-            ctx.registerBean("databaseSchemaInitializer", DatabaseSchemaInitializer.class, () -> {
-                DatabaseSchemaInitializer initializer = new DatabaseSchemaInitializer();
-                return initializer;
-            });
         });
 
         application.run(args);

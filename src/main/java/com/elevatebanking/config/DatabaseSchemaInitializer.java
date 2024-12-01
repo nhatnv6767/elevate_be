@@ -19,7 +19,7 @@ import java.sql.ResultSet;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
-@DependsOn({"entityManagerFactory", "databaseInitializer"}) // Thêm entityManagerFactory vào dependency
+@DependsOn({"entityManagerFactory"})
 public class DatabaseSchemaInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
     @Value("${spring.datasource.url}")
@@ -33,8 +33,7 @@ public class DatabaseSchemaInitializer implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        // Thêm delay ban đầu để đợi Hibernate tạo schema
-        Thread.sleep(5000);
+        Thread.sleep(10000);
 
         int attempts = 0;
         int maxAttempts = 30;
