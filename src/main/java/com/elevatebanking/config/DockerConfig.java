@@ -124,21 +124,132 @@ public class DockerConfig {
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
     }
 
-    public void initializeDockerServices() throws Exception {
-        initializeDockerNetwork();
+//     public void initializeDockerServices() throws Exception {
+//         initializeDockerNetwork();
 
+//         log.info("Initializing Docker services...");
+
+
+//         try {
+
+//             // Khởi động Zookeeper trước
+//             String zookeeperContainer = "elevate-banking-zookeeper";
+//             if (!isContainerRunning(zookeeperContainer)) {
+//                 createAndStartContainer("zookeeper");
+//             }
+
+//             // Chờ Zookeeper khởi động
+//             Thread.sleep(10000);
+//             log.info("Waiting for Kafka to be fully started...");
+
+//             for (String service : REQUIRED_SERVICES) {
+//                 String containerName = "elevate-banking-" + service;
+//                 if (!isContainerRunning(containerName)) {
+//                     createAndStartContainer(service);
+//                 }
+//             }
+
+//             // Remove old container if exists
+//             List<Container> existingContainers = dockerClient.listContainersCmd()
+//                     .withNameFilter(Collections.singleton("elevate-banking-postgres"))
+//                     .withShowAll(true)
+//                     .exec();
+
+//             for (Container container : existingContainers) {
+//                 log.info("Removing existing container: {}", container.getId());
+//                 dockerClient.removeContainerCmd(container.getId())
+//                         .withForce(true)
+//                         .exec();
+//             }
+
+//             // Pull image
+//             dockerClient.pullImageCmd("postgres:latest")
+//                     .exec(new PullImageResultCallback())
+//                     .awaitCompletion();
+
+//             // Create container
+//             CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
+//                     .withName("elevate-banking-postgres")
+//                     .withEnv(getEnvironmentVariables("postgres"))
+// //                    .withEnv(
+// //                            "POSTGRES_DB=elevate_banking",
+// //                            "POSTGRES_USER=root",
+// //                            "POSTGRES_PASSWORD=123456",
+// //                            "POSTGRES_HOST_AUTH_METHOD=trust",
+// //                            "POSTGRES_INITDB_ARGS=--auth-host=trust"
+// //                    )
+//                     .withHostConfig(HostConfig.newHostConfig()
+//                             .withPortBindings(PortBinding.parse("5432:5432"))
+//                             .withPublishAllPorts(true))
+//                     .withExposedPorts(ExposedPort.tcp(5432))
+//                     .exec();
+
+//             // Start container
+//             dockerClient.startContainerCmd(container.getId()).exec();
+
+//             // Wait for PostgreSQL to be ready
+//             if (!waitForPostgresqlContainer()) {
+//                 throw new RuntimeException("PostgreSQL failed to start");
+//             }
+
+//             log.info("PostgreSQL container is ready!");
+
+//         } catch (Exception e) {
+//             log.error("Failed to initialize Docker services", e);
+//             throw e;
+//         }
+//     }
+
+    public void initializeDockerServices() throws Exception {
         log.info("Initializing Docker services...");
 
-
         try {
+            // Khởi động Zookeeper trước
+            String zookeeperContainer = "elevate-banking-zookeeper";
+            if (!isContainerRunning(zookeeperContainer)) {
+                createAndStartContainer("zookeeper");
+            }
 
+            // Chờ và kiểm tra Zookeeper
+            waitForServiceToBeReady("zookeeper");
+            log.info("Zookeeper is ready");
+
+            // Khởi động Kafka
+            String kafkaContainer = "elevate-banking-kafka";
+            if (!isContainerRunning(kafkaContainer)) {
+                createAndStartContainer("kafka");
+            }
+
+            // Chờ thêm thời gian cho Kafka khởi động hoàn toàn
+            Thread.sleep(15000);
+            log.info("Waiting for Kafka to be fully started...");
+
+            // Kiểm tra kết nối Kafka
+            waitForServiceToBeReady("kafka");
+            log.info("Kafka is ready");
+
+            // Khởi động các service còn lại
             for (String service : REQUIRED_SERVICES) {
-                String containerName = "elevate-banking-" + service;
-                if (!isContainerRunning(containerName)) {
-                    createAndStartContainer(service);
+                if (!service.equals("zookeeper") && !service.equals("kafka")) {
+                    String containerName = "elevate-banking-" + service;
+                    if (!isContainerRunning(containerName)) {
+                        createAndStartContainer(service);
+                        waitForServiceToBeReady(service);
+                    }
                 }
             }
 
+            // Xử lý PostgreSQL container
+            handlePostgresContainer();
+
+        } catch (Exception e) {
+            log.error("Failed to initialize Docker services", e);
+            throw e;
+        }
+    }
+
+    private void handlePostgresContainer() {
+        try {
             // Remove old container if exists
             List<Container> existingContainers = dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton("elevate-banking-postgres"))
@@ -157,36 +268,25 @@ public class DockerConfig {
                     .exec(new PullImageResultCallback())
                     .awaitCompletion();
 
-            // Create container
+            // Create and start container
             CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
                     .withName("elevate-banking-postgres")
                     .withEnv(getEnvironmentVariables("postgres"))
-//                    .withEnv(
-//                            "POSTGRES_DB=elevate_banking",
-//                            "POSTGRES_USER=root",
-//                            "POSTGRES_PASSWORD=123456",
-//                            "POSTGRES_HOST_AUTH_METHOD=trust",
-//                            "POSTGRES_INITDB_ARGS=--auth-host=trust"
-//                    )
                     .withHostConfig(HostConfig.newHostConfig()
                             .withPortBindings(PortBinding.parse("5432:5432"))
                             .withPublishAllPorts(true))
                     .withExposedPorts(ExposedPort.tcp(5432))
                     .exec();
 
-            // Start container
             dockerClient.startContainerCmd(container.getId()).exec();
 
-            // Wait for PostgreSQL to be ready
-            if (!waitForPostgresqlContainer()) {
-                throw new RuntimeException("PostgreSQL failed to start");
-            }
-
+            // Wait for PostgreSQL
+            waitForServiceToBeReady("postgres");
             log.info("PostgreSQL container is ready!");
 
         } catch (Exception e) {
-            log.error("Failed to initialize Docker services", e);
-            throw e;
+            log.error("Failed to initialize PostgreSQL container", e);
+            throw new RuntimeException("Failed to initialize PostgreSQL container", e);
         }
     }
 
@@ -615,12 +715,11 @@ public class DockerConfig {
 
     private void checkKafkaConnection() {
         Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:29092"); // Thay đổi port
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "10000");
-        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "10000");
-        props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "2000");
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "30000");
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000");
         props.put("security.protocol", "PLAINTEXT");
 
         int maxRetries = 30;
@@ -629,40 +728,6 @@ public class DockerConfig {
         while (retryCount < maxRetries) {
             try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
                 // Check connection by getting cluster metadata
-                producer.partitionsFor("_kafka_healthcheck");
-                log.info("Successfully connected to Kafka");
-                return;
-            } catch (Exception e) {
-                lastException = e;
-                retryCount++;
-                log.warn("Failed to connect to Kafka (attempt {}/{}): {}",
-                        retryCount, maxRetries, e.getMessage());
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Kafka connection check interrupted", ie);
-                }
-            }
-        }
-
-        throw new RuntimeException("Failed to connect to Kafka after " + maxRetries +
-                " attempts. Last error: " + lastException.getMessage(), lastException);
-    }
-
-    private void waitForKafka() {
-        Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
-
-        int maxRetries = 30;
-        int retryCount = 0;
-        Exception lastException = null;
-
-        while (retryCount < maxRetries) {
-            try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
                 producer.partitionsFor("_kafka_healthcheck");
                 log.info("Successfully connected to Kafka");
                 return;
