@@ -28,10 +28,12 @@ public class DatabaseInitializationConfig {
 //                em.getTransaction().begin();
                 // Thực hiện một query đơn giản để test kết nối
                 em.createNativeQuery("SELECT 1").getSingleResult();
-                em.getTransaction().commit();
+                // em.getTransaction().commit();
                 log.info("Database connection verified and schema initialization completed");
             } finally {
-                em.close();
+                if (em != null && em.isOpen()) {
+                    em.close();
+                }
             }
         } catch (Exception e) {
             log.error("Error verifying database connection", e);

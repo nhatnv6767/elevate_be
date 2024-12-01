@@ -35,23 +35,31 @@ public class DatabaseSchemaInitializer implements InitializingBean {
     public void afterPropertiesSet() throws Exception {
         Thread.sleep(5000); // Đợi schema được tạo xong
 
-//        if (!verifyDatabaseSchema()) {
-        throw new RuntimeException("Database schema verification failed");
-//        }
+        if (!verifyDatabaseSchema()) {
+            throw new RuntimeException("Database schema verification failed");
+        }
 
-//        log.info("Database schema verified successfully!");
+       log.info("Database schema verified successfully!");
     }
 
     private boolean verifyDatabaseSchema() {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)) {
             DatabaseMetaData metaData = conn.getMetaData();
-            String[] tables = {"users", "accounts", "transactions", "roles"};
+            String[] tables = {
+                "users", "accounts", "transactions", "roles", 
+                "user_roles", "audit_logs", "beneficiaries",
+                "bill_payments", "billers", "event_logs",
+                "loyalty_points", "notifications", "point_transactions",
+                "savings_accounts", "savings_products"
+            };
 
             for (String table : tables) {
                 ResultSet rs = metaData.getTables(null, "public", table.toLowerCase(), new String[]{"TABLE"});
                 if (!rs.next()) {
+                    log.error("Table '{}' not found", table);
                     return false;
                 }
+                log.info("Table '{}' exists", table);
                 rs.close();
             }
             return true;
