@@ -204,43 +204,35 @@ public class DockerConfig {
         log.info("Initializing Docker services...");
 
         try {
-            // Khởi động Zookeeper trước
+            // 1. Khởi động PostgreSQL và đợi sẵn sàng
+            handlePostgresContainer();
+            waitForServiceToBeReady("postgres");
+            log.info("PostgreSQL is ready");
+
+            // 2. Khởi động Redis và đợi sẵn sàng
+            String redisContainer = "elevate-banking-redis";
+            if (!isContainerRunning(redisContainer)) {
+                createAndStartContainer("redis");
+            }
+            waitForServiceToBeReady("redis");
+            log.info("Redis is ready");
+
+            // 3. Khởi động Zookeeper và đợi sẵn sàng
             String zookeeperContainer = "elevate-banking-zookeeper";
             if (!isContainerRunning(zookeeperContainer)) {
                 createAndStartContainer("zookeeper");
             }
-
-            // Chờ và kiểm tra Zookeeper
             waitForServiceToBeReady("zookeeper");
             log.info("Zookeeper is ready");
 
-            // Khởi động Kafka
+            // 4. Khởi động Kafka và đợi sẵn sàng
             String kafkaContainer = "elevate-banking-kafka";
             if (!isContainerRunning(kafkaContainer)) {
                 createAndStartContainer("kafka");
             }
-
-            // Chờ thêm thời gian cho Kafka khởi động hoàn toàn
-            Thread.sleep(15000);
-            log.info("Waiting for Kafka to be fully started...");
-
-            // Kiểm tra kết nối Kafka
+            Thread.sleep(15000); // Đợi thêm cho Kafka khởi động hoàn toàn
             waitForServiceToBeReady("kafka");
             log.info("Kafka is ready");
-
-            // Khởi động các service còn lại
-            for (String service : REQUIRED_SERVICES) {
-                if (!service.equals("zookeeper") && !service.equals("kafka")) {
-                    String containerName = "elevate-banking-" + service;
-                    if (!isContainerRunning(containerName)) {
-                        createAndStartContainer(service);
-                        waitForServiceToBeReady(service);
-                    }
-                }
-            }
-
-            // Xử lý PostgreSQL container
-            handlePostgresContainer();
 
         } catch (Exception e) {
             log.error("Failed to initialize Docker services", e);
@@ -720,6 +712,7 @@ public class DockerConfig {
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "30000");
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000");
+        props.put(ProducerConfig.CLIENT_ID_CONFIG, "docker-config-client");
         props.put("security.protocol", "PLAINTEXT");
 
         int maxRetries = 30;
@@ -727,8 +720,7 @@ public class DockerConfig {
         Exception lastException = null;
         while (retryCount < maxRetries) {
             try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-                // Check connection by getting cluster metadata
-                producer.partitionsFor("_kafka_healthcheck");
+                producer.partitionsFor("_kafka_healthcheck"); // Kiểm tra kết nối
                 log.info("Successfully connected to Kafka");
                 return;
             } catch (Exception e) {
