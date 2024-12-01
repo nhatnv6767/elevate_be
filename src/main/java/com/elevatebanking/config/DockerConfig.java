@@ -49,6 +49,11 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DockerConfig {
 
+    private static final String POSTGRES_VOLUME = "elevate-banking-postgres-data";
+    private static final String KAFKA_VOLUME = "elevate-banking-kafka-data";
+    private static final String REDIS_VOLUME = "elevate-banking-redis-data";
+    private static final String ZOOKEEPER_VOLUME = "elevate-banking-zookeeper-data";
+
     private static final List<String> REQUIRED_SERVICES = Arrays.asList(
             "postgres", "redis", "zookeeper", "kafka"
     );
@@ -104,11 +109,13 @@ public class DockerConfig {
             case "redis":
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
-                        .withPortBindings(PortBinding.parse("6379:6379"));
+                        .withPortBindings(PortBinding.parse("6379:6379"))
+                        .withBinds(new Bind(REDIS_VOLUME, new Volume("/data")));
             case "zookeeper":
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
-                        .withPortBindings(PortBinding.parse("2181:2181"));
+                        .withPortBindings(PortBinding.parse("2181:2181"))
+                        .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
 
             case "kafka":
                 return HostConfig.newHostConfig()
@@ -116,6 +123,7 @@ public class DockerConfig {
                         .withPortBindings(
                                 PortBinding.parse("9092:9092")
                         )
+                        .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
             default:
@@ -279,6 +287,12 @@ public class DockerConfig {
         log.info("Initializing Docker services...");
 
         try {
+
+            createVolumeIfNotExists(POSTGRES_VOLUME);
+            createVolumeIfNotExists(REDIS_VOLUME);
+            createVolumeIfNotExists(KAFKA_VOLUME);
+            createVolumeIfNotExists(ZOOKEEPER_VOLUME);
+
             // 1. Kiểm tra và khởi động PostgreSQL
             handleExistingContainer("elevate-banking-postgres", "postgres", 5432);
             log.info("PostgreSQL is ready");
@@ -508,17 +522,11 @@ public class DockerConfig {
 //                        "KAFKA_DEFAULT_REPLICATION_FACTOR=1"
 
                         "KAFKA_BROKER_ID=1",
-                        // Listeners cho internal và external connections
-                        "KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092",
-                        // Advertised listeners với IP thật của máy Ubuntu
-                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://192.168.1.128:29092, INTERNAL://192.168.1.128:29092, EXTERNAL://192.168.1.128:9092",
-                        // Security protocol mapping
-                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
-                        // Inter-broker listener name
-                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
-                        // Zookeeper connection
                         "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
-                        // Các cấu hình khác
+                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
+                        "KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092",
+                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://elevate-banking-kafka:29092,EXTERNAL://192.168.1.128:9092",
+                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
                         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
                         "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
                         "KAFKA_NUM_PARTITIONS=1",
@@ -817,6 +825,19 @@ public class DockerConfig {
         } catch (Exception e) {
             log.error("Failed to initialize database schema", e);
             throw new RuntimeException("Database schema initialization failed", e);
+        }
+    }
+
+    private void createVolumeIfNotExists(String volumeName) {
+        try {
+            dockerClient.inspectVolumeCmd(volumeName).exec();
+            log.info("Volume {} already exists", volumeName);
+        } catch (NotFoundException e) {
+            dockerClient.createVolumeCmd()
+                    .withName(volumeName)
+                    .withLabels(Collections.singletonMap("project", "elevate-banking"))
+                    .exec();
+            log.info("Created volume: {}", volumeName);
         }
     }
 
