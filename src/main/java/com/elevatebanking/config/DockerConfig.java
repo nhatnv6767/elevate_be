@@ -325,58 +325,6 @@ public class DockerConfig {
         }
     }
 
-    private void handlePostgresContainer() {
-        try {
-            String containerName = "elevate-banking-postgres";
-
-            // Kiểm tra container đang chạy
-            if (isContainerRunning(containerName)) {
-                log.info("PostgreSQL container is already running");
-                return;
-            }
-
-            // Chỉ xóa container cũ nếu nó không running
-            List<Container> existingContainers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton(containerName))
-                    .withShowAll(true)
-                    .exec();
-
-            for (Container container : existingContainers) {
-                if (!"running".equalsIgnoreCase(container.getState())) {
-                    log.info("Removing stopped container: {}", container.getId());
-                    dockerClient.removeContainerCmd(container.getId())
-                            .withForce(true)
-                            .exec();
-                }
-            }
-
-            // Tạo volume nếu chưa có
-            String volumeName = "postgres-data-volume";
-            try {
-                dockerClient.inspectVolumeCmd(volumeName).exec();
-            } catch (NotFoundException e) {
-                dockerClient.createVolumeCmd().withName(volumeName).exec();
-            }
-
-            // Create container with volume mount
-            CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
-                    .withName(containerName)
-                    .withEnv(getEnvironmentVariables("postgres"))
-                    .withHostConfig(HostConfig.newHostConfig()
-                            .withPortBindings(PortBinding.parse("5432:5432"))
-                            .withBinds(new Bind(volumeName, new Volume("/var/lib/postgresql/data")))
-                            .withNetworkMode(NETWORK_NAME))
-                    .withExposedPorts(ExposedPort.tcp(5432))
-                    .exec();
-
-            dockerClient.startContainerCmd(container.getId()).exec();
-            waitForServiceToBeReady("postgres");
-        } catch (Exception e) {
-            log.error("Failed to initialize PostgreSQL container", e);
-            throw new RuntimeException("Failed to initialize PostgreSQL container", e);
-        }
-    }
-
 
     @PreDestroy
     public void cleanup() {
