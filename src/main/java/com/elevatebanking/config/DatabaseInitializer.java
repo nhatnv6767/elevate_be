@@ -127,7 +127,8 @@ public class DatabaseInitializer implements InitializingBean {
 
     private void waitForPostgres() throws Exception {
         int attempts = 0;
-        int maxAttempts = 60;
+        int maxAttempts = 120;
+        int retryInterval = 5000;
         while (attempts < maxAttempts) {
             try {
                 Class.forName("org.postgresql.Driver");
@@ -135,6 +136,7 @@ public class DatabaseInitializer implements InitializingBean {
                         "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
                         "root", "123456")) {
                     if (conn.isValid(5)) {
+                        Thread.sleep(10000);
                         log.info("PostgreSQL is ready!");
                         return;
                     }
@@ -145,7 +147,7 @@ public class DatabaseInitializer implements InitializingBean {
                     throw new RuntimeException("Could not connect to PostgreSQL after " + maxAttempts + " attempts", e);
                 }
                 log.info("Waiting for PostgreSQL to be ready... Attempt {}/{}", attempts, maxAttempts);
-                Thread.sleep(2000);
+                Thread.sleep(retryInterval);
             }
         }
     }

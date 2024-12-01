@@ -1,6 +1,8 @@
 package com.elevatebanking;
 
 import com.elevatebanking.config.DatabaseInitializer;
+import com.elevatebanking.config.DatabaseSchemaInitializer;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContextInitializer;
@@ -15,6 +17,10 @@ public class ElevateBankingApplication {
         // Add wait for services
         application.addInitializers((ApplicationContextInitializer<GenericApplicationContext>) ctx -> {
             ctx.registerBean("databaseInitializer", DatabaseInitializer.class);
+            ctx.registerBean("databaseSchemaInitializer", DatabaseSchemaInitializer.class, () -> {
+                DatabaseSchemaInitializer initializer = new DatabaseSchemaInitializer();
+                return initializer;
+            });
         });
 
         application.run(args);
