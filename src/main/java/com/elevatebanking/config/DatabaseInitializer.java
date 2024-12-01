@@ -118,13 +118,17 @@ public class DatabaseInitializer implements InitializingBean {
                         .withName(containerName)
                         .withEnv(
                                 "POSTGRES_DB=elevate_banking",
-                                "POSTGRES_USER=root",
+                                "POSTGRES_USER=root", 
                                 "POSTGRES_PASSWORD=123456",
                                 "LISTEN_ADDRESSES=*"
                         )
                         .withHostConfig(HostConfig.newHostConfig()
                                 .withPortBindings(PortBinding.parse("5432:5432"))
-                                .withBinds(new Bind(containerName, new Volume("/var/lib/postgresql/data"))))
+                                .withBinds(
+                                    new Bind(containerName, new Volume("/var/lib/postgresql/data")),
+                                    new Bind("./src/main/resources/data.sql", new Volume("/docker-entrypoint-initdb.d/data.sql"))
+                                )
+                        )
                         .withExposedPorts(ExposedPort.tcp(5432))
                         .exec();
 

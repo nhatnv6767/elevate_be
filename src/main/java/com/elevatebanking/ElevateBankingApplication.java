@@ -1,7 +1,7 @@
 package com.elevatebanking;
 
 import com.elevatebanking.config.DatabaseInitializer;
-import com.elevatebanking.config.DatabaseSchemaInitializer;
+//import com.elevatebanking.config.DatabaseSchemaInitializer;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
