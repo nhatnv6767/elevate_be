@@ -3,7 +3,6 @@ package com.elevatebanking.config;
 import com.fasterxml.jackson.databind.ser.std.StringSerializer;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.*;
-import com.github.dockerjava.api.model.Network;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
@@ -646,7 +645,7 @@ public class DockerConfig {
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
 
-        int maxRetries = 5;
+        int maxRetries = 30;
         int retryCount = 0;
         Exception lastException = null;
         while (retryCount < maxRetries) {
@@ -661,7 +660,7 @@ public class DockerConfig {
                 log.warn("Failed to connect to Kafka (attempt {}/{}): {}",
                         retryCount, maxRetries, e.getMessage());
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(5000);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Kafka connection check interrupted", ie);
@@ -670,6 +669,40 @@ public class DockerConfig {
         }
 
         throw new RuntimeException("Failed to connect to Kafka after " + maxRetries +
+                " attempts. Last error: " + lastException.getMessage(), lastException);
+    }
+
+    private void waitForKafka() {
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:29092");
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "5000");
+
+        int maxRetries = 30;
+        int retryCount = 0;
+        Exception lastException = null;
+        
+        while (retryCount < maxRetries) {
+            try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
+                producer.partitionsFor("_kafka_healthcheck");
+                log.info("Successfully connected to Kafka");
+                return;
+            } catch (Exception e) {
+                lastException = e;
+                retryCount++;
+                log.warn("Failed to connect to Kafka (attempt {}/{}): {}", 
+                        retryCount, maxRetries, e.getMessage());
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Kafka connection check interrupted", ie);
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to connect to Kafka after " + maxRetries + 
                 " attempts. Last error: " + lastException.getMessage(), lastException);
     }
 
@@ -685,23 +718,5 @@ public class DockerConfig {
         }
     }
 
-//    private void initializeDockerNetwork() {
-//        try {
-//            List<Network> networks = dockerClient.listNetworksCmd()
-//                    .withNameFilter("elevate-banking-network")
-//                    .exec();
-//            if (networks.isEmpty()) {
-//                dockerClient.createNetworkCmd()
-//                        .withName("elevate-banking-network")
-//                        .withDriver("bridge")
-//                        .exec();
-//                log.info("Created network: elevate-banking-network");
-//            } else {
-//                log.info("Network elevate-banking-network already exists");
-//            }
-//        } catch (Exception e) {
-//            log.error("Failed to initialize Docker network", e);
-//            throw new RuntimeException("Failed to initialize Docker network", e);
-//        }
-//    }
+    
 }
