@@ -38,8 +38,8 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         hbm2ddl:
-          auto: create
-          import_files: data.sql
+          auto: none
+          import_files: classpath:data.sql
         jdbc:
           lob:
             non_contextual_creation: true

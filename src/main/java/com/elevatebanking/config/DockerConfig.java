@@ -299,8 +299,8 @@ public class DockerConfig {
             Thread.sleep(2000); // Đợi ngắn để DB ổn định
 
             // Khởi tạo schema database nếu cần
-            initializeDatabaseSchema();
-            log.info("Database schema initialized successfully");
+//            initializeDatabaseSchema();
+//            log.info("Database schema initialized successfully");
 
             // 2. Kiểm tra và khởi động Redis
             handleExistingContainer("elevate-banking-redis", "redis", 6379);
@@ -310,12 +310,12 @@ public class DockerConfig {
             // 3. Kiểm tra và khởi động Zookeeper
             handleExistingContainer("elevate-banking-zookeeper", "zookeeper", 2181);
             waitForServiceToBeReady("zookeeper");
-            Thread.sleep(5000);
+            Thread.sleep(1000);
             log.info("Zookeeper is ready");
 
             // 4. Kiểm tra và khởi động Kafka
             handleExistingContainer("elevate-banking-kafka", "kafka", 9092);
-            Thread.sleep(5000);
+            Thread.sleep(1000);
             waitForServiceToBeReady("kafka");
             log.info("Kafka is ready");
 

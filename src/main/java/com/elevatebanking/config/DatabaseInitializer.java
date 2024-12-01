@@ -125,9 +125,9 @@ public class DatabaseInitializer implements InitializingBean {
                         .withHostConfig(HostConfig.newHostConfig()
                                 .withPortBindings(PortBinding.parse("5432:5432"))
                                 .withAutoRemove(false)
-                                .withBinds(
-                                    new Bind("postgres-data-volume", new Volume("/var/lib/postgresql/data"))
-                                )
+                                // .withBinds(
+                                //     new Bind("postgres-data-volume", new Volume("/var/lib/postgresql/data"))
+                                // )
                         )
                         .withExposedPorts(ExposedPort.tcp(5432))
                         .exec();
