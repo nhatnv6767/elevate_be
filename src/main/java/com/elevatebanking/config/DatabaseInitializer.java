@@ -2,6 +2,7 @@ package com.elevatebanking.config;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.PullImageResultCallback;
+import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PortBinding;
@@ -24,6 +25,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -59,7 +61,25 @@ public class DatabaseInitializer implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        initializePostgres();
+        String containerName = "elevate-banking-postgres";
+        if (!isContainerRunning(containerName)) {
+            initializePostgres();
+        } else {
+            log.info("PostgreSQL container is already running");
+        }
+    }
+
+    private boolean isContainerRunning(String containerName) {
+        try {
+            List<Container> containers = dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withShowAll(true)
+                    .exec();
+            return !containers.isEmpty() &&
+                    "running".equalsIgnoreCase(containers.get(0).getState());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @PostConstruct

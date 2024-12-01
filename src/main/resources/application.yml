@@ -30,21 +30,18 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: true
     generate-ddl: true
-    open-in-view: false
-    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-        jdbc:
-          lob.non_contextual_creation: true
-        temp:
-          use_jdbc_metadata_defaults: false
-        default_schema: public
         hbm2ddl:
-          auto: create-drop
-    hibernate:
-      ddl-auto: update
+          auto: none
+        jdbc:
+          lob:
+            non_contextual_creation: true
+        default_schema: public
 
   # Redis Configuration
   data:
@@ -59,7 +56,7 @@ spring:
   sql:
     init:
       platform: postgresql
-      mode: never
+      mode: always
 
   # Kafka Configuration
   kafka:
@@ -74,6 +71,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: com.elevatebanking.event
+
 
 # Application Security Configuration
 app:

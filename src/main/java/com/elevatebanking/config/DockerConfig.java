@@ -75,23 +75,23 @@ public class DockerConfig {
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
     }
 
-    @Bean
-    public DockerClient dockerClient() {
-        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost(dockerHost)
-                .withDockerTlsVerify(false)
-                .build();
-
-        DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
-                .dockerHost(config.getDockerHost())
-                .sslConfig(config.getSSLConfig())
-                .maxConnections(100)
-                .connectionTimeout(Duration.ofSeconds(30))
-                .responseTimeout(Duration.ofSeconds(45))
-                .build();
-
-        return DockerClientImpl.getInstance(config, httpClient);
-    }
+//    @Bean
+//    public DockerClient dockerClient() {
+//        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
+//                .withDockerHost(dockerHost)
+//                .withDockerTlsVerify(false)
+//                .build();
+//
+//        DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
+//                .dockerHost(config.getDockerHost())
+//                .sslConfig(config.getSSLConfig())
+//                .maxConnections(100)
+//                .connectionTimeout(Duration.ofSeconds(30))
+//                .responseTimeout(Duration.ofSeconds(45))
+//                .build();
+//
+//        return DockerClientImpl.getInstance(config, httpClient);
+//    }
 
     public void initializeDockerServices() throws Exception {
         initializeDockerNetwork();

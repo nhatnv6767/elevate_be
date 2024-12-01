@@ -19,10 +19,9 @@ import java.sql.ResultSet;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
-@DependsOn({"databaseInitializer", "databaseInitializationConfig"})
+@DependsOn({"entityManagerFactory", "databaseInitializer"}) // Thêm entityManagerFactory vào dependency
 public class DatabaseSchemaInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
-
     @Value("${spring.datasource.url}")
     private String dbUrl;
 
@@ -32,11 +31,11 @@ public class DatabaseSchemaInitializer implements InitializingBean {
     @Value("${spring.datasource.password}")
     private String dbPassword;
 
-    @Autowired
-    private EntityManagerFactory entityManagerFactory;
-
     @Override
     public void afterPropertiesSet() throws Exception {
+        // Thêm delay ban đầu để đợi Hibernate tạo schema
+        Thread.sleep(5000);
+
         int attempts = 0;
         int maxAttempts = 30;
         while (attempts < maxAttempts) {
@@ -49,7 +48,8 @@ public class DatabaseSchemaInitializer implements InitializingBean {
                 log.info("Attempt {}/{} to verify database schema", attempts, maxAttempts);
                 Thread.sleep(2000);
             } catch (Exception e) {
-                log.error("Error verifying database schema on attempt {}: {}", attempts, e.getMessage(), e);
+                // Log lỗi chi tiết hơn
+                log.error("Error verifying database schema on attempt {}: {}", attempts, e.getMessage());
                 attempts++;
                 if (attempts == maxAttempts) {
                     throw new RuntimeException("Failed to verify database schema after " + maxAttempts + " attempts", e);
@@ -62,30 +62,31 @@ public class DatabaseSchemaInitializer implements InitializingBean {
 
     private boolean verifyDatabaseSchema() {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)) {
-            // Check if database exists and is accessible
+            // Thêm log khi check connection
             if (!conn.isValid(5)) {
                 log.error("Database connection is not valid");
                 return false;
             }
+            log.info("Database connection is valid");
 
-            // Check if essential tables exist
             DatabaseMetaData metaData = conn.getMetaData();
             String[] tables = {"users", "accounts", "transactions", "roles"};
 
             for (String table : tables) {
-                try (ResultSet rs = metaData.getTables(null, null, table, new String[]{"TABLE"})) {
-                    if (!rs.next()) {
-                        log.warn("Table '{}' not found", table);
-                        return false;
-                    }
-                    log.info("Table '{}' exists", table);
+                ResultSet rs = metaData.getTables(null, "public", table.toLowerCase(), new String[]{"TABLE"});
+                if (!rs.next()) {
+                    log.warn("Table '{}' not found", table);
+                    rs.close();
+                    return false;
                 }
+                log.info("Table '{}' exists", table);
+                rs.close();
             }
 
             log.info("All required tables exist");
             return true;
         } catch (Exception e) {
-            log.error("Error verifying database schema: {}", e.getMessage(), e);
+            log.error("Error verifying database schema: {}", e.getMessage());
             return false;
         }
     }
