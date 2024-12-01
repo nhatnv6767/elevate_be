@@ -74,26 +74,34 @@ spring:
   kafka:
     bootstrap-servers: 192.168.1.128:9092
     producer:
-      retry.backoff.ms: 1000
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-      acks: all
-      retries: 3
       bootstrap-servers: 192.168.1.128:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
         spring.json.add.type.headers: false
+        enable.idempotence: true
         spring.json.trusted.packages: "*"
-        max.block.ms: 5000
-        request.timeout.ms: 5000
-        retry.backoff.ms: 1000
-    consumer:
-      properties:
         security.protocol: PLAINTEXT
-      bootstrap-servers: 192.168.1.128:9092
+        max.block.ms: 10000
+        request.timeout.ms: 10000
+        retry.backoff.ms: 1000
+        retries: 3
+    consumer:
       group-id: elevate-banking-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        security.protocol: PLAINTEXT
+    admin:
+      properties:
+        bootstrap.servers: 192.168.1.128:9092
+        security.protocol: PLAINTEXT
+        request.timeout.ms: 20000
+        default.api.timeout.ms: 20000
+    properties:
+      security.protocol: PLAINTEXT
 #    consumer:
 #      group-id: elevate-banking-group
 #      auto-offset-reset: earliest

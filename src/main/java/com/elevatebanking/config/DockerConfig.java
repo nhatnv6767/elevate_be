@@ -384,49 +384,6 @@ public class DockerConfig {
         }
     }
 
-//    @PreDestroy
-//    public void cleanup() {
-//        try {
-//            DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
-//                    .withDockerHost(dockerHost)
-//                    .withDockerTlsVerify(false)
-//                    .build();
-//
-//            DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
-//                    .dockerHost(config.getDockerHost())
-//                    .sslConfig(config.getSSLConfig())
-//                    .maxConnections(100)
-//                    .connectionTimeout(Duration.ofSeconds(30))
-//                    .responseTimeout(Duration.ofSeconds(45))
-//                    .build();
-//
-//            DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
-//
-//            // Remove container
-//            List<Container> containers = dockerClient.listContainersCmd()
-//                    .withNameFilter(Collections.singleton("elevate-banking-postgres"))
-//                    .withShowAll(true)
-//                    .exec();
-//            if (!containers.isEmpty()) {
-//                // dockerClient.removeContainerCmd(containers.get(0).getId())
-//                //         .withForce(true)
-//                //         .exec();
-//                dockerClient.stopContainerCmd(containers.get(0).getId())
-//                        .exec();
-//            }
-//
-//            // Remove network
-//            List<Network> networks = dockerClient.listNetworksCmd()
-//                    .withNameFilter("elevate-banking-network")
-//                    .exec();
-//            if (!networks.isEmpty()) {
-//                dockerClient.removeNetworkCmd(networks.get(0).getId()).exec();
-//            }
-//        } catch (Exception e) {
-//            log.error("Error during cleanup", e);
-//        }
-//    }
-
     private void createAndStartContainer(String service) {
         String containerName = "elevate-banking-" + service;
         try {
@@ -539,12 +496,29 @@ public class DockerConfig {
                 );
             case "kafka":
                 return Arrays.asList(
+//                        "KAFKA_BROKER_ID=1",
+//                        "KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092",
+//                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://elevate-banking-kafka:29092,EXTERNAL://localhost:9092",
+//                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
+//                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
+//                        "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
+//                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
+//                        "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
+//                        "KAFKA_NUM_PARTITIONS=1",
+//                        "KAFKA_DEFAULT_REPLICATION_FACTOR=1"
+
                         "KAFKA_BROKER_ID=1",
+                        // Listeners cho internal và external connections
                         "KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092",
-                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://elevate-banking-kafka:29092,EXTERNAL://localhost:9092",
+                        // Advertised listeners với IP thật của máy Ubuntu
+                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://192.168.1.128:29092, INTERNAL://192.168.1.128:29092, EXTERNAL://192.168.1.128:9092",
+                        // Security protocol mapping
                         "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
+                        // Inter-broker listener name
                         "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
+                        // Zookeeper connection
                         "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
+                        // Các cấu hình khác
                         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
                         "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
                         "KAFKA_NUM_PARTITIONS=1",
@@ -592,8 +566,8 @@ public class DockerConfig {
     }
 
     private void waitForServiceToBeReady(String service) {
-        int maxRetries = 30;
-        int retryDelay = 2000;
+        int maxRetries = 10;
+        int retryDelay = 1000;
         int attempt = 0;
 
         while (attempt < maxRetries) {
@@ -612,8 +586,12 @@ public class DockerConfig {
                         }
                         break;
                     case "kafka":
-                        if (attempt == 0) {
-                            Thread.sleep(10000); // Wait 10s for Zookeeper to fully start
+                        waitForPort(9092);
+                        // Đợi thêm 2s để Kafka khởi động hoàn toàn
+                        try {
+                            Thread.sleep(2000);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
                         }
                         checkKafkaConnection();
                         break;
@@ -771,13 +749,14 @@ public class DockerConfig {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());
-        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "10000");
-        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "5000");
         props.put("security.protocol", "PLAINTEXT");
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "10000");
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "10000");
         props.put(ProducerConfig.RETRIES_CONFIG, "3");
         props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
 
-        int maxRetries = 5;
+        int maxRetries = 3;
         int retryCount = 0;
         Exception lastException = null;
         while (retryCount < maxRetries) {
