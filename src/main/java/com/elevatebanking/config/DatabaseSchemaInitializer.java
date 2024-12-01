@@ -18,8 +18,8 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 
 @Component
+@DependsOn({"databaseInitializationConfig"})
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
-@DependsOn({"entityManagerFactory"})
 public class DatabaseSchemaInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
     @Value("${spring.datasource.url}")
@@ -33,59 +33,30 @@ public class DatabaseSchemaInitializer implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        Thread.sleep(10000);
+        Thread.sleep(5000); // Đợi schema được tạo xong
 
-        int attempts = 0;
-        int maxAttempts = 30;
-        while (attempts < maxAttempts) {
-            try {
-                if (verifyDatabaseSchema()) {
-                    log.info("Database schema verified successfully");
-                    return;
-                }
-                attempts++;
-                log.info("Attempt {}/{} to verify database schema", attempts, maxAttempts);
-                Thread.sleep(2000);
-            } catch (Exception e) {
-                // Log lỗi chi tiết hơn
-                log.error("Error verifying database schema on attempt {}: {}", attempts, e.getMessage());
-                attempts++;
-                if (attempts == maxAttempts) {
-                    throw new RuntimeException("Failed to verify database schema after " + maxAttempts + " attempts", e);
-                }
-                Thread.sleep(2000);
-            }
+        if (!verifyDatabaseSchema()) {
+            throw new RuntimeException("Database schema verification failed");
         }
-        throw new RuntimeException("Failed to verify database schema after " + maxAttempts + " attempts");
+
+        log.info("Database schema verified successfully!");
     }
 
     private boolean verifyDatabaseSchema() {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)) {
-            // Thêm log khi check connection
-            if (!conn.isValid(5)) {
-                log.error("Database connection is not valid");
-                return false;
-            }
-            log.info("Database connection is valid");
-
             DatabaseMetaData metaData = conn.getMetaData();
             String[] tables = {"users", "accounts", "transactions", "roles"};
 
             for (String table : tables) {
                 ResultSet rs = metaData.getTables(null, "public", table.toLowerCase(), new String[]{"TABLE"});
                 if (!rs.next()) {
-                    log.warn("Table '{}' not found", table);
-                    rs.close();
                     return false;
                 }
-                log.info("Table '{}' exists", table);
                 rs.close();
             }
-
-            log.info("All required tables exist");
             return true;
         } catch (Exception e) {
-            log.error("Error verifying database schema: {}", e.getMessage());
+            log.error("Error verifying schema", e);
             return false;
         }
     }

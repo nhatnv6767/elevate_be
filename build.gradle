@@ -24,7 +24,7 @@ dockerCompose {
             kafka    : 1
     ]
 
-     // Add environment variables
+    // Add environment variables
     environment.put 'DOCKER_TLS_VERIFY', '0'
     environment.put 'COMPOSE_PROJECT_NAME', 'elevate-banking'
 
@@ -144,13 +144,19 @@ dependencies {
     // Add JAXB API
     implementation 'javax.xml.bind:jaxb-api:2.3.1'
     implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
-    
+
     // Thêm Jakarta XML Binding API
     implementation 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.0'
     implementation 'org.glassfish.jaxb:jaxb-runtime:4.0.0'
-    
+
     // Jackson JAXB annotations
     implementation 'com.fasterxml.jackson.module:jackson-module-jaxb-annotations'
+
+
+    implementation 'org.hibernate.tool:hibernate-tools-orm:6.4.1.Final'
+    implementation 'org.hibernate.tool:hibernate-tools-utils:6.4.1.Final'
+    implementation group: 'org.hibernate', name: 'hibernate-tools', version: '5.6.15.Final'
+
 
 }
 
