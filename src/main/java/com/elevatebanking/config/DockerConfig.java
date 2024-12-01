@@ -251,8 +251,10 @@ public class DockerConfig {
                     .withShowAll(true)
                     .exec();
             if (!containers.isEmpty()) {
-                dockerClient.removeContainerCmd(containers.get(0).getId())
-                        .withForce(true)
+                // dockerClient.removeContainerCmd(containers.get(0).getId())
+                //         .withForce(true)
+                //         .exec();
+                dockerClient.stopContainerCmd(containers.get(0).getId())
                         .exec();
             }
 
@@ -353,30 +355,6 @@ public class DockerConfig {
         }
 
         return container;
-    }
-
-    private List<Bind> createBinds(String service) {
-        String volumeName = String.format("elevate-banking_%s_data", service);
-        switch (service) {
-            case "postgres":
-                return Collections.singletonList(
-                        new Bind(volumeName, new Volume("/var/lib/postgresql/data"))
-                );
-            case "redis":
-                return Collections.singletonList(
-                        new Bind(volumeName, new Volume("/data"))
-                );
-            case "zookeeper":
-                return Collections.singletonList(
-                        new Bind(volumeName, new Volume("/var/lib/zookeeper/data"))
-                );
-            case "kafka":
-                return Collections.singletonList(
-                        new Bind(volumeName, new Volume("/var/lib/kafka/data"))
-                );
-            default:
-                return Collections.emptyList();
-        }
     }
 
     private List<String> getEnvironmentVariables(String service) {
@@ -682,7 +660,7 @@ public class DockerConfig {
         int maxRetries = 30;
         int retryCount = 0;
         Exception lastException = null;
-        
+
         while (retryCount < maxRetries) {
             try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
                 producer.partitionsFor("_kafka_healthcheck");
@@ -691,7 +669,7 @@ public class DockerConfig {
             } catch (Exception e) {
                 lastException = e;
                 retryCount++;
-                log.warn("Failed to connect to Kafka (attempt {}/{}): {}", 
+                log.warn("Failed to connect to Kafka (attempt {}/{}): {}",
                         retryCount, maxRetries, e.getMessage());
                 try {
                     Thread.sleep(5000);
@@ -702,7 +680,7 @@ public class DockerConfig {
             }
         }
 
-        throw new RuntimeException("Failed to connect to Kafka after " + maxRetries + 
+        throw new RuntimeException("Failed to connect to Kafka after " + maxRetries +
                 " attempts. Last error: " + lastException.getMessage(), lastException);
     }
 
@@ -718,5 +696,5 @@ public class DockerConfig {
         }
     }
 
-    
+
 }

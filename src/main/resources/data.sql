@@ -1,5 +1,5 @@
 -- Insert roles
-INSERT INTO roles (role_name, description, created_at, updated_at) VALUES
+INSERT INTO public.roles (role_name, description, created_at, updated_at) VALUES
                                                                        ('ROLE_ADMIN', 'System administrator', NOW(), NOW()),
                                                                        ('ROLE_CUSTOMER', 'Regular customer', NOW(), NOW()),
                                                                        ('ROLE_STAFF', 'Bank staff', NOW(), NOW()),

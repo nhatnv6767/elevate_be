@@ -22,13 +22,15 @@ public class DatabaseInitializationConfig {
     public void initializeSchema() {
         log.info("Starting schema initialization...");
         try {
-            // Kiểm tra kết nối database
             var em = entityManagerFactory.createEntityManager();
             try {
-//                em.getTransaction().begin();
-                // Thực hiện một query đơn giản để test kết nối
+                em.getTransaction().begin();
                 em.createNativeQuery("SELECT 1").getSingleResult();
-                // em.getTransaction().commit();
+                em.getTransaction().commit();
+                
+                // Đợi 1 chút để đảm bảo schema được tạo
+                Thread.sleep(2000);
+                
                 log.info("Database connection verified and schema initialization completed");
             } finally {
                 if (em != null && em.isOpen()) {
