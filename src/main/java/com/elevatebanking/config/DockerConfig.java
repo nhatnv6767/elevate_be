@@ -1,6 +1,6 @@
 package com.elevatebanking.config;
 
-import com.fasterxml.jackson.databind.ser.std.StringSerializer;
+
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.*;
@@ -15,9 +15,11 @@ import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -40,8 +42,10 @@ import jakarta.persistence.EntityManagerFactory;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.kafka.support.serializer.JsonSerializer;
 
 @Configuration
+@DependsOn("entityManagerFactory")
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DockerConfig {
 
@@ -59,11 +63,17 @@ public class DockerConfig {
     @Autowired
     private EntityManagerFactory entityManagerFactory;
 
+    @Value("${spring.jpa.hibernate.ddl-auto:none}")
+    private String ddlAuto;
+
     @PostConstruct
     public void init() throws Exception {
-        initializeDockerClient();
-        initializeDockerNetwork();
-        initializeDockerServices();
+        if (!"none".equals(ddlAuto)) {
+            log.info("Waiting for Docker services initialization before schema creation...");
+            initializeDockerClient();
+            initializeDockerNetwork();
+            initializeDockerServices();
+        }
     }
 
     private void initializeDockerNetwork() {
@@ -688,17 +698,16 @@ public class DockerConfig {
 
     private void checkKafkaConnection() {
         Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "elevate-banking-kafka:29092");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "60000");
-        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "60000"); 
-        props.put(ProducerConfig.CLIENT_ID_CONFIG, "docker-config-client");
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "10000");
+        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "5000");
         props.put("security.protocol", "PLAINTEXT");
-        props.put("retries", "5");
-        props.put("retry.backoff.ms", "1000");
+        props.put(ProducerConfig.RETRIES_CONFIG, "3");
+        props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
 
-        int maxRetries = 30;
+        int maxRetries = 5;
         int retryCount = 0;
         Exception lastException = null;
         while (retryCount < maxRetries) {
@@ -712,7 +721,7 @@ public class DockerConfig {
                 log.warn("Failed to connect to Kafka (attempt {}/{}): {}",
                         retryCount, maxRetries, e.getMessage());
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(2000);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Kafka connection check interrupted", ie);
