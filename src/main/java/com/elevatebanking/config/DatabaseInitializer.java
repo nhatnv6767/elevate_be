@@ -2,10 +2,7 @@ package com.elevatebanking.config;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.PullImageResultCallback;
-import com.github.dockerjava.api.model.Container;
-import com.github.dockerjava.api.model.ExposedPort;
-import com.github.dockerjava.api.model.HostConfig;
-import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import jakarta.annotation.PostConstruct;
@@ -99,43 +96,47 @@ public class DatabaseInitializer implements InitializingBean {
 
             String containerName = "elevate-banking-postgres";
 
-            // Remove existing container
-            dockerClient.listContainersCmd()
+            if (isContainerRunning(containerName)) {
+                log.info("PostgreSQL container is already running");
+                return;
+            }
+
+            List<Container> existingContainers = dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton(containerName))
                     .withShowAll(true)
-                    .exec()
-                    .forEach(container -> {
-                        try {
-                            dockerClient.removeContainerCmd(container.getId())
-                                    .withForce(true)
-                                    .exec();
-                            log.info("Removed existing container: {}", container.getId());
-                        } catch (Exception e) {
-                            log.warn("Failed to remove container: {}", e.getMessage());
-                        }
-                    });
-
-            // Pull image
-            dockerClient.pullImageCmd("postgres:latest")
-                    .exec(new PullImageResultCallback())
-                    .awaitCompletion();
-
-            // Create container
-            var container = dockerClient.createContainerCmd("postgres:latest")
-                    .withName(containerName)
-                    .withEnv(
-                            "POSTGRES_DB=elevate_banking",
-                            "POSTGRES_USER=root",
-                            "POSTGRES_PASSWORD=123456",
-                            "LISTEN_ADDRESSES=*"
-                    )
-                    .withHostConfig(HostConfig.newHostConfig()
-                            .withPortBindings(PortBinding.parse("5432:5432")))
-                    .withExposedPorts(ExposedPort.tcp(5432))
                     .exec();
 
-            // Start container
-            dockerClient.startContainerCmd(container.getId()).exec();
+
+            if (existingContainers.isEmpty()) {
+                // Pull image
+                dockerClient.pullImageCmd("postgres:latest")
+                        .exec(new PullImageResultCallback())
+                        .awaitCompletion();
+
+                // Create container
+                var container = dockerClient.createContainerCmd("postgres:latest")
+                        .withName(containerName)
+                        .withEnv(
+                                "POSTGRES_DB=elevate_banking",
+                                "POSTGRES_USER=root",
+                                "POSTGRES_PASSWORD=123456",
+                                "LISTEN_ADDRESSES=*"
+                        )
+                        .withHostConfig(HostConfig.newHostConfig()
+                                .withPortBindings(PortBinding.parse("5432:5432"))
+                                .withBinds(new Bind(containerName, new Volume("/var/lib/postgresql/data"))))
+                        .withExposedPorts(ExposedPort.tcp(5432))
+                        .exec();
+
+                // Start container
+                dockerClient.startContainerCmd(container.getId()).exec();
+            } else {
+                // Start existing container if it's stopped
+                Container existingContainer = existingContainers.get(0);
+                if (!"running".equalsIgnoreCase(existingContainer.getState())) {
+                    dockerClient.startContainerCmd(existingContainer.getId()).exec();
+                }
+            }
 
             // Wait for PostgreSQL to be ready
             waitForPostgres();
