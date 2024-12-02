@@ -10,13 +10,13 @@ dockerCompose {
     startedServices = ['postgres', 'redis', 'zookeeper', 'kafka']
     isRequiredBy(tasks.bootRun)
 
-    // Cấu hình kết nối đến Docker remote
+    // Configure Docker remote connection
     environment.put 'DOCKER_HOST', 'tcp://192.168.1.128:2375'
 
-    // Kiểm tra health check
+    // Health check configuration
     waitForTcpPorts = true
 
-    // Cấu hình scale
+    // Scale configuration
     scale = [
             postgres : 1,
             redis    : 1,
@@ -24,21 +24,21 @@ dockerCompose {
             kafka    : 1
     ]
 
-    // Thêm biến môi trường
+    // Add environment variables
     environment.put 'DOCKER_TLS_VERIFY', '0'
     environment.put 'COMPOSE_PROJECT_NAME', 'elevate-banking'
 
-    // Cấu hình timeout thông qua environment
+    // Configure timeout through environment
     environment.put 'COMPOSE_HTTP_TIMEOUT', '300'
 
-    removeVolumes = true
+    removeVolumes = false
     removeOrphans = true
 
     captureContainersOutput = true
 
 }
 
-// Thêm task để kiểm tra kết nối Docker
+// add task to check docker connection
 task checkDockerConnection {
     doLast {
         def process = "curl http://192.168.1.128:2375/version".execute()
@@ -46,7 +46,7 @@ task checkDockerConnection {
     }
 }
 
-// Chạy kiểm tra kết nối trước khi start
+// Run check connection before start
 tasks.bootRun.dependsOn checkDockerConnection
 
 group = 'com'
@@ -141,16 +141,22 @@ dependencies {
     implementation 'org.apache.httpcomponents.core5:httpcore5:5.2.3'
     implementation 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.3'
 
-    // Thêm JAXB API
+    // Add JAXB API
     implementation 'javax.xml.bind:jaxb-api:2.3.1'
     implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
-    
+
     // Thêm Jakarta XML Binding API
     implementation 'jakarta.xml.bind:jakarta.xml.bind-api:4.0.0'
     implementation 'org.glassfish.jaxb:jaxb-runtime:4.0.0'
-    
+
     // Jackson JAXB annotations
     implementation 'com.fasterxml.jackson.module:jackson-module-jaxb-annotations'
+
+
+    implementation 'org.hibernate.tool:hibernate-tools-orm:6.4.1.Final'
+    implementation 'org.hibernate.tool:hibernate-tools-utils:6.4.1.Final'
+    implementation group: 'org.hibernate', name: 'hibernate-tools', version: '5.6.15.Final'
+
 
 }
 

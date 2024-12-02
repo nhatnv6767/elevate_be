@@ -48,11 +48,11 @@ public class TransactionServiceImpl implements ITransactionService {
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount, String description) {
         Transaction transaction = null;
         try {
-            // Validate accounts and balance trước khi tạo transaction
+            // Validate accounts and balance before creating transaction
             accountService.validateAccount(fromAccountId, amount);
             accountService.validateAccount(toAccountId, null);
 
-            // Tạo transaction sau khi validate thành công
+            // Create transaction after successful validation
             transaction = new Transaction();
             transaction.setFromAccount(accountService.getAccountById(fromAccountId).get());
             transaction.setToAccount(accountService.getAccountById(toAccountId).get());
@@ -61,26 +61,26 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction.setDescription(description);
             transaction.setStatus(TransactionStatus.PENDING);
 
-            // Lưu transaction
+            // Save transaction
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.initiated");
 
             try {
-                // Thực hiện chuyển tiền
+                // Execute money transfer
                 BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
                 BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
 
                 accountService.updateBalance(fromAccountId, fromBalance);
                 accountService.updateBalance(toAccountId, toBalance);
 
-                // Cập nhật trạng thái thành công
+                // Update successful status
                 transaction.setStatus(TransactionStatus.COMPLETED);
                 transaction = transactionRepository.save(transaction);
                 publishTransactionEvent(transaction, "transaction.completed");
 
                 return transaction;
             } catch (Exception e) {
-                // Xử lý lỗi khi thực hiện giao dịch
+                // Handle error during transaction execution
                 if (transaction != null) {
                     transaction.setStatus(TransactionStatus.FAILED);
                     transaction = transactionRepository.save(transaction);
@@ -89,11 +89,11 @@ public class TransactionServiceImpl implements ITransactionService {
                 throw new RuntimeException("Error executing transfer", e);
             }
         } catch (IllegalArgumentException e) {
-            // Xử lý lỗi validate
+            // Handle validation error
             log.error("Validation error: {}", e.getMessage());
             throw e;
         } catch (Exception e) {
-            // Xử lý các lỗi khác
+            // Handle other errors
             log.error("Error processing transfer: {}", e.getMessage());
             throw new RuntimeException("Error processing transfer", e);
         }

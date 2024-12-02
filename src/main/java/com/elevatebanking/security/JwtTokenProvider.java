@@ -65,7 +65,7 @@ public class JwtTokenProvider {
 
     public boolean validateToken(String token) {
         try {
-            // Kiểm tra token có trong blacklist không
+            // Check if token is in blacklist
             if (isTokenBlacklisted(token)) {
                 return false;
             }
@@ -100,7 +100,7 @@ public class JwtTokenProvider {
                 );
             }
         } catch (JwtException e) {
-            // Token không hợp lệ, không cần blacklist
+            // Invalid token, no need to blacklist
         }
     }
 
