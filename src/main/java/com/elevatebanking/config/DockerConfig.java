@@ -59,7 +59,6 @@ public class DockerConfig {
     private static final String ZOOKEEPER_CONTAINER = "elevate-banking-zookeeper";
 
     private static final String SERVER_HOST = "192.168.1.128";
-    private static boolean initialized = false;
 
     private static final String NETWORK_NAME = "elevate-banking-network";
     @Value("${docker.host:tcp://192.168.1.128:2375}")
@@ -76,7 +75,7 @@ public class DockerConfig {
 
     @PostConstruct
     public void init() throws Exception {
-        if (!"none".equals(ddlAuto) && !initialized) {
+        if (!"none".equals(ddlAuto)) {
             log.info("Waiting for Docker services initialization before schema creation...");
             initializeDockerClient();
 
@@ -87,7 +86,6 @@ public class DockerConfig {
 
             initializeDockerNetwork();
             initializeDockerServices();
-            initialized = true;
         } else {
             log.info("Docker services initialization skipped");
         }
