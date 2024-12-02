@@ -29,16 +29,17 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: true
-    generate-ddl: false
+    generate-ddl: true
     hibernate:
-      ddl-auto: update
-    defer-datasource-initialization: true
+      #      ddl-auto: update # LAN 1
+      ddl-auto: update # LAN 2
+    defer-datasource-initialization: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         hbm2ddl:
-          auto: create
+          auto: update
           import_files: data.sql
         jdbc:
           lob:
@@ -67,8 +68,19 @@ spring:
   sql:
     init:
       platform: postgresql
-      mode: always
+      mode: never
       continue-on-error: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: your-email@gmail.com
+    password: your-app-password
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
   # Kafka Configuration
   kafka:
@@ -158,6 +170,7 @@ springdoc:
 
 # JWT Configuration
 jwt:
-  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
+  #  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
+  secret: d0a8c264294f82a0225df5de62105e55a9256889c0ca637b6ae3d737dc06ddec031d4c59c08f8f07571102e5ac317381df36376e7ce32f329e01d025eeab1ad6
   expiration: 3600000
   refresh-expiration: 86400000

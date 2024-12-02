@@ -5,9 +5,10 @@ import com.elevatebanking.dto.auth.AuthDTOs;
 public interface IAuthService {
     AuthDTOs.AuthResponse login(AuthDTOs.AuthRequest request);
 
-    AuthDTOs.AuthResponse register(AuthDTOs.RegisterRequest request);
+    void requestPasswordReset(AuthDTOs.PasswordResetRequest request);
 
-    AuthDTOs.AuthResponse refreshToken(String token);
+    void resetPassword(AuthDTOs.NewPasswordRequest request);
+    
 
     void logout(String token);
 }

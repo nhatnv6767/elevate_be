@@ -2,7 +2,7 @@ package com.elevatebanking.config;
 
 
 import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.command.InspectVolumeResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
@@ -19,6 +19,8 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.Ordered;
@@ -52,8 +54,18 @@ public class DockerConfig {
 
     private static final String POSTGRES_VOLUME = "elevate-banking-postgres-data";
     private static final String KAFKA_VOLUME = "elevate-banking-kafka-data";
+    private static final String KAFKA_SECRETS_VOLUME = "elevate-banking-kafka-secrets";
     private static final String REDIS_VOLUME = "elevate-banking-redis-data";
     private static final String ZOOKEEPER_VOLUME = "elevate-banking-zookeeper-data";
+    private static final String ZOOKEEPER_LOG_VOLUME = "elevate-banking-zookeeper-log";
+    private static final String ZOOKEEPER_SECRETS_VOLUME = "elevate-banking-zookeeper-secrets";
+
+    private static final String POSTGRES_CONTAINER = "elevate-banking-postgres";
+    private static final String KAFKA_CONTAINER = "elevate-banking-kafka";
+    private static final String REDIS_CONTAINER = "elevate-banking-redis";
+    private static final String ZOOKEEPER_CONTAINER = "elevate-banking-zookeeper";
+
+    private static final String SERVER_HOST = "192.168.1.128";
 
     private static final String NETWORK_NAME = "elevate-banking-network";
     @Value("${docker.host:tcp://192.168.1.128:2375}")
@@ -61,6 +73,11 @@ public class DockerConfig {
     private DockerClient dockerClient;
 
     private static final Logger log = LoggerFactory.getLogger(DockerConfig.class);
+
+    @Bean
+    public DockerClient dockerClient() {
+        return this.dockerClient;
+    }
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
@@ -70,11 +87,95 @@ public class DockerConfig {
 
     @PostConstruct
     public void init() throws Exception {
+        initializeDockerClient();
         if (!"none".equals(ddlAuto)) {
             log.info("Waiting for Docker services initialization before schema creation...");
-            initializeDockerClient();
+
+            if (areAllServicesRunning()) {
+                log.info("All services are already running, skipping initialization");
+                return;
+            }
+
             initializeDockerNetwork();
             initializeDockerServices();
+        } else {
+            log.info("Docker services initialization skipped");
+        }
+    }
+
+    @Bean
+    public CommandLineRunner cleanupDockerResources(DockerClient dockerClient) {
+        return args -> {
+            // Cleanup orphaned volumes
+            List<InspectVolumeResponse> volumes = dockerClient.listVolumesCmd().exec().getVolumes();
+            for (InspectVolumeResponse volume : volumes) {
+                String volumeName = volume.getName();
+                // Only keep volumes with our specific prefix
+                if (!volumeName.startsWith("elevate-banking-")) {
+                    try {
+                        dockerClient.removeVolumeCmd(volumeName).exec();
+                        log.info("Removed orphaned volume: {}", volumeName);
+                    } catch (Exception e) {
+                        log.warn("Could not remove volume {}: {}", volumeName, e.getMessage());
+                    }
+                }
+            }
+
+            // Add wait for database
+            int maxRetries = 30;
+            int retryCount = 0;
+            boolean connected = false;
+
+            while (!connected && retryCount < maxRetries) {
+                try (Connection conn = DriverManager.getConnection(
+                        "jdbc:postgresql://192.168.1.128:5432/elevate_banking",
+                        "root", "123456")) {
+                    if (conn.isValid(5)) {
+                        connected = true;
+                        log.info("Successfully connected to database");
+                    }
+                } catch (Exception e) {
+                    retryCount++;
+                    log.info("Waiting for database to be ready... Attempt {}/{}", retryCount, maxRetries);
+                    Thread.sleep(2000);
+                }
+            }
+
+            if (!connected) {
+                throw new RuntimeException("Could not connect to database after " + maxRetries + " attempts");
+            }
+        };
+    }
+
+    private boolean areAllServicesRunning() {
+        try {
+            return isServiceRunningAndAccessible(POSTGRES_CONTAINER, 5432) &&
+                    isServiceRunningAndAccessible(REDIS_CONTAINER, 6379) &&
+                    isServiceRunningAndAccessible(ZOOKEEPER_CONTAINER, 2181) &&
+                    isServiceRunningAndAccessible(KAFKA_CONTAINER, 9092);
+        } catch (Exception e) {
+            log.warn("Failed to check if all services are running - {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isServiceRunningAndAccessible(String containerName, int port) {
+        try {
+            List<Container> containers = dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withStatusFilter(Collections.singleton("running"))
+                    .exec();
+
+            if (containers.isEmpty()) {
+                return false;
+            }
+
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(SERVER_HOST, port), 1000);
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -103,6 +204,11 @@ public class DockerConfig {
 
     private HostConfig createHostConfig(String service) {
         switch (service) {
+            case "postgres":
+                return HostConfig.newHostConfig()
+                        .withNetworkMode(NETWORK_NAME)
+                        .withPortBindings(PortBinding.parse("5432:5432")) // Thêm port mapping
+                        .withBinds(new Bind(POSTGRES_VOLUME, new Volume("/var/lib/postgresql/data")));
             case "redis":
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
@@ -112,7 +218,12 @@ public class DockerConfig {
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
                         .withPortBindings(PortBinding.parse("2181:2181"))
-                        .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
+                        .withBinds(
+                                new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper/data")),
+                                new Bind(ZOOKEEPER_LOG_VOLUME, new Volume("/var/lib/zookeeper/log")),
+                                new Bind(ZOOKEEPER_SECRETS_VOLUME, new Volume("/etc/zookeeper/secrets"))
+                        );
+//                        .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
 
             case "kafka":
                 return HostConfig.newHostConfig()
@@ -120,7 +231,8 @@ public class DockerConfig {
                         .withPortBindings(
                                 PortBinding.parse("9092:9092")
                         )
-                        .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")))
+                        .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")),
+                                new Bind(KAFKA_SECRETS_VOLUME, new Volume("/etc/kafka/secrets")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
             default:
@@ -147,139 +259,50 @@ public class DockerConfig {
         this.dockerClient = DockerClientImpl.getInstance(config, httpClient);
     }
 
-//     public void initializeDockerServices() throws Exception {
-//         initializeDockerNetwork();
-
-//         log.info("Initializing Docker services...");
-
-
-//         try {
-
-//             // Khởi động Zookeeper trước
-//             String zookeeperContainer = "elevate-banking-zookeeper";
-//             if (!isContainerRunning(zookeeperContainer)) {
-//                 createAndStartContainer("zookeeper");
-//             }
-
-//             // Chờ Zookeeper khởi động
-//             Thread.sleep(10000);
-//             log.info("Waiting for Kafka to be fully started...");
-
-//             for (String service : REQUIRED_SERVICES) {
-//                 String containerName = "elevate-banking-" + service;
-//                 if (!isContainerRunning(containerName)) {
-//                     createAndStartContainer(service);
-//                 }
-//             }
-
-//             // Remove old container if exists
-//             List<Container> existingContainers = dockerClient.listContainersCmd()
-//                     .withNameFilter(Collections.singleton("elevate-banking-postgres"))
-//                     .withShowAll(true)
-//                     .exec();
-
-//             for (Container container : existingContainers) {
-//                 log.info("Removing existing container: {}", container.getId());
-//                 dockerClient.removeContainerCmd(container.getId())
-//                         .withForce(true)
-//                         .exec();
-//             }
-
-//             // Pull image
-//             dockerClient.pullImageCmd("postgres:latest")
-//                     .exec(new PullImageResultCallback())
-//                     .awaitCompletion();
-
-//             // Create container
-//             CreateContainerResponse container = dockerClient.createContainerCmd("postgres:latest")
-//                     .withName("elevate-banking-postgres")
-//                     .withEnv(getEnvironmentVariables("postgres"))
-// //                    .withEnv(
-// //                            "POSTGRES_DB=elevate_banking",
-// //                            "POSTGRES_USER=root",
-// //                            "POSTGRES_PASSWORD=123456",
-// //                            "POSTGRES_HOST_AUTH_METHOD=trust",
-// //                            "POSTGRES_INITDB_ARGS=--auth-host=trust"
-// //                    )
-//                     .withHostConfig(HostConfig.newHostConfig()
-//                             .withPortBindings(PortBinding.parse("5432:5432"))
-//                             .withPublishAllPorts(true))
-//                     .withExposedPorts(ExposedPort.tcp(5432))
-//                     .exec();
-
-//             // Start container
-//             dockerClient.startContainerCmd(container.getId()).exec();
-
-//             // Wait for PostgreSQL to be ready
-//             if (!waitForPostgresqlContainer()) {
-//                 throw new RuntimeException("PostgreSQL failed to start");
-//             }
-
-//             log.info("PostgreSQL container is ready!");
-
-//         } catch (Exception e) {
-//             log.error("Failed to initialize Docker services", e);
-//             throw e;
-//         }
-//     }
-
     private void handleExistingContainer(String containerName, String serviceType, int port) {
         try {
-            List<Container> containers = dockerClient.listContainersCmd()
+            List<Container> runningContainers = dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton(containerName))
-                    .withShowAll(true)
+                    .withStatusFilter(Collections.singleton("running"))
                     .exec();
 
-            if (containers.isEmpty()) {
-                log.info("Creating new {} container", serviceType);
+            if (!runningContainers.isEmpty()) {
+                log.info("{} container is already running", serviceType);
+                if (isPortAccesible(SERVER_HOST, port)) {
+                    log.info("{} is ready on port {}", serviceType, port);
+                }
+                return;
+            }
+
+            List<Container> stoppedContainers = dockerClient.listContainersCmd()
+                    .withNameFilter(Collections.singleton(containerName))
+                    .withStatusFilter(Collections.singleton("exited"))
+                    .exec();
+
+            if (!stoppedContainers.isEmpty()) {
+                String containerId = stoppedContainers.get(0).getId();
+                log.info("Starting existing {} container", serviceType);
+                dockerClient.startContainerCmd(containerId).exec();
+            } else {
+                log.info("Creating and starting {} container", serviceType);
                 createAndStartContainer(serviceType);
-            } else {
-                Container container = containers.get(0);
-                String containerId = container.getId();
-                String state = container.getState();
-
-                if (!"running".equalsIgnoreCase(state)) {
-                    log.info("Starting existing {} container", serviceType);
-                    dockerClient.startContainerCmd(containerId).exec();
-
-                    // Đợi container khởi động
-                    Thread.sleep(2000);
-                } else {
-                    log.info("{} container is already running", serviceType);
-                }
-
-                // Kiểm tra health check cho Kafka
-                if ("kafka".equals(serviceType)) {
-                    int attempts = 0;
-                    boolean isHealthy = false;
-                    while (attempts < 20 && !isHealthy) {
-                        try {
-                            InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(containerId).exec();
-                            String status = containerInfo.getState().getStatus();
-                            if ("running".equals(status)) {
-                                isHealthy = true;
-                            } else {
-                                log.info("Waiting for Kafka container to be healthy... Attempt {}/20", attempts + 1);
-                                Thread.sleep(3000);
-                            }
-                        } catch (Exception e) {
-                            log.warn("Error checking Kafka container health: {}", e.getMessage());
-                        }
-                        attempts++;
-                    }
-                }
             }
 
-            // Kiểm tra port
-            if ("kafka".equals(serviceType)) {
-                waitForPort(port); // Tăng số lần thử cho Kafka
-            } else {
-                waitForPort(port);
-            }
+            // Wait for container to be ready
+            waitForServiceToBeReady(serviceType);
 
         } catch (Exception e) {
             log.error("Error handling {} container: {}", serviceType, e.getMessage());
             throw new RuntimeException("Failed to handle " + serviceType + " container", e);
+        }
+    }
+
+    private boolean isPortAccesible(String host, int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 1000);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -288,7 +311,7 @@ public class DockerConfig {
         int attempt = 0;
         while (attempt < maxAttempts) {
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress("192.168.1.128", port), 1000);
+                socket.connect(new InetSocketAddress(SERVER_HOST, port), 1000);
                 log.info("Port {} is available", port);
                 return;
             } catch (Exception e) {
@@ -310,37 +333,38 @@ public class DockerConfig {
         log.info("Initializing Docker services...");
 
         try {
+            cleanupOrphanedVolumes();
 
             createVolumeIfNotExists(POSTGRES_VOLUME);
             createVolumeIfNotExists(REDIS_VOLUME);
             createVolumeIfNotExists(KAFKA_VOLUME);
+            createVolumeIfNotExists(KAFKA_SECRETS_VOLUME);
             createVolumeIfNotExists(ZOOKEEPER_VOLUME);
+            createVolumeIfNotExists(ZOOKEEPER_LOG_VOLUME);
+            createVolumeIfNotExists(ZOOKEEPER_SECRETS_VOLUME);
 
             // 1. Kiểm tra và khởi động PostgreSQL
-            handleExistingContainer("elevate-banking-postgres", "postgres", 5432);
+            handleExistingContainer(POSTGRES_CONTAINER, "postgres", 5432);
             log.info("PostgreSQL is ready");
-            Thread.sleep(2000); // Đợi ngắn để DB ổn định
-
-            // Khởi tạo schema database nếu cần
-//            initializeDatabaseSchema();
-//            log.info("Database schema initialized successfully");
+            Thread.sleep(2000);
 
             // 2. Kiểm tra và khởi động Redis
-            handleExistingContainer("elevate-banking-redis", "redis", 6379);
+            handleExistingContainer(REDIS_CONTAINER, "redis", 6379);
             waitForServiceToBeReady("redis");
             log.info("Redis is ready");
 
             // 3. Kiểm tra và khởi động Zookeeper
-            handleExistingContainer("elevate-banking-zookeeper", "zookeeper", 2181);
+            handleExistingContainer(ZOOKEEPER_CONTAINER, "zookeeper", 2181);
             waitForServiceToBeReady("zookeeper");
             Thread.sleep(1000);
             log.info("Zookeeper is ready");
 
             // 4. Kiểm tra và khởi động Kafka
-            handleExistingContainer("elevate-banking-kafka", "kafka", 9092);
+            handleExistingContainer(KAFKA_CONTAINER, "kafka", 9092);
             Thread.sleep(1000);
             waitForServiceToBeReady("kafka");
             log.info("Kafka is ready");
+            Thread.sleep(2000);
 
         } catch (Exception e) {
             log.error("Failed to initialize Docker services", e);
@@ -351,22 +375,23 @@ public class DockerConfig {
 
     @PreDestroy
     public void cleanup() {
-        try {
-            // Chỉ dừng các container nếu cần, không xóa
-            List<Container> containers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton("elevate-banking"))
-                    .withShowAll(true)
-                    .exec();
-
-            for (Container container : containers) {
-                if ("running".equalsIgnoreCase(container.getState())) {
-                    log.info("Stopping container: {}", container.getNames()[0]);
-                    dockerClient.stopContainerCmd(container.getId()).exec();
-                }
-            }
-        } catch (Exception e) {
-            log.error("Error during cleanup", e);
-        }
+        // neu len moi truong product thi mo ra đe dung cac container
+//        try {
+//            // Chỉ dừng các container nếu cần, không xóa
+//            List<Container> containers = dockerClient.listContainersCmd()
+//                    .withNameFilter(Collections.singleton("elevate-banking"))
+//                    .withShowAll(true)
+//                    .exec();
+//
+//            for (Container container : containers) {
+//                if ("running".equalsIgnoreCase(container.getState())) {
+//                    log.info("Stopping container: {}", container.getNames()[0]);
+//                    dockerClient.stopContainerCmd(container.getId()).exec();
+//                }
+//            }
+//        } catch (Exception e) {
+//            log.error("Error during cleanup", e);
+//        }
     }
 
     private void createAndStartContainer(String service) {
@@ -461,7 +486,9 @@ public class DockerConfig {
                 return Arrays.asList(
                         "POSTGRES_DB=elevate_banking",
                         "POSTGRES_USER=root",
-                        "POSTGRES_PASSWORD=123456"
+                        "POSTGRES_PASSWORD=123456",
+                        "POSTGRES_HOST_AUTH_METHOD=trust",
+                        "POSTGRES_LISTEN_ADDRESSES=*"
                 );
             case "zookeeper":
                 return Arrays.asList(
@@ -481,17 +508,6 @@ public class DockerConfig {
                 );
             case "kafka":
                 return Arrays.asList(
-//                        "KAFKA_BROKER_ID=1",
-//                        "KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092",
-//                        "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://elevate-banking-kafka:29092,EXTERNAL://localhost:9092",
-//                        "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
-//                        "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
-//                        "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
-//                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
-//                        "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
-//                        "KAFKA_NUM_PARTITIONS=1",
-//                        "KAFKA_DEFAULT_REPLICATION_FACTOR=1"
-
                         "KAFKA_BROKER_ID=1",
                         "KAFKA_ZOOKEEPER_CONNECT=elevate-banking-zookeeper:2181",
                         "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
@@ -502,8 +518,6 @@ public class DockerConfig {
                         "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
                         "KAFKA_NUM_PARTITIONS=1",
                         "KAFKA_DEFAULT_REPLICATION_FACTOR=1"
-
-
                 );
             case "redis":
                 return Arrays.asList(
@@ -545,34 +559,37 @@ public class DockerConfig {
     }
 
     private void waitForServiceToBeReady(String service) {
-        int maxRetries = 10;
-        int retryDelay = 1000;
+        int maxRetries = 5;
+        int retryDelay = 500;
         int attempt = 0;
 
         while (attempt < maxRetries) {
             try {
                 switch (service) {
                     case "postgres":
-                        checkPostgresConnection();
+                        if (isPortAccesible(SERVER_HOST, 5432)) {
+                            checkPostgresConnection();
+                            return;
+                        }
                         break;
                     case "redis":
-                        checkRedisConnection();
+                        if (isPortAccesible(SERVER_HOST, 6379)) {
+                            checkRedisConnection();
+                            return;
+                        }
                         break;
                     case "zookeeper":
-                        if (checkZookeeperConnection()) {
+                        if (checkZookeeperConnection() && isPortAccesible(SERVER_HOST, 2181)) {
                             log.info("Successfully connected to Zookeeper");
                             return;
                         }
                         break;
                     case "kafka":
                         waitForPort(9092);
-                        // Đợi thêm 2s để Kafka khởi động hoàn toàn
-                        try {
-                            Thread.sleep(2000);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
+                        if (isPortAccesible(SERVER_HOST, 9092)) {
+                            checkKafkaConnection();
+                            return;
                         }
-                        checkKafkaConnection();
                         break;
                 }
                 attempt++;
@@ -580,7 +597,6 @@ public class DockerConfig {
                     log.info("Retrying {} connection in {} ms...", service, retryDelay);
                     Thread.sleep(retryDelay);
                 }
-                return;
             } catch (Exception e) {
                 attempt++;
                 log.warn("Service {} check failed (attempt {}/{}): {}",
@@ -610,23 +626,6 @@ public class DockerConfig {
                 return "confluentinc/cp-kafka:latest";
             default:
                 throw new IllegalArgumentException("Unknown service: " + service);
-        }
-    }
-
-    private PortBinding[] getPortBindings(String service) {
-        switch (service) {
-            case "postgres":
-                return new PortBinding[]{PortBinding.parse("5432:5432")};
-            case "redis":
-                return new PortBinding[]{PortBinding.parse("6379:6379")};
-            case "zookeeper":
-                return new PortBinding[]{PortBinding.parse("2181:2181")};
-            case "kafka":
-                return new PortBinding[]{
-                        PortBinding.parse("9092:9092")
-                };
-            default:
-                return new PortBinding[]{};
         }
     }
 
@@ -726,6 +725,7 @@ public class DockerConfig {
     private void checkKafkaConnection() {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "192.168.1.128:9092");
+        props.put(ProducerConfig.CLIENT_ID_CONFIG, "kafka-health-check");
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());
         props.put("security.protocol", "PLAINTEXT");
@@ -740,7 +740,7 @@ public class DockerConfig {
         Exception lastException = null;
         while (retryCount < maxRetries) {
             try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-                producer.partitionsFor("_kafka_healthcheck"); // Kiểm tra kết nối
+                producer.partitionsFor("_kafka_healthcheck");
                 log.info("Successfully connected to Kafka");
                 return;
             } catch (Exception e) {
@@ -812,5 +812,43 @@ public class DockerConfig {
         }
     }
 
+    private void cleanupOrphanedVolumes() {
+        try {
+            // Lấy tất cả volumes
+            List<InspectVolumeResponse> volumes = dockerClient.listVolumesCmd().exec().getVolumes();
 
+            // Lấy danh sách container đang chạy
+            List<Container> runningContainers = dockerClient.listContainersCmd()
+                    .withShowAll(true)  // Bao gồm cả stopped containers
+                    .exec();
+
+            // Lấy volume IDs đang được sử dụng
+            Set<String> usedVolumes = new HashSet<>();
+            for (Container container : runningContainers) {
+                if (container.getMounts() != null) {
+                    container.getMounts().forEach(mount -> {
+                        if (mount.getName() != null) {
+                            usedVolumes.add(mount.getName());
+                        }
+                    });
+                }
+            }
+
+            // Xóa volumes không được sử dụng và không thuộc project
+            for (InspectVolumeResponse volume : volumes) {
+                String volumeName = volume.getName();
+                if (!volumeName.startsWith("elevate-banking-") &&
+                        !usedVolumes.contains(volumeName)) {
+                    try {
+                        dockerClient.removeVolumeCmd(volumeName).exec();
+                        log.info("Removed orphaned volume: {}", volumeName);
+                    } catch (Exception e) {
+                        log.warn("Could not remove volume {}: {}", volumeName, e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to cleanup orphaned volumes", e);
+        }
+    }
 }
