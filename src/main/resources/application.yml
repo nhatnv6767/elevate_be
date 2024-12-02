@@ -29,7 +29,7 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: true
-    generate-ddl: true
+    generate-ddl: false
     hibernate:
       ddl-auto: update
     defer-datasource-initialization: true
@@ -38,8 +38,8 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         hbm2ddl:
-          auto: none
-          import_files: classpath:data.sql
+          auto: create
+          import_files: data.sql
         jdbc:
           lob:
             non_contextual_creation: true

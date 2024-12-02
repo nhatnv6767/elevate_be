@@ -2,6 +2,7 @@ package com.elevatebanking.config;
 
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
@@ -53,10 +54,6 @@ public class DockerConfig {
     private static final String KAFKA_VOLUME = "elevate-banking-kafka-data";
     private static final String REDIS_VOLUME = "elevate-banking-redis-data";
     private static final String ZOOKEEPER_VOLUME = "elevate-banking-zookeeper-data";
-
-    private static final List<String> REQUIRED_SERVICES = Arrays.asList(
-            "postgres", "redis", "zookeeper", "kafka"
-    );
 
     private static final String NETWORK_NAME = "elevate-banking-network";
     @Value("${docker.host:tcp://192.168.1.128:2375}")
@@ -226,37 +223,63 @@ public class DockerConfig {
 //         }
 //     }
 
-    private void handleExistingContainer(String containerName, String service, int port) {
+    private void handleExistingContainer(String containerName, String serviceType, int port) {
         try {
-            // Kiểm tra container có tồn tại không
             List<Container> containers = dockerClient.listContainersCmd()
                     .withNameFilter(Collections.singleton(containerName))
                     .withShowAll(true)
                     .exec();
 
             if (containers.isEmpty()) {
-                // Nếu không tồn tại, tạo mới
-                log.info("Creating new {} container", service);
-                createAndStartContainer(service);
+                log.info("Creating new {} container", serviceType);
+                createAndStartContainer(serviceType);
             } else {
                 Container container = containers.get(0);
+                String containerId = container.getId();
                 String state = container.getState();
 
-                if ("running".equalsIgnoreCase(state)) {
-                    log.info("{} container is already running", service);
+                if (!"running".equalsIgnoreCase(state)) {
+                    log.info("Starting existing {} container", serviceType);
+                    dockerClient.startContainerCmd(containerId).exec();
+
+                    // Đợi container khởi động
+                    Thread.sleep(2000);
                 } else {
-                    // Nếu container tồn tại nhưng không chạy, start lại
-                    log.info("Starting existing {} container", service);
-                    dockerClient.startContainerCmd(container.getId()).exec();
+                    log.info("{} container is already running", serviceType);
+                }
+
+                // Kiểm tra health check cho Kafka
+                if ("kafka".equals(serviceType)) {
+                    int attempts = 0;
+                    boolean isHealthy = false;
+                    while (attempts < 20 && !isHealthy) {
+                        try {
+                            InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(containerId).exec();
+                            String status = containerInfo.getState().getStatus();
+                            if ("running".equals(status)) {
+                                isHealthy = true;
+                            } else {
+                                log.info("Waiting for Kafka container to be healthy... Attempt {}/20", attempts + 1);
+                                Thread.sleep(3000);
+                            }
+                        } catch (Exception e) {
+                            log.warn("Error checking Kafka container health: {}", e.getMessage());
+                        }
+                        attempts++;
+                    }
                 }
             }
 
-            // Đợi port ready
-            waitForPort(port);
+            // Kiểm tra port
+            if ("kafka".equals(serviceType)) {
+                waitForPort(port); // Tăng số lần thử cho Kafka
+            } else {
+                waitForPort(port);
+            }
 
         } catch (Exception e) {
-            log.error("Error handling {} container: {}", service, e.getMessage());
-            throw new RuntimeException("Failed to handle " + service + " container", e);
+            log.error("Error handling {} container: {}", serviceType, e.getMessage());
+            throw new RuntimeException("Failed to handle " + serviceType + " container", e);
         }
     }
 
