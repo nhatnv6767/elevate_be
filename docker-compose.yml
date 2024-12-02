@@ -47,8 +47,14 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_NUM_PARTITIONS: 1
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_CLEANUP_POLICY: "delete"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - type: volume
+        source: kafka_data
+        target: /var/lib/kafka/data
+        volume:
+          nocopy: true
     depends_on:
       - zookeeper
     networks:
