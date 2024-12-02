@@ -16,12 +16,13 @@ public interface IAuthApi {
     @ApiResponse(responseCode = "401", description = "Invalid username or password")
     ResponseEntity<AuthDTOs.AuthResponse> login(AuthDTOs.AuthRequest request);
 
-    @Operation(summary = "Register", description = "Register a new user")
-    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = AuthDTOs.AuthResponse.class)))
-    ResponseEntity<AuthDTOs.AuthResponse> register(AuthDTOs.RegisterRequest request);
+    @Operation(summary = "Request password reset", description = "Request password reset")
+    @ApiResponse(responseCode = "200", description = "Password reset request sent successfully")
+    ResponseEntity<AuthDTOs.AuthResponse> requestPasswordReset(AuthDTOs.PasswordResetRequest request);
 
-    @Operation(summary = "Refresh JWT token", description = "Refresh JWT token using refresh token")
-    ResponseEntity<AuthDTOs.AuthResponse> refreshToken(String token);
+    @Operation(summary = "Reset password", description = "Reset password")
+    @ApiResponse(responseCode = "200", description = "Password reset successfully")
+    ResponseEntity<AuthDTOs.AuthResponse> resetPassword(AuthDTOs.NewPasswordRequest request);
 
     @Operation(summary = "Logout", description = "Logout user and invalidate token")
     ResponseEntity<Void> logout(String token);
