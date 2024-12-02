@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   postgres:
+    container_name: elevate-banking-postgres
     image: postgres:latest
     ports:
       - "5432:5432"
@@ -9,26 +10,48 @@ services:
       POSTGRES_DB: elevate_banking
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 123456
+      POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - elevate_banking_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U root -d elevate_banking" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:latest
+    container_name: elevate-banking-redis
+    volumes:
+      - redis_data:/data
     ports:
       - "6379:6379"
     networks:
       - elevate_banking_network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
+    container_name: elevate-banking-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
     ports:
       - "2181:2181"
     networks:
       - elevate_banking_network
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    healthcheck:
+      test: echo srvr | nc localhost 2181 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -50,15 +73,16 @@ services:
       KAFKA_CLEANUP_POLICY: "delete"
       KAFKA_DELETE_TOPIC_ENABLE: "true"
     volumes:
-      - type: volume
-        source: kafka_data
-        target: /var/lib/kafka/data
-        volume:
-          nocopy: true
+      - kafka_data:/var/lib/kafka/data
     depends_on:
       - zookeeper
     networks:
       - elevate_banking_network
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:29092 --list" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   elevate_banking_network:
@@ -67,14 +91,9 @@ networks:
 volumes:
   postgres_data:
     name: elevate-banking-postgres-data
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /var/lib/postgresql/data
-  kafka_data:
-    name: elevate-banking-kafka-data
   redis_data:
     name: elevate-banking-redis-data
   zookeeper_data:
     name: elevate-banking-zookeeper-data
+  kafka_data:
+    name: elevate-banking-kafka-data
