@@ -54,8 +54,12 @@ public class DockerConfig {
 
     private static final String POSTGRES_VOLUME = "elevate-banking-postgres-data";
     private static final String KAFKA_VOLUME = "elevate-banking-kafka-data";
+    private static final String KAFKA_SECRETS_VOLUME = "elevate-banking-kafka-secrets";
     private static final String REDIS_VOLUME = "elevate-banking-redis-data";
     private static final String ZOOKEEPER_VOLUME = "elevate-banking-zookeeper-data";
+    private static final String ZOOKEEPER_LOG_VOLUME = "elevate-banking-zookeeper-log";
+    private static final String ZOOKEEPER_SECRETS_VOLUME = "elevate-banking-zookeeper-secrets";
+
     private static final String POSTGRES_CONTAINER = "elevate-banking-postgres";
     private static final String KAFKA_CONTAINER = "elevate-banking-kafka";
     private static final String REDIS_CONTAINER = "elevate-banking-redis";
@@ -214,7 +218,12 @@ public class DockerConfig {
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
                         .withPortBindings(PortBinding.parse("2181:2181"))
-                        .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
+                        .withBinds(
+                                new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper/data")),
+                                new Bind(ZOOKEEPER_LOG_VOLUME, new Volume("/var/lib/zookeeper/log")),
+                                new Bind(ZOOKEEPER_SECRETS_VOLUME, new Volume("/etc/zookeeper/secrets"))
+                        );
+//                        .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
 
             case "kafka":
                 return HostConfig.newHostConfig()
@@ -222,7 +231,8 @@ public class DockerConfig {
                         .withPortBindings(
                                 PortBinding.parse("9092:9092")
                         )
-                        .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")))
+                        .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")),
+                                new Bind(KAFKA_SECRETS_VOLUME, new Volume("/etc/kafka/secrets")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
             default:
@@ -801,14 +811,31 @@ public class DockerConfig {
 
     private void cleanupOrphanedVolumes() {
         try {
+            // Lấy tất cả volumes
             List<InspectVolumeResponse> volumes = dockerClient.listVolumesCmd().exec().getVolumes();
+
+            // Lấy danh sách container đang chạy
+            List<Container> runningContainers = dockerClient.listContainersCmd()
+                    .withShowAll(true)  // Bao gồm cả stopped containers
+                    .exec();
+
+            // Lấy volume IDs đang được sử dụng
+            Set<String> usedVolumes = new HashSet<>();
+            for (Container container : runningContainers) {
+                if (container.getMounts() != null) {
+                    container.getMounts().forEach(mount -> {
+                        if (mount.getName() != null) {
+                            usedVolumes.add(mount.getName());
+                        }
+                    });
+                }
+            }
+
+            // Xóa volumes không được sử dụng và không thuộc project
             for (InspectVolumeResponse volume : volumes) {
                 String volumeName = volume.getName();
                 if (!volumeName.startsWith("elevate-banking-") &&
-                        !volumeName.equals(POSTGRES_VOLUME) &&
-                        !volumeName.equals(KAFKA_VOLUME) &&
-                        !volumeName.equals(REDIS_VOLUME) &&
-                        !volumeName.equals(ZOOKEEPER_VOLUME)) {
+                        !usedVolumes.contains(volumeName)) {
                     try {
                         dockerClient.removeVolumeCmd(volumeName).exec();
                         log.info("Removed orphaned volume: {}", volumeName);
@@ -817,7 +844,6 @@ public class DockerConfig {
                     }
                 }
             }
-
         } catch (Exception e) {
             log.error("Failed to cleanup orphaned volumes", e);
         }

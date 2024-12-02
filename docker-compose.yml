@@ -47,6 +47,8 @@ services:
       - elevate_banking_network
     volumes:
       - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+      - zookeeper_secrets:/etc/zookeeper/secrets
     healthcheck:
       test: echo srvr | nc localhost 2181 || exit 1
       interval: 10s
@@ -74,6 +76,7 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: "true"
     volumes:
       - kafka_data:/var/lib/kafka/data
+      - kafka_secrets:/etc/kafka/secrets
     depends_on:
       - zookeeper
     networks:
@@ -97,3 +100,9 @@ volumes:
     name: elevate-banking-zookeeper-data
   kafka_data:
     name: elevate-banking-kafka-data
+  zookeeper_log:
+    name: elevate-banking-zookeeper-log
+  zookeeper_secrets:
+    name: elevate-banking-zookeeper-secrets
+  kafka_secrets:
+    name: elevate-banking-kafka-secrets
