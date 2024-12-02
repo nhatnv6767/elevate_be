@@ -18,7 +18,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 
 @Component
-@DependsOn({"dockerConfig"})
+@DependsOn({"dockerConfig", "entityManagerFactory"})
 public class DatabaseSchemaInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
     @Value("${spring.datasource.url}")
@@ -32,7 +32,7 @@ public class DatabaseSchemaInitializer implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        Thread.sleep(2000); // Đợi schema được tạo xong
+        Thread.sleep(5000); // Đợi schema được tạo xong
 
         if (!verifyDatabaseSchema()) {
             throw new RuntimeException("Database schema verification failed");
