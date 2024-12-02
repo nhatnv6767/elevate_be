@@ -235,6 +235,7 @@ public class DockerConfig {
     private boolean isPortAccesible(String host, int port) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), 1000);
+            return true;
         } catch (Exception e) {
             return false;
         }
