@@ -338,7 +338,10 @@ public class DockerConfig {
             createVolumeIfNotExists(POSTGRES_VOLUME);
             createVolumeIfNotExists(REDIS_VOLUME);
             createVolumeIfNotExists(KAFKA_VOLUME);
+            createVolumeIfNotExists(KAFKA_SECRETS_VOLUME);
             createVolumeIfNotExists(ZOOKEEPER_VOLUME);
+            createVolumeIfNotExists(ZOOKEEPER_LOG_VOLUME);
+            createVolumeIfNotExists(ZOOKEEPER_SECRETS_VOLUME);
 
             // 1. Kiểm tra và khởi động PostgreSQL
             handleExistingContainer(POSTGRES_CONTAINER, "postgres", 5432);
