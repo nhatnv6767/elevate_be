@@ -31,14 +31,15 @@ spring:
     show-sql: true
     generate-ddl: true
     hibernate:
-      ddl-auto: update
+      #      ddl-auto: update # LAN 1
+      ddl-auto: update # LAN 2
     defer-datasource-initialization: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         hbm2ddl:
-          auto: create
+          auto: update
           import_files: data.sql
         jdbc:
           lob:

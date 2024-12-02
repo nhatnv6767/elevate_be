@@ -18,8 +18,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 
 @Component
-@DependsOn({"databaseInitializationConfig"})
-@Order(Ordered.HIGHEST_PRECEDENCE + 2)
+@DependsOn({"dockerConfig"})
 public class DatabaseSchemaInitializer implements InitializingBean {
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
     @Value("${spring.datasource.url}")
@@ -39,18 +38,18 @@ public class DatabaseSchemaInitializer implements InitializingBean {
             throw new RuntimeException("Database schema verification failed");
         }
 
-       log.info("Database schema verified successfully!");
+        log.info("Database schema verified successfully!");
     }
 
     private boolean verifyDatabaseSchema() {
         try (Connection conn = DriverManager.getConnection(dbUrl, dbUsername, dbPassword)) {
             DatabaseMetaData metaData = conn.getMetaData();
             String[] tables = {
-                "users", "accounts", "transactions", "roles", 
-                "user_roles", "audit_logs", "beneficiaries",
-                "bill_payments", "billers", "event_logs",
-                "loyalty_points", "notifications", "point_transactions",
-                "savings_accounts", "savings_products"
+                    "users", "accounts", "transactions", "roles",
+                    "user_roles", "audit_logs", "beneficiaries",
+                    "bill_payments", "billers", "event_logs",
+                    "loyalty_points", "notifications", "point_transactions",
+                    "savings_accounts", "savings_products"
             };
 
             for (String table : tables) {
