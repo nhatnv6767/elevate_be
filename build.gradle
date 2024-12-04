@@ -79,7 +79,12 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+//    implementation 'org.springframework.kafka:spring-kafka'
+    // https://mvnrepository.com/artifact/org.springframework.kafka/spring-kafka
+    // implementation group: 'org.springframework.kafka', name: 'spring-kafka', version: '3.3.0'
     implementation 'org.springframework.kafka:spring-kafka'
+
+
     implementation 'org.testcontainers:testcontainers:1.19.6'
 
     // For Zookeeper connection check
@@ -87,7 +92,10 @@ dependencies {
     implementation 'org.apache.curator:curator-recipes:5.1.0'
 
     // For Kafka connection check
-    implementation 'org.apache.kafka:kafka-clients'
+//    implementation 'org.apache.kafka:kafka-clients'
+    // https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients
+    implementation group: 'org.apache.kafka', name: 'kafka-clients', version: '3.9.0'
+
 
     // Database
     runtimeOnly 'org.postgresql:postgresql'

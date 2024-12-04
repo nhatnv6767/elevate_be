@@ -1,6 +1,5 @@
 package com.elevatebanking.config;
 
-
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectVolumeResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
@@ -221,16 +220,14 @@ public class DockerConfig {
                         .withBinds(
                                 new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper/data")),
                                 new Bind(ZOOKEEPER_LOG_VOLUME, new Volume("/var/lib/zookeeper/log")),
-                                new Bind(ZOOKEEPER_SECRETS_VOLUME, new Volume("/etc/zookeeper/secrets"))
-                        );
-//                        .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
+                                new Bind(ZOOKEEPER_SECRETS_VOLUME, new Volume("/etc/zookeeper/secrets")));
+            // .withBinds(new Bind(ZOOKEEPER_VOLUME, new Volume("/var/lib/zookeeper")));
 
             case "kafka":
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
                         .withPortBindings(
-                                PortBinding.parse("9092:9092")
-                        )
+                                PortBinding.parse("9092:9092"))
                         .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")),
                                 new Bind(KAFKA_SECRETS_VOLUME, new Volume("/etc/kafka/secrets")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
@@ -240,7 +237,6 @@ public class DockerConfig {
                         .withNetworkMode(NETWORK_NAME);
         }
     }
-
 
     private void initializeDockerClient() {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder()
@@ -372,26 +368,25 @@ public class DockerConfig {
         }
     }
 
-
     @PreDestroy
     public void cleanup() {
         // neu len moi truong product thi mo ra đe dung cac container
-//        try {
-//            // Chỉ dừng các container nếu cần, không xóa
-//            List<Container> containers = dockerClient.listContainersCmd()
-//                    .withNameFilter(Collections.singleton("elevate-banking"))
-//                    .withShowAll(true)
-//                    .exec();
-//
-//            for (Container container : containers) {
-//                if ("running".equalsIgnoreCase(container.getState())) {
-//                    log.info("Stopping container: {}", container.getNames()[0]);
-//                    dockerClient.stopContainerCmd(container.getId()).exec();
-//                }
-//            }
-//        } catch (Exception e) {
-//            log.error("Error during cleanup", e);
-//        }
+        // try {
+        // // Chỉ dừng các container nếu cần, không xóa
+        // List<Container> containers = dockerClient.listContainersCmd()
+        // .withNameFilter(Collections.singleton("elevate-banking"))
+        // .withShowAll(true)
+        // .exec();
+        //
+        // for (Container container : containers) {
+        // if ("running".equalsIgnoreCase(container.getState())) {
+        // log.info("Stopping container: {}", container.getNames()[0]);
+        // dockerClient.stopContainerCmd(container.getId()).exec();
+        // }
+        // }
+        // } catch (Exception e) {
+        // log.error("Error during cleanup", e);
+        // }
     }
 
     private void createAndStartContainer(String service) {
@@ -446,8 +441,7 @@ public class DockerConfig {
         HostConfig hostConfig = HostConfig.newHostConfig()
                 .withNetworkMode(networkName)
                 .withPortBindings(
-                        PortBinding.parse("9092:9092")
-                )
+                        PortBinding.parse("9092:9092"))
                 .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
         // Create container with network aliases through environment variables
@@ -488,13 +482,12 @@ public class DockerConfig {
                         "POSTGRES_USER=root",
                         "POSTGRES_PASSWORD=123456",
                         "POSTGRES_HOST_AUTH_METHOD=trust",
-                        "POSTGRES_LISTEN_ADDRESSES=*"
-                );
+                        "POSTGRES_LISTEN_ADDRESSES=*");
             case "zookeeper":
                 return Arrays.asList(
                         "ZOOKEEPER_CLIENT_PORT=2181",
                         "ZOOKEEPER_TICK_TIME=2000"
-//                        "ALLOW_ANONYMOUS_LOGIN=yes"
+                // "ALLOW_ANONYMOUS_LOGIN=yes"
                 );
             case "kafkaBACK":
                 return Arrays.asList(
@@ -504,8 +497,7 @@ public class DockerConfig {
                         "KAFKA_ADVERTISED_LISTENERS=INTERNAL://0.0.0.0:9092,PLAINTEXT_HOST://192.168.1.128:9092",
                         "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT",
                         "KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT",
-                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1"
-                );
+                        "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1");
             case "kafka":
                 return Arrays.asList(
                         "KAFKA_BROKER_ID=1",
@@ -517,14 +509,12 @@ public class DockerConfig {
                         "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
                         "KAFKA_AUTO_CREATE_TOPICS_ENABLE=true",
                         "KAFKA_NUM_PARTITIONS=1",
-                        "KAFKA_DEFAULT_REPLICATION_FACTOR=1"
-                );
+                        "KAFKA_DEFAULT_REPLICATION_FACTOR=1");
             case "redis":
                 return Arrays.asList(
                         "REDIS_PASSWORD=",
                         "ALLOW_EMPTY_PASSWORD=yes",
-                        "REDIS_BIND=0.0.0.0"
-                );
+                        "REDIS_BIND=0.0.0.0");
             case "redisBACK":
                 return Arrays.asList(
                         // Basic configuration
@@ -551,8 +541,7 @@ public class DockerConfig {
 
                         // TLS/SSL configuration (if needed)
                         "REDIS_TLS_PORT=6380",
-                        "REDIS_TLS_ENABLED=no"
-                );
+                        "REDIS_TLS_ENABLED=no");
             default:
                 return Collections.emptyList();
         }
@@ -819,7 +808,7 @@ public class DockerConfig {
 
             // Lấy danh sách container đang chạy
             List<Container> runningContainers = dockerClient.listContainersCmd()
-                    .withShowAll(true)  // Bao gồm cả stopped containers
+                    .withShowAll(true) // Bao gồm cả stopped containers
                     .exec();
 
             // Lấy volume IDs đang được sử dụng
