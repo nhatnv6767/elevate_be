@@ -330,14 +330,7 @@ public class DockerConfig {
 
         try {
             cleanupOrphanedVolumes();
-
-            createVolumeIfNotExists(POSTGRES_VOLUME);
-            createVolumeIfNotExists(REDIS_VOLUME);
-            createVolumeIfNotExists(KAFKA_VOLUME);
-            createVolumeIfNotExists(KAFKA_SECRETS_VOLUME);
-            createVolumeIfNotExists(ZOOKEEPER_VOLUME);
-            createVolumeIfNotExists(ZOOKEEPER_LOG_VOLUME);
-            createVolumeIfNotExists(ZOOKEEPER_SECRETS_VOLUME);
+            initializeVolumes();
 
             // 1. Kiểm tra và khởi động PostgreSQL
             handleExistingContainer(POSTGRES_CONTAINER, "postgres", 5432);
@@ -366,6 +359,14 @@ public class DockerConfig {
             log.error("Failed to initialize Docker services", e);
             throw e;
         }
+    }
+
+    private void initializeVolumes() {
+        List<String> volumes = Arrays.asList(
+                POSTGRES_VOLUME, REDIS_VOLUME, KAFKA_VOLUME,
+                KAFKA_SECRETS_VOLUME, ZOOKEEPER_VOLUME, ZOOKEEPER_LOG_VOLUME,
+                ZOOKEEPER_SECRETS_VOLUME);
+        volumes.forEach(this::createVolumeIfNotExists);
     }
 
     @PreDestroy
