@@ -46,8 +46,7 @@ public class AuthService implements IAuthService {
     public void requestPasswordReset(AuthDTOs.PasswordResetRequest request) {
         User user = userRepository.findByUsernameAndEmail(
                 request.getUsername(),
-                request.getEmail()
-        ).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                request.getEmail()).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         String token = tokenService.createToken(user);
         emailService.sendPasswordResetEmail(user.getEmail(), token);
@@ -56,7 +55,8 @@ public class AuthService implements IAuthService {
     @Override
     public void resetPassword(AuthDTOs.NewPasswordRequest request) {
         String username = tokenService.validateTokenAndGetUsername(request.getToken());
-        User user = userRepository.findByUsername(username).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
