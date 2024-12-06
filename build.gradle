@@ -170,10 +170,12 @@ dependencies {
     implementation group: 'io.github.cdimascio', name: 'dotenv-java', version: '3.0.0'
 
     // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-oauth2-client
-    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-oauth2-client', version: '3.4.0'
+    // implementation group: 'org.springframework.boot', name: 'spring-boot-starter-oauth2-client', version: '3.4.0'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 
     // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-mail
-    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-mail', version: '3.4.0'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+    implementation 'jakarta.mail:jakarta.mail-api:2.1.3'
 
 
     // https://mvnrepository.com/artifact/jakarta.mail/jakarta.mail-api

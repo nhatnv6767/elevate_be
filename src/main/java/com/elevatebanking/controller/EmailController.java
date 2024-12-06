@@ -2,6 +2,7 @@ package com.elevatebanking.controller;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -17,6 +18,7 @@ public class EmailController {
 
     @PostMapping("/send-reset-email")
     public String sendResetEmail(@RequestParam String email, @RequestParam String token) {
+
         emailService.sendPasswordResetEmail(email, token);
         return "Email sent successfully";
     }

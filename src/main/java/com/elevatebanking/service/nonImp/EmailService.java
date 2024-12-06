@@ -1,7 +1,6 @@
 package com.elevatebanking.service.nonImp;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
@@ -16,7 +15,8 @@ public class EmailService {
 
     public void sendPasswordResetEmail(String to, String token) {
         OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient("google", "user");
-        // Sử dụng client để gửi email
+        // Sử dụng client để thiết lập các thông tin xác thực nếu cần
+
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
         message.setSubject("Password Reset Request");

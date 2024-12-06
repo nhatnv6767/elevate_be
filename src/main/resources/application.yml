@@ -174,3 +174,6 @@ jwt:
   secret: d0a8c264294f82a0225df5de62105e55a9256889c0ca637b6ae3d737dc06ddec031d4c59c08f8f07571102e5ac317381df36376e7ce32f329e01d025eeab1ad6
   expiration: 3600000
   refresh-expiration: 86400000
+
+
+debug: true
