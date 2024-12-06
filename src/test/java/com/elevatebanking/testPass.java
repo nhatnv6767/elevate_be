@@ -7,6 +7,6 @@ public class testPass {
         BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
         String rawPassword = "123456"; // Thay thế bằng mật khẩu thực tế
         String encodedPassword = passwordEncoder.encode(rawPassword);
-        System.out.println("Encoded Password: " + encodedPassword);
+        System.out.println("Encoded Password: '" + encodedPassword + "'");
     }
 }

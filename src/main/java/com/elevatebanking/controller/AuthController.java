@@ -25,6 +25,7 @@ public class AuthController implements IAuthApi {
     private final IAuthService authService;
 
     @Override
+    @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody AuthDTOs.AuthRequest request) {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
