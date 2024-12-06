@@ -167,7 +167,13 @@ dependencies {
 
 
     // https://mvnrepository.com/artifact/io.github.cdimascio/dotenv-java
-implementation group: 'io.github.cdimascio', name: 'dotenv-java', version: '3.0.0'
+    implementation group: 'io.github.cdimascio', name: 'dotenv-java', version: '3.0.0'
+
+    // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-oauth2-client
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-oauth2-client', version: '3.4.0'
+
+    // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-mail
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-mail', version: '3.4.0'
 
 
     // https://mvnrepository.com/artifact/jakarta.mail/jakarta.mail-api
