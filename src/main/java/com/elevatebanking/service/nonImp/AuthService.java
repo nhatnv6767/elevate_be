@@ -1,6 +1,7 @@
 package com.elevatebanking.service.nonImp;
 
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
+import com.elevatebanking.dto.GoogleUserInfo;
 import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.user.Role;
@@ -11,12 +12,28 @@ import com.elevatebanking.security.JwtTokenProvider;
 import com.elevatebanking.service.IAuthService;
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import lombok.RequiredArgsConstructor;
+
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +45,10 @@ public class AuthService implements IAuthService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final PasswordResetTokenService tokenService;
+    private final ClientRegistrationRepository clientRegistrationRepository;
+    private final OAuth2AuthorizedClientService authorizedClientService;
+
+    private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
     public AuthResponse login(AuthRequest request) {
@@ -80,5 +101,91 @@ public class AuthService implements IAuthService {
                 .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new))
                 .build();
 
+    }
+
+    @Override
+    public String createGoogleAuthorizationUrl() {
+        ClientRegistration googleClient = clientRegistrationRepository.findByRegistrationId("google");
+
+        OAuth2AuthorizationRequest authorizationRequest = OAuth2AuthorizationRequest
+                .authorizationCode()
+                .clientId(googleClient.getClientId())
+                .authorizationUri(googleClient.getProviderDetails().getAuthorizationUri())
+                .redirectUri(googleClient.getRedirectUri())
+                .scopes(googleClient.getScopes())
+                .state(UUID.randomUUID().toString())
+                .build();
+
+        MultiValueMap<String, String> additionalParams = new LinkedMultiValueMap<>();
+        if (authorizationRequest.getAdditionalParameters() != null) {
+            Map<String, String> stringParams = authorizationRequest.getAdditionalParameters().entrySet().stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> String.valueOf(e.getValue())));
+            additionalParams.setAll(stringParams);
+        }
+
+        return UriComponentsBuilder
+                .fromUriString(authorizationRequest.getAuthorizationUri())
+                .queryParams(additionalParams)
+                .queryParam("client_id", authorizationRequest.getClientId())
+                .queryParam("scope", String.join(" ", authorizationRequest.getScopes()))
+                .queryParam("redirect_uri", authorizationRequest.getRedirectUri())
+                .queryParam("response_type", "code")
+                .queryParam("state", authorizationRequest.getState())
+                .build()
+                .toUriString();
+    }
+
+    @Override
+    public AuthResponse processGoogleCallback(String code) {
+        // TODO Auto-generated method stub
+        try {
+            ClientRegistration googleClient = clientRegistrationRepository.findByRegistrationId("google");
+
+            GoogleUserInfo userInfo = getGoogleUserInfo(code, googleClient);
+
+            User user = userRepository.findByEmail(userInfo.getEmail()).orElseGet(() -> createNewGoogleUser(userInfo));
+
+            return AuthResponse.builder()
+                    .userId(user.getId())
+                    .username(user.getUsername())
+                    .accessToken(tokenProvider.generateToken(user.getUsername()))
+                    .expiresIn(tokenProvider.getExpirationTime())
+                    .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new))
+                    .build();
+
+        } catch (Exception e) {
+            // TODO: handle exception
+            throw new OAuth2AuthenticationException(new OAuth2Error("invalid_token"),
+                    "Error processing Google callback", e);
+        }
+    }
+
+    private GoogleUserInfo getGoogleUserInfo(String code, ClientRegistration googleClient) {
+        // Gọi Google API để lấy thông tin người dùng
+        String tokenUri = googleClient.getProviderDetails().getTokenUri();
+        String userInfoUri = googleClient.getProviderDetails().getUserInfoEndpoint().getUri();
+
+        // Tạo một đối tượng để gửi yêu cầu lấy access token
+        MultiValueMap<String, String> tokenRequestParams = new LinkedMultiValueMap<>();
+        tokenRequestParams.add("code", code);
+        tokenRequestParams.add("client_id", googleClient.getClientId());
+        tokenRequestParams.add("client_secret", googleClient.getClientSecret());
+        tokenRequestParams.add("redirect_uri", googleClient.getRedirectUri());
+        tokenRequestParams.add("grant_type", "authorization_code");
+
+        // Gửi yêu cầu POST để lấy access token
+        ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(tokenUri, tokenRequestParams, Map.class);
+        String accessToken = (String) tokenResponse.getBody().get("access_token");
+
+        // Gọi Google API để lấy thông tin người dùng
+        return restTemplate.getForObject(userInfoUri + "?access_token=" + accessToken, GoogleUserInfo.class);
+    }
+
+    private User createNewGoogleUser(GoogleUserInfo userInfo) {
+        User user = new User();
+        user.setEmail(userInfo.getEmail());
+        user.setUsername(userInfo.getEmail());
+        user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        return userRepository.save(user);
     }
 }

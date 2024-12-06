@@ -9,9 +9,11 @@ import com.elevatebanking.service.IAuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -25,6 +27,18 @@ public class AuthController implements IAuthApi {
     @Override
     public ResponseEntity<AuthResponse> login(@RequestBody AuthDTOs.AuthRequest request) {
         AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/oauth2/google")
+    public ResponseEntity<String> googleLogin() {
+        String authorizationUrl = authService.createGoogleAuthorizationUrl();
+        return ResponseEntity.ok(authorizationUrl);
+    }
+
+    @GetMapping("/oauth2/callback/google")
+    public ResponseEntity<AuthResponse> googleCallback(@RequestParam("code") String code) {
+        AuthResponse response = authService.processGoogleCallback(code);
         return ResponseEntity.ok(response);
     }
 
