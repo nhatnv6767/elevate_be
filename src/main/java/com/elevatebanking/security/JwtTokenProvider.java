@@ -56,6 +56,14 @@ public class JwtTokenProvider {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+
+        // Log  debug
+        System.out.println("Generated token for user: " + username);
+        System.out.println("User roles: " + user.getRoles().stream()
+                .map(Role::getName)
+                .toList());
+
+
         return Jwts.builder()
                 .setSubject(username)
                 .setIssuedAt(now)

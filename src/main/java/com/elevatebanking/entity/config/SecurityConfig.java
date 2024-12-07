@@ -1,6 +1,7 @@
 package com.elevatebanking.entity.config;
 
 import com.elevatebanking.security.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,10 +24,14 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import com.elevatebanking.security.JwtTokenProvider;
+// import com.elevatebanking.service.nonImp.CustomUserDetailsService;
+import com.elevatebanking.service.nonImp.CustomUserDetailsService;
+
+import org.springframework.stereotype.Service;
 
 @Configuration
 @EnableWebSecurity
-//@EnableConfigurationProperties(SecurityProperties.class)
+// @EnableConfigurationProperties(SecurityProperties.class)
 @RequiredArgsConstructor
 @EnableMethodSecurity
 public class SecurityConfig {
@@ -34,6 +39,8 @@ public class SecurityConfig {
     private final JwtTokenProvider jwtTokenProvider;
 
     private final SecurityProperties securityProperties;
+
+    private final CustomUserDetailsService userDetailsService;
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
@@ -43,7 +50,7 @@ public class SecurityConfig {
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService());
+        authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
@@ -55,35 +62,40 @@ public class SecurityConfig {
 
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter() {
-        return new JwtAuthenticationFilter(jwtTokenProvider, userDetailsService());
+        return new JwtAuthenticationFilter(jwtTokenProvider, userDetailsService);
     }
 
-    @Bean
-    public UserDetailsService userDetailsService() {
-        UserDetails user = User.builder()
-                .username(securityProperties.getUsername())
-                .password(passwordEncoder().encode(securityProperties.getPassword()))
-                .roles(securityProperties.getRoles())
-                .build();
-        return new InMemoryUserDetailsManager(user);
-    }
+    // @Bean
+    // public UserDetailsService userDetailsService() {
+    // UserDetails user = User.builder()
+    // .username(securityProperties.getUsername())
+    // .password(passwordEncoder().encode(securityProperties.getPassword()))
+    // .roles(securityProperties.getRoles())
+    // .build();
+    // return new InMemoryUserDetailsManager(user);
+    // }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/users/**").permitAll()
+                        .requestMatchers("/api/v1/users/**").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/test/**").permitAll()
                         .requestMatchers("/api/send-reset-email/**").permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setContentType("application/json");
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.getWriter().write("{\"error\": \"Access Denied\", \"message\": \"" +
+                                    authException.getMessage() + "\"}");
+                        }));
 
         return http.build();
     }
