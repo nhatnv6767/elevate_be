@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,15 +49,19 @@ public class UserServiceImpl implements IUserService {
                 throw new CustomDuplicateResourceException("Email already exists");
             }
 
-            User user = new User();
-            user.setUsername(authRequest.getUsername());
-            user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
-            user.setPhone(authRequest.getPhone());
-            user.setIdentityNumber(authRequest.getIdentityNumber());
-            user.setFullName(authRequest.getFullName());
-            user.setEmail(authRequest.getEmail());
-            user.setDateOfBirth(LocalDate.parse(authRequest.getDateOfBirth()));
+//            User user = new User();
+//            user.setUsername(authRequest.getUsername());
+//            user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
+//            user.setPhone(authRequest.getPhone());
+//            user.setIdentityNumber(authRequest.getIdentityNumber());
+//            user.setFullName(authRequest.getFullName());
+//            user.setEmail(authRequest.getEmail());
+//            user.setDateOfBirth(LocalDate.parse(authRequest.getDateOfBirth()));
+//
+//            user.setRoles(new ArrayList<>());
 
+            User user = userMapper.authRequestToUser(authRequest);
+            user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
             user.setRoles(new ArrayList<>());
 
             // add default CUSTOMER role
@@ -66,19 +71,21 @@ public class UserServiceImpl implements IUserService {
                         return new CustomResourceNotFoundException("Default role ROLE_USER not found");
                     });
 
-            user.getRoles().add(customerRole);
+            user.setRoles(new ArrayList<>(Collections.singletonList(customerRole)));
             User savedUser = userRepository.save(user);
             log.debug("User created successfully: {}", savedUser.getUsername());
-            return AuthResponse.builder()
-                    .userId(savedUser.getId())
-                    .username(savedUser.getUsername())
-                    .phone(savedUser.getPhone())
-                    .identityNumber(savedUser.getIdentityNumber())
-                    .fullName(savedUser.getFullName())
-                    .email(savedUser.getEmail())
-                    .dateOfBirth(savedUser.getDateOfBirth())
-                    .roles(savedUser.getRoles().stream().map(Role::getName).toArray(String[]::new))
-                    .build();
+//            return AuthResponse.builder()
+//                    .userId(savedUser.getId())
+//                    .username(savedUser.getUsername())
+//                    .phone(savedUser.getPhone())
+//                    .identityNumber(savedUser.getIdentityNumber())
+//                    .fullName(savedUser.getFullName())
+//                    .email(savedUser.getEmail())
+//                    .dateOfBirth(savedUser.getDateOfBirth())
+//                    .roles(savedUser.getRoles().stream().map(Role::getName).toArray(String[]::new))
+//                    .build();
+
+            return userMapper.userToAuthResponse(savedUser);
         } catch (Exception e) {
             // TODO: handle exception
             throw new RuntimeException("Could not create user: " + e.getMessage());
