@@ -7,6 +7,7 @@ import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.exception.ResourceNotFoundException;
+import com.elevatebanking.mapper.UserMapper;
 import com.elevatebanking.repository.UserRepository;
 import com.elevatebanking.security.JwtTokenProvider;
 import com.elevatebanking.service.IAuthService;
@@ -14,6 +15,7 @@ import com.github.dockerjava.api.exception.UnauthorizedException;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -47,17 +49,37 @@ public class AuthService implements IAuthService {
     private final PasswordResetTokenService tokenService;
     private final ClientRegistrationRepository clientRegistrationRepository;
     private final OAuth2AuthorizedClientService authorizedClientService;
+    private final UserMapper userMapper;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
     public AuthResponse login(AuthRequest request) {
         try {
+
+            Optional<User> optionalUser = userRepository.findByUsername(request.getUsername());
+
+            if (!optionalUser.isPresent()) {
+                throw new BadCredentialsException("Invalid username or password");
+            }
+
+            User user = optionalUser.get();
+
+            if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                throw new BadCredentialsException("Invalid username or password");
+            }
+
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getUsername(),
                             request.getPassword()));
-            return createAuthResponse(authentication);
+
+            // gen token
+            String accessToken = tokenProvider.generateToken(user.getUsername());
+            AuthResponse response = userMapper.userToAuthResponse(user);
+            response.setAccessToken(accessToken);
+            response.setExpiresIn(tokenProvider.getExpirationTime());
+            return response;
         } catch (BadCredentialsException e) {
             throw new UnauthorizedException("Invalid username or password");
         }

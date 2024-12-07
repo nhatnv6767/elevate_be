@@ -6,6 +6,8 @@ import com.elevatebanking.entity.base.AuditableEntity;
 import com.elevatebanking.entity.base.EntityConstants;
 import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.UserStatus;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -75,6 +77,7 @@ public class User extends AuditableEntity implements Statusable {
     @Size(min = 1, message = "User must have at least one role")
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
+    @JsonManagedReference
     private List<Role> roles = new ArrayList<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)

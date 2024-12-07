@@ -1,5 +1,6 @@
 package com.elevatebanking.dto.auth;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.elevatebanking.entity.base.EntityConstants;
@@ -24,9 +25,13 @@ public class AuthDTOs {
     public static class AuthRequest {
         @NotBlank(message = "Username is required")
         private String username;
+
         @NotBlank(message = "Password is required")
+        // @Pattern(regexp = EntityConstants.PASSWORD_PATTERN, message =
+        // EntityConstants.INVALID_PASSWORD)
         @Pattern(regexp = EntityConstants.PASSWORD_PATTERN, message = EntityConstants.INVALID_PASSWORD)
         private String password;
+
         @NotBlank(message = "Phone number is required")
         @Pattern(regexp = "^0\\d{9}$", message = "Phone number must be 10 digits and start with '0'")
         private String phone;
@@ -67,6 +72,12 @@ public class AuthDTOs {
     public static class AuthResponse {
         private String userId;
         private String username;
+        private String password;
+        private String phone;
+        private String identityNumber;
+        private String fullName;
+        private String email;
+        private LocalDate dateOfBirth;
         private String accessToken;
         private String refreshToken;
         private String tokenType = "Bearer";
@@ -97,7 +108,7 @@ public class AuthDTOs {
         private String token;
 
         @NotBlank(message = "New password is required")
-        @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)[a-zA-Z\\d]{8,}$", message = "Password must contain at least one lowercase letter, one uppercase letter, one digit, and must be at least 8 characters long")
+        @Pattern(regexp = EntityConstants.PASSWORD_PATTERN, message = "Password must contain at least one lowercase letter, one uppercase letter, one digit, and must be at least 8 characters long")
         private String newPassword;
     }
 }
