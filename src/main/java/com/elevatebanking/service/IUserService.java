@@ -1,5 +1,6 @@
 package com.elevatebanking.service;
 
+import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
 
@@ -7,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface IUserService {
-    User createUser(User user);
+    User createUser(AuthDTOs.AuthRequest authRequest);
 
     Optional<User> getUserById(String id);
 
