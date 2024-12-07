@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface IUserService {
-    User createUser(AuthDTOs.AuthRequest authRequest);
+    AuthDTOs.AuthResponse createUser(AuthDTOs.AuthRequest authRequest);
 
     Optional<User> getUserById(String id);
 

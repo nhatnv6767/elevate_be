@@ -32,7 +32,8 @@ public class UserController {
     // @PreAuthorize("hasRole('ROLE_ADMIN')")
     // @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<User> createUser(@Valid @RequestBody AuthRequest authRequest, HttpServletRequest request) {
+    public ResponseEntity<AuthResponse> createUser(@Valid @RequestBody AuthRequest authRequest,
+                                                   HttpServletRequest request) {
 
         try {
             StringBuilder headers = new StringBuilder("Headers:\n");
@@ -53,7 +54,7 @@ public class UserController {
             System.out.println("Credentials: " + auth.getCredentials());
             System.out.println("Authorities: " + auth.getAuthorities());
             System.out.println("Details: " + auth.getDetails());
-            User createdUser = userService.createUser(authRequest);
+            AuthResponse createdUser = userService.createUser(authRequest);
             return ResponseEntity.ok(createdUser);
         } catch (Exception e) {
             // TODO: handle exception

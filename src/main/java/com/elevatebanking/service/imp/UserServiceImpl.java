@@ -1,6 +1,8 @@
 package com.elevatebanking.service.imp;
 
+import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
+import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -40,7 +43,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public User createUser(AuthRequest authRequest) {
+    public AuthDTOs.AuthResponse createUser(AuthRequest authRequest) {
         try {
             log.debug("Starting to create user: {}", authRequest.getUsername());
             if (existsByUsername(authRequest.getUsername())) {
@@ -59,6 +62,8 @@ public class UserServiceImpl implements IUserService {
             user.setEmail(authRequest.getEmail());
             user.setDateOfBirth(LocalDate.parse(authRequest.getDateOfBirth()));
 
+            user.setRoles(new ArrayList<>());
+
             // add default CUSTOMER role
             Role customerRole = roleRepository.findByName("ROLE_USER")
                     .orElseThrow(() -> {
@@ -69,7 +74,16 @@ public class UserServiceImpl implements IUserService {
             user.getRoles().add(customerRole);
             User savedUser = userRepository.save(user);
             log.debug("User created successfully: {}", savedUser.getUsername());
-            return savedUser;
+            return AuthResponse.builder()
+                    .userId(savedUser.getId())
+                    .username(savedUser.getUsername())
+                    .phone(savedUser.getPhone())
+                    .identityNumber(savedUser.getIdentityNumber())
+                    .fullName(savedUser.getFullName())
+                    .email(savedUser.getEmail())
+                    .dateOfBirth(savedUser.getDateOfBirth())
+                    .roles(savedUser.getRoles().stream().map(Role::getName).toArray(String[]::new))
+                    .build();
         } catch (Exception e) {
             // TODO: handle exception
             throw new RuntimeException("Could not create user: " + e.getMessage());

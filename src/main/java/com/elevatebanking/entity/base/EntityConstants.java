@@ -34,9 +34,9 @@ public class EntityConstants {
     public static final String INVALID_IDENTITY = "Invalid identity number format";
 
     //    public static final String PASSWORD_PATTERN = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[!@#$%^&*])[A-Za-z\\d!@#$%^&*]{8,}$";
-    public static final String PASSWORD_PATTERN = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,}$";
+    public static final String PASSWORD_PATTERN = "^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{8,}$";
 
-    public static final String INVALID_PASSWORD = "Password must contain at minimum eight characters, at least one letter, one number and one special character";
+    public static final String INVALID_PASSWORD = "Password must contain at least one uppercase letter, one lowercase letter, one number and one special character";
 
     public static final String INVALID_TIER_STATUS = "Invalid tier status";
     public static final String INVALID_ACCOUNT_STATUS = "Invalid account status";
