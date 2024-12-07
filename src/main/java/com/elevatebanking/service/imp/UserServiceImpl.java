@@ -1,8 +1,11 @@
 package com.elevatebanking.service.imp;
 
+import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
+import com.elevatebanking.exception.CustomDuplicateResourceException;
+import com.elevatebanking.exception.CustomResourceNotFoundException;
 import com.elevatebanking.repository.RoleRepository;
 import com.elevatebanking.repository.UserRepository;
 import com.elevatebanking.service.IUserService;
@@ -14,6 +17,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,28 +31,49 @@ public class UserServiceImpl implements IUserService {
     private final RoleRepository roleRepository;
 
     @Autowired
-    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder, RoleRepository roleRepository) {
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder,
+            RoleRepository roleRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.roleRepository = roleRepository;
     }
 
     @Override
-    public User createUser(User user) {
-        if (existsByUsername(user.getUsername())) {
-            throw new DuplicateResourceException("Username already exists");
-        }
-        if (existsByEmail(user.getEmail())) {
-            throw new DuplicateResourceException("Email already exists");
-        }
+    @Transactional
+    public User createUser(AuthRequest authRequest) {
+        try {
+            log.debug("Starting to create user: {}", authRequest.getUsername());
+            if (existsByUsername(authRequest.getUsername())) {
+                throw new CustomDuplicateResourceException("Username already exists");
+            }
+            if (existsByEmail(authRequest.getEmail())) {
+                throw new CustomDuplicateResourceException("Email already exists");
+            }
 
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        user.setStatus(UserStatus.ACTIVE);
+            User user = new User();
+            user.setUsername(authRequest.getUsername());
+            user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
+            user.setPhone(authRequest.getPhone());
+            user.setIdentityNumber(authRequest.getIdentityNumber());
+            user.setFullName(authRequest.getFullName());
+            user.setEmail(authRequest.getEmail());
+            user.setDateOfBirth(LocalDate.parse(authRequest.getDateOfBirth()));
 
-        // add default CUSTOMER role
-        Role customerRole = roleRepository.findByName("ROLE_USER").orElseThrow(() -> new ResourceNotFoundException("Default role not found"));
-        user.getRoles().add(customerRole);
-        return userRepository.save(user);
+            // add default CUSTOMER role
+            Role customerRole = roleRepository.findByName("ROLE_USER")
+                    .orElseThrow(() -> {
+                        log.error("Default role ROLE_USER not found");
+                        return new CustomResourceNotFoundException("Default role ROLE_USER not found");
+                    });
+
+            user.getRoles().add(customerRole);
+            User savedUser = userRepository.save(user);
+            log.debug("User created successfully: {}", savedUser.getUsername());
+            return savedUser;
+        } catch (Exception e) {
+            // TODO: handle exception
+            throw new RuntimeException("Could not create user: " + e.getMessage());
+        }
     }
 
     @Override
@@ -67,7 +93,8 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     public User updateUser(User user) {
-        User existingUser = getUserById(user.getId()).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User existingUser = getUserById(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // dont update sensitive fields
         user.setPassword(existingUser.getPassword());

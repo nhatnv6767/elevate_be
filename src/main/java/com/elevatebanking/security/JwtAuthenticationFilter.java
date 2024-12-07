@@ -33,10 +33,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String username = jwtTokenProvider.getUsernameFromToken(jwt);
 
         // Add logging
-        System.out.println("Processing JWT for user: " + username);
-        System.out.println("Processing JWT for user: " + jwt);
-        System.out.println("Processing JWT for user: " + jwtTokenProvider.validateToken(jwt));
-        System.out.println("Processing JWT for user: " + authHeader);
+//        System.out.println("Processing JWT for user: " + username);
+//        System.out.println("Processing JWT for user: " + jwt);
+//        System.out.println("Processing JWT for user: " + jwtTokenProvider.validateToken(jwt));
+//        System.out.println("Processing JWT for user: " + authHeader);
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);

@@ -1,5 +1,6 @@
 package com.elevatebanking.controller;
 
+import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.service.IUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,37 +26,43 @@ public class UserController {
     private final IUserService userService;
 
     @Operation(summary = "Create new user account")
-//    @PreAuthorize("hasRole('ROLE_ADMIN')")
-//    @PreAuthorize("hasRole('ADMIN')")
+    // @PreAuthorize("hasRole('ROLE_ADMIN')")
+    // @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<User> createUser(@Valid @RequestBody User user, HttpServletRequest request) {
+    public ResponseEntity<User> createUser(@Valid @RequestBody AuthRequest authRequest, HttpServletRequest request) {
 
-        StringBuilder headers = new StringBuilder("Headers:\n");
-        request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-            headers.append(headerName).append(": ").append(request.getHeader(headerName)).append("\n");
-        });
+        try {
+            StringBuilder headers = new StringBuilder("Headers:\n");
+            request.getHeaderNames().asIterator().forEachRemaining(headerName -> {
+                headers.append(headerName).append(": ").append(request.getHeader(headerName)).append("\n");
+            });
 
-        System.out.println("Request body: " + user);
-        System.out.println(headers.toString());
+            System.out.println("Request body: " + authRequest);
+            System.out.println(headers.toString());
 
-        String currentUserRole = SecurityContextHolder.getContext().getAuthentication().getAuthorities().toString();
-        System.out.println("Role của người dùng hiện tại: " + currentUserRole);
+            System.out.println("Received password: '" + authRequest.getPassword() + "'");
 
+            String currentUserRole = SecurityContextHolder.getContext().getAuthentication().getAuthorities().toString();
+            System.out.println("Current user role: " + currentUserRole);
 
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        System.out.println("Principal: " + auth.getPrincipal());
-        System.out.println("Credentials: " + auth.getCredentials());
-        System.out.println("Authorities: " + auth.getAuthorities());
-        System.out.println("Details: " + auth.getDetails());
-        return ResponseEntity.ok(userService.createUser(user));
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            System.out.println("Principal: " + auth.getPrincipal());
+            System.out.println("Credentials: " + auth.getCredentials());
+            System.out.println("Authorities: " + auth.getAuthorities());
+            System.out.println("Details: " + auth.getDetails());
+            User createdUser = userService.createUser(authRequest);
+            return ResponseEntity.ok(createdUser);
+        } catch (Exception e) {
+            // TODO: handle exception
+            throw e;
+        }
     }
 
     @Operation(summary = "Get all users")
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    // @PreAuthorize("hasRole('ROLE_ADMIN')")
     @GetMapping
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());
     }
-
 
 }
