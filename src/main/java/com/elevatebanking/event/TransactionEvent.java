@@ -3,10 +3,12 @@ package com.elevatebanking.event;
 import com.elevatebanking.entity.transaction.Transaction;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Getter
+@Setter
 @NoArgsConstructor
 public class TransactionEvent {
     private String transactionId;

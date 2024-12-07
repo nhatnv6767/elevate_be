@@ -45,7 +45,7 @@ public class UserServiceImpl implements IUserService {
         user.setStatus(UserStatus.ACTIVE);
 
         // add default CUSTOMER role
-        Role customerRole = roleRepository.findByName("ROLE_CUSTOMER").orElseThrow(() -> new ResourceNotFoundException("Default role not found"));
+        Role customerRole = roleRepository.findByName("ROLE_USER").orElseThrow(() -> new ResourceNotFoundException("Default role not found"));
         user.getRoles().add(customerRole);
         return userRepository.save(user);
     }
