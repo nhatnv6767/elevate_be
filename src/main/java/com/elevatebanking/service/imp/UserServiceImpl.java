@@ -8,11 +8,13 @@ import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.exception.CustomDuplicateResourceException;
 import com.elevatebanking.exception.CustomResourceNotFoundException;
+import com.elevatebanking.mapper.UserMapper;
 import com.elevatebanking.repository.RoleRepository;
 import com.elevatebanking.repository.UserRepository;
 import com.elevatebanking.service.IUserService;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.common.errors.DuplicateResourceException;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,25 +23,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 @Transactional
 @Slf4j
+@RequiredArgsConstructor
 public class UserServiceImpl implements IUserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final RoleRepository roleRepository;
-
-    @Autowired
-    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder,
-            RoleRepository roleRepository) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.roleRepository = roleRepository;
-    }
+    private final UserMapper userMapper;
 
     @Override
     @Transactional
