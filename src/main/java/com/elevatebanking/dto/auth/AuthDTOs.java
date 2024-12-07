@@ -1,5 +1,6 @@
 package com.elevatebanking.dto.auth;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.elevatebanking.entity.base.EntityConstants;
@@ -67,6 +68,11 @@ public class AuthDTOs {
     public static class AuthResponse {
         private String userId;
         private String username;
+        private String phone;
+        private String identityNumber;
+        private String fullName;
+        private String email;
+        private LocalDate dateOfBirth;
         private String accessToken;
         private String refreshToken;
         private String tokenType = "Bearer";

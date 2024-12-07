@@ -1,6 +1,8 @@
 package com.elevatebanking.controller;
 
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
+import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
+import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.service.IUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -61,8 +64,20 @@ public class UserController {
     @Operation(summary = "Get all users")
     // @PreAuthorize("hasRole('ROLE_ADMIN')")
     @GetMapping
-    public ResponseEntity<List<User>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    public ResponseEntity<List<AuthResponse>> getAllUsers() {
+        List<User> users = userService.getAllUsers();
+        List<AuthResponse> response = users.stream()
+                .map(user -> AuthResponse.builder()
+                        .userId(user.getId())
+                        .username(user.getUsername())
+                        .phone(user.getPhone())
+                        .identityNumber(user.getIdentityNumber())
+                        .fullName(user.getFullName())
+                        .email(user.getEmail())
+                        .dateOfBirth(user.getDateOfBirth())
+                        .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new)).build())
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
     }
 
 }
