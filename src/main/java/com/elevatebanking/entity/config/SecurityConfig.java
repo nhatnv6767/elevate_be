@@ -2,10 +2,8 @@ package com.elevatebanking.entity.config;
 
 import com.elevatebanking.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -28,9 +26,8 @@ import com.elevatebanking.security.JwtTokenProvider;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(SecurityProperties.class)
+//@EnableConfigurationProperties(SecurityProperties.class)
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
 @EnableMethodSecurity
 public class SecurityConfig {
 

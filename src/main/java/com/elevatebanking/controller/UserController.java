@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,11 +24,12 @@ public class UserController {
     private final IUserService userService;
 
     @Operation(summary = "Create new user account")
-    @PreAuthorize("hasRole('ADMIN')")
-    @PostMapping
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    @PostMapping("/create")
     public ResponseEntity<User> createUser(@Valid @RequestBody User user) {
+        String currentUserRole = SecurityContextHolder.getContext().getAuthentication().getAuthorities().toString();
+        System.out.println("Role của người dùng hiện tại: " + currentUserRole);
         return ResponseEntity.ok(userService.createUser(user));
     }
 
-    
 }
