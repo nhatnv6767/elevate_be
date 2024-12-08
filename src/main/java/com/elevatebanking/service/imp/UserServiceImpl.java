@@ -1,7 +1,9 @@
 package com.elevatebanking.service.imp;
 
 import com.elevatebanking.dto.auth.AuthDTOs;
+import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
+import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest.RoleRequest;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
@@ -105,35 +107,25 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
-    public User updateUser(User user) {
-        User existingUser = getUserById(user.getId())
+    public User updateUser(String id, UserUpdateRequest updateRequest) {
+        User existingUser = getUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (user.getPhone() != null) {
-            existingUser.setPhone(user.getPhone());
+        userMapper.updateUserFromUpdateRequest(updateRequest, existingUser);
+
+        if (updateRequest.getPassword() != null) {
+            existingUser.setPassword(passwordEncoder.encode(updateRequest.getPassword()));
         }
 
-        if (user.getIdentityNumber() != null) {
-            existingUser.setIdentityNumber(user.getIdentityNumber());
+        if (updateRequest.getRoles() != null && !updateRequest.getRoles().isEmpty()) {
+            existingUser.setRoles(new ArrayList<>());
+            for (RoleRequest roleReq : updateRequest.getRoles()) {
+                Role role = roleRepository.findByName(roleReq.getRole())
+                        .orElseThrow(() -> new ResourceNotFoundException("Role not found"));
+                existingUser.getRoles().add(role);
+            }
         }
 
-        if (user.getFullName() != null) {
-            existingUser.setFullName(user.getFullName());
-        }
-
-        if (user.getEmail() != null) {
-            existingUser.setEmail(user.getEmail());
-        }
-
-        if (user.getDateOfBirth() != null) {
-            existingUser.setDateOfBirth(user.getDateOfBirth());
-        }
-
-        // dont update sensitive fields
-        existingUser.setPassword(
-                user.getPassword() != null ? passwordEncoder.encode(user.getPassword()) : existingUser.getPassword());
-        existingUser.setRoles(user.getRoles() != null ? user.getRoles() : existingUser.getRoles());
-        existingUser.setStatus(user.getStatus() != null ? user.getStatus() : existingUser.getStatus());
         return userRepository.save(existingUser);
     }
 

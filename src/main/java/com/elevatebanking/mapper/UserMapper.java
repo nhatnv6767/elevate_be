@@ -10,6 +10,7 @@ import org.mapstruct.Named;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 import org.mapstruct.factory.Mappers;
 
+import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.user.User;
@@ -17,7 +18,7 @@ import com.elevatebanking.entity.user.User;
 import java.time.LocalDate;
 import java.util.List;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public interface UserMapper {
 
     UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
@@ -25,7 +26,7 @@ public interface UserMapper {
     @Mapping(target = "userId", source = "id") // Map id sang userId
     @Mapping(target = "password", ignore = true)
     @Mapping(target = "tokenType", constant = "Bearer")
-    @Mapping(target = "roles", expression = "java(user.getRoles().stream().map(Role::getName).toArray(String[]::new))")
+    @Mapping(target = "roles", source = "roles", qualifiedByName = "roleListToStringArray")
     @Mapping(target = "accessToken", ignore = true)
     @Mapping(target = "refreshToken", ignore = true)
     @Mapping(target = "expiresIn", ignore = true)
@@ -57,7 +58,11 @@ public interface UserMapper {
     // User updateUserFromAuthRequest(AuthRequest request, @MappingTarget User
     // user);
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    void updateUserFromAuthRequest(AuthRequest authRequest, @MappingTarget User user);
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "password", ignore = true)
+    @Mapping(target = "roles", ignore = true)
+    @Mapping(target = "status", ignore = true)
+    void updateUserFromUpdateRequest(UserUpdateRequest updateRequest, @MappingTarget User user);
 
     List<AuthResponse> usersToAuthResponses(List<User> users);
 

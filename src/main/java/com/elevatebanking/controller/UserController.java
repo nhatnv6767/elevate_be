@@ -1,5 +1,6 @@
 package com.elevatebanking.controller;
 
+import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.user.Role;
@@ -84,11 +85,17 @@ public class UserController {
 
     @Operation(summary = "Update user")
     @PutMapping("/{id}")
-    public ResponseEntity<AuthResponse> updateUser(@PathVariable String id, @Valid @RequestBody AuthRequest authRequest) {
-        User user = userMapper.authRequestToUser(authRequest);
-        user.setId(id);
-        User updatedUser = userService.updateUser(user);
+    public ResponseEntity<AuthResponse> updateUser(@PathVariable String id,
+                                                   @Valid @RequestBody UserUpdateRequest updateRequest) {
+        User updatedUser = userService.updateUser(id, updateRequest);
         return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
+    }
+
+    @Operation(summary = "Delete user")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(@PathVariable String id) {
+        userService.deleteUser(id);
+        return ResponseEntity.ok().build();
     }
 
 }

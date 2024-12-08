@@ -1,6 +1,7 @@
 package com.elevatebanking.service;
 
 import com.elevatebanking.dto.auth.AuthDTOs;
+import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
 
@@ -16,7 +17,7 @@ public interface IUserService {
 
     List<User> getAllUsers();
 
-    User updateUser(User user);
+    User updateUser(String id, UserUpdateRequest updateRequest);
 
     void deleteUser(String id);
 
