@@ -177,6 +177,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-mail'
     implementation 'jakarta.mail:jakarta.mail-api:2.1.3'
 
+    // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-actuator
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-actuator', version: '3.4.0'
+
 
     // https://mvnrepository.com/artifact/jakarta.mail/jakarta.mail-api
     implementation 'jakarta.mail:jakarta.mail-api:2.1.3'

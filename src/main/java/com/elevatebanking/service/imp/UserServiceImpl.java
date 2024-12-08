@@ -2,7 +2,6 @@ package com.elevatebanking.service.imp;
 
 import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
-import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
@@ -16,12 +15,10 @@ import com.elevatebanking.service.IUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -49,16 +46,16 @@ public class UserServiceImpl implements IUserService {
                 throw new CustomDuplicateResourceException("Email already exists");
             }
 
-//            User user = new User();
-//            user.setUsername(authRequest.getUsername());
-//            user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
-//            user.setPhone(authRequest.getPhone());
-//            user.setIdentityNumber(authRequest.getIdentityNumber());
-//            user.setFullName(authRequest.getFullName());
-//            user.setEmail(authRequest.getEmail());
-//            user.setDateOfBirth(LocalDate.parse(authRequest.getDateOfBirth()));
-//
-//            user.setRoles(new ArrayList<>());
+            // User user = new User();
+            // user.setUsername(authRequest.getUsername());
+            // user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
+            // user.setPhone(authRequest.getPhone());
+            // user.setIdentityNumber(authRequest.getIdentityNumber());
+            // user.setFullName(authRequest.getFullName());
+            // user.setEmail(authRequest.getEmail());
+            // user.setDateOfBirth(LocalDate.parse(authRequest.getDateOfBirth()));
+            //
+            // user.setRoles(new ArrayList<>());
 
             User user = userMapper.authRequestToUser(authRequest);
             user.setPassword(passwordEncoder.encode(authRequest.getPassword()));
@@ -74,16 +71,16 @@ public class UserServiceImpl implements IUserService {
             user.setRoles(new ArrayList<>(Collections.singletonList(customerRole)));
             User savedUser = userRepository.save(user);
             log.debug("User created successfully: {}", savedUser.getUsername());
-//            return AuthResponse.builder()
-//                    .userId(savedUser.getId())
-//                    .username(savedUser.getUsername())
-//                    .phone(savedUser.getPhone())
-//                    .identityNumber(savedUser.getIdentityNumber())
-//                    .fullName(savedUser.getFullName())
-//                    .email(savedUser.getEmail())
-//                    .dateOfBirth(savedUser.getDateOfBirth())
-//                    .roles(savedUser.getRoles().stream().map(Role::getName).toArray(String[]::new))
-//                    .build();
+            // return AuthResponse.builder()
+            // .userId(savedUser.getId())
+            // .username(savedUser.getUsername())
+            // .phone(savedUser.getPhone())
+            // .identityNumber(savedUser.getIdentityNumber())
+            // .fullName(savedUser.getFullName())
+            // .email(savedUser.getEmail())
+            // .dateOfBirth(savedUser.getDateOfBirth())
+            // .roles(savedUser.getRoles().stream().map(Role::getName).toArray(String[]::new))
+            // .build();
 
             return userMapper.userToAuthResponse(savedUser);
         } catch (Exception e) {
@@ -112,11 +109,32 @@ public class UserServiceImpl implements IUserService {
         User existingUser = getUserById(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        if (user.getPhone() != null) {
+            existingUser.setPhone(user.getPhone());
+        }
+
+        if (user.getIdentityNumber() != null) {
+            existingUser.setIdentityNumber(user.getIdentityNumber());
+        }
+
+        if (user.getFullName() != null) {
+            existingUser.setFullName(user.getFullName());
+        }
+
+        if (user.getEmail() != null) {
+            existingUser.setEmail(user.getEmail());
+        }
+
+        if (user.getDateOfBirth() != null) {
+            existingUser.setDateOfBirth(user.getDateOfBirth());
+        }
+
         // dont update sensitive fields
-        user.setPassword(existingUser.getPassword());
-        user.setRoles(existingUser.getRoles());
-        user.setStatus(existingUser.getStatus());
-        return userRepository.save(user);
+        existingUser.setPassword(
+                user.getPassword() != null ? passwordEncoder.encode(user.getPassword()) : existingUser.getPassword());
+        existingUser.setRoles(user.getRoles() != null ? user.getRoles() : existingUser.getRoles());
+        existingUser.setStatus(user.getStatus() != null ? user.getStatus() : existingUser.getStatus());
+        return userRepository.save(existingUser);
     }
 
     @Override

@@ -1,10 +1,13 @@
 package com.elevatebanking.mapper;
 
 import com.elevatebanking.entity.user.Role;
+
+import org.mapstruct.BeanMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
+import org.mapstruct.NullValuePropertyMappingStrategy;
 import org.mapstruct.factory.Mappers;
 
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
@@ -31,25 +34,30 @@ public interface UserMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "password", ignore = true)
     @Mapping(target = "roles", ignore = true)
-//    @Mapping(target = "status", constant = "ACTIVE")
+    // @Mapping(target = "status", constant = "ACTIVE")
     @Mapping(target = "dateOfBirth", source = "dateOfBirth", dateFormat = "yyyy-MM-dd")
     User authRequestToUser(AuthRequest authRequest);
 
     @Named("stringToLocalDate")
     default LocalDate stringToLocalDate(String date) {
-        if (date == null) return null;
+        if (date == null)
+            return null;
         return LocalDate.parse(date);
     }
 
     @Named("roleListToStringArray")
     default String[] roleListToStringArray(List<Role> roles) {
-        if (roles == null) return new String[0];
+        if (roles == null)
+            return new String[0];
         return roles.stream()
                 .map(Role::getName)
                 .toArray(String[]::new);
     }
 
-    User updateUserFromAuthRequest(AuthRequest request, @MappingTarget User user);
+    // User updateUserFromAuthRequest(AuthRequest request, @MappingTarget User
+    // user);
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    void updateUserFromAuthRequest(AuthRequest authRequest, @MappingTarget User user);
 
     List<AuthResponse> usersToAuthResponses(List<User> users);
 
