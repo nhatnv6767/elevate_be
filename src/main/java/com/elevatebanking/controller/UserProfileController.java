@@ -5,6 +5,7 @@ import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.profile.ChangePasswordRequest;
 import com.elevatebanking.dto.profile.UpdateProfileRequest;
 import com.elevatebanking.service.IUserProfileService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,7 +31,7 @@ public class UserProfileController implements IUserProfileApi {
 
     @Override
     @PostMapping("/change-password")
-    public ResponseEntity<Void> changePassword(@RequestBody ChangePasswordRequest request) {
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         userProfileService.changePassword(request);
         return ResponseEntity.ok().build();
     }
