@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.elevatebanking.entity.base.EntityConstants;
+import com.elevatebanking.entity.enums.UserStatus;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -83,6 +84,7 @@ public class AuthDTOs {
         private String tokenType = "Bearer";
         private Long expiresIn;
         private String[] roles;
+        private UserStatus status;
     }
 
     @Data

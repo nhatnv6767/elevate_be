@@ -30,6 +30,7 @@ public interface UserMapper {
     @Mapping(target = "accessToken", ignore = true)
     @Mapping(target = "refreshToken", ignore = true)
     @Mapping(target = "expiresIn", ignore = true)
+    @Mapping(target = "status", source = "status")
     AuthResponse userToAuthResponse(User user);
 
     @Mapping(target = "id", ignore = true)

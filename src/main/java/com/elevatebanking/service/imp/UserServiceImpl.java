@@ -161,4 +161,18 @@ public class UserServiceImpl implements IUserService {
         user.setPassword(passwordEncoder.encode(newPassword));
         return userRepository.save(user);
     }
+
+    @Override
+    public User toggleUserStatus(String id) {
+        User user = getUserById(id).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getStatus() == UserStatus.INACTIVE) {
+            user.setStatus(UserStatus.ACTIVE);
+        } else {
+            user.setStatus(UserStatus.INACTIVE);
+        }
+
+        return userRepository.save(user);
+    }
+
 }

@@ -28,4 +28,6 @@ public interface IUserService {
     boolean existsByEmail(String email);
 
     User updatePassword(String id, String newPassword);
+
+    User toggleUserStatus(String id);
 }

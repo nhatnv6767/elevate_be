@@ -3,7 +3,7 @@ package com.elevatebanking.controller;
 import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
-import com.elevatebanking.entity.user.Role;
+import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.mapper.UserMapper;
 import com.elevatebanking.service.IUserService;
@@ -14,7 +14,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -91,11 +90,18 @@ public class UserController {
         return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
     }
 
-    @Operation(summary = "Delete user")
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable String id) {
-        userService.deleteUser(id);
-        return ResponseEntity.ok().build();
+    @Operation(summary = "Deactivate user")
+    @PatchMapping("/{id}/deactivate")
+    public ResponseEntity<AuthResponse> deactivateUser(@PathVariable String id) {
+        User updatedUser = userService.changeUserStatus(id, UserStatus.INACTIVE);
+        return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
+    }
+
+    @Operation(summary = "Toggle user status (Activate/Deactivate)")
+    @PatchMapping("/{id}/toggle-status")
+    public ResponseEntity<AuthResponse> toggleUserStatus(@PathVariable String id) {
+        User updatedUser = userService.toggleUserStatus(id);
+        return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
     }
 
 }
