@@ -4,8 +4,10 @@ import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.GoogleUserInfo;
 import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
+import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
+import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.mapper.UserMapper;
 import com.elevatebanking.repository.UserRepository;
@@ -64,6 +66,10 @@ public class AuthService implements IAuthService {
             }
 
             User user = optionalUser.get();
+
+            if (user.getStatus() != UserStatus.ACTIVE) {
+                throw new InvalidOperationException("Account is not active");
+            }
 
             if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
                 throw new BadCredentialsException("Invalid username or password");

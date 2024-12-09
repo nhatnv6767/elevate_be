@@ -1,9 +1,11 @@
 package com.elevatebanking.controller;
 
+import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
-import com.elevatebanking.entity.user.Role;
+import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
+import com.elevatebanking.mapper.UserMapper;
 import com.elevatebanking.service.IUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -12,7 +14,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 @SecurityRequirement(name = "Bearer Authentication")
 public class UserController {
     private final IUserService userService;
+    private final UserMapper userMapper;
 
     @Operation(summary = "Create new user account")
     // @PreAuthorize("hasRole('ROLE_ADMIN')")
@@ -68,17 +70,38 @@ public class UserController {
     public ResponseEntity<List<AuthResponse>> getAllUsers() {
         List<User> users = userService.getAllUsers();
         List<AuthResponse> response = users.stream()
-                .map(user -> AuthResponse.builder()
-                        .userId(user.getId())
-                        .username(user.getUsername())
-                        .phone(user.getPhone())
-                        .identityNumber(user.getIdentityNumber())
-                        .fullName(user.getFullName())
-                        .email(user.getEmail())
-                        .dateOfBirth(user.getDateOfBirth())
-                        .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new)).build())
+                .map(userMapper::userToAuthResponse)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Get user by ID")
+    @GetMapping("/{id}")
+    public ResponseEntity<AuthResponse> getUserById(@PathVariable String id) {
+        return userService.getUserById(id).map(user -> ResponseEntity.ok(userMapper.userToAuthResponse(user)))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Update user")
+    @PutMapping("/{id}")
+    public ResponseEntity<AuthResponse> updateUser(@PathVariable String id,
+                                                   @Valid @RequestBody UserUpdateRequest updateRequest) {
+        User updatedUser = userService.updateUser(id, updateRequest);
+        return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
+    }
+
+    @Operation(summary = "Deactivate user")
+    @PatchMapping("/{id}/deactivate")
+    public ResponseEntity<AuthResponse> deactivateUser(@PathVariable String id) {
+        User updatedUser = userService.changeUserStatus(id, UserStatus.INACTIVE);
+        return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
+    }
+
+    @Operation(summary = "Toggle user status (Activate/Deactivate)")
+    @PatchMapping("/{id}/toggle-status")
+    public ResponseEntity<AuthResponse> toggleUserStatus(@PathVariable String id) {
+        User updatedUser = userService.toggleUserStatus(id);
+        return ResponseEntity.ok(userMapper.userToAuthResponse(updatedUser));
     }
 
 }
