@@ -64,6 +64,7 @@ public interface UserMapper {
     @Mapping(target = "roles", ignore = true)
     @Mapping(target = "status", ignore = true)
     void updateUserFromUpdateRequest(UserUpdateRequest updateRequest, @MappingTarget User user);
+    //
 
     List<AuthResponse> usersToAuthResponses(List<User> users);
 
