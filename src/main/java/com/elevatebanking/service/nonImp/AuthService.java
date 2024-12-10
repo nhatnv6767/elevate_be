@@ -48,7 +48,7 @@ public class AuthService implements IAuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-    private final PasswordResetTokenService tokenService;
+    private final BAKPasswordResetTokenService tokenService;
     private final ClientRegistrationRepository clientRegistrationRepository;
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final UserMapper userMapper;
@@ -98,7 +98,7 @@ public class AuthService implements IAuthService {
                 request.getEmail()).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         String token = tokenService.createToken(user);
-        emailService.sendPasswordResetEmail(user.getEmail(), token);
+        emailService.sendResetPasswordEmail(user.getEmail(), token);
     }
 
     @Override

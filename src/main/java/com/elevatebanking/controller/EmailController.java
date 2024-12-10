@@ -19,7 +19,7 @@ public class EmailController {
     @PostMapping("/send-reset-email")
     public String sendResetEmail(@RequestParam String email, @RequestParam String token) {
 
-        emailService.sendPasswordResetEmail(email, token);
+        emailService.sendResetPasswordEmail(email, token);
         return "Email sent successfully";
     }
 

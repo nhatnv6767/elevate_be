@@ -4,6 +4,7 @@ import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.UserUpdateRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest.RoleRequest;
+import com.elevatebanking.dto.forgot.ResetPasswordRequest;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
 import com.elevatebanking.entity.user.User;
@@ -172,6 +173,16 @@ public class UserServiceImpl implements IUserService {
             user.setStatus(UserStatus.INACTIVE);
         }
 
+        return userRepository.save(user);
+    }
+
+    @Override
+    public Optional<User> getUserByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+
+    @Override
+    public User saveNewPassword(User user) {
         return userRepository.save(user);
     }
 

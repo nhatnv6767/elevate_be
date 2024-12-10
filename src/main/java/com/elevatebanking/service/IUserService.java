@@ -2,6 +2,7 @@ package com.elevatebanking.service;
 
 import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.UserUpdateRequest;
+import com.elevatebanking.dto.forgot.ResetPasswordRequest;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
 
@@ -30,4 +31,8 @@ public interface IUserService {
     User updatePassword(String id, String newPassword);
 
     User toggleUserStatus(String id);
+
+    Optional<User> getUserByEmail(String email);
+
+    User saveNewPassword(User user);
 }
