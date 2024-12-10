@@ -8,6 +8,7 @@ import java.util.Properties;
 
 import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class EmailService {
     private final JavaMailSender mailSender;
+    private final GoogleTokenService tokenService;
 
     @Value("${MAIL_USERNAME}")
     private String fromEmail;
@@ -26,6 +28,18 @@ public class EmailService {
     private String accessToken;
 
     public void sendResetPasswordEmail(String toEmail, String token) {
+        try {
+            sendEmail(toEmail, token);
+        } catch (MailAuthenticationException e) {
+            // Nếu lỗi auth, thử refresh token và gửi lại
+            String newAccessToken = tokenService.refreshAccessToken();
+            updateMailSenderToken(newAccessToken);
+            sendEmail(toEmail, token);
+        }
+    }
+
+
+    private void sendEmail(String toEmail, String token) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -39,21 +53,17 @@ public class EmailService {
 
             helper.setText(content, true);
 
-            if (mailSender instanceof JavaMailSenderImpl) {
-                JavaMailSenderImpl mailSenderImpl = (JavaMailSenderImpl) mailSender;
-                Properties props = mailSenderImpl.getJavaMailProperties();
-                props.put("mail.smtp.auth.mechanisms", "XOAUTH2");
-                props.put("mail.smtp.sasl.enable", "true");
-                props.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
-                props.put("mail.smtp.auth.oauth2.disable", "false");
-                props.put("mail.smtp.oauth2.access.token", accessToken);
-            }
-
             mailSender.send(message);
         } catch (Exception e) {
             log.error("Failed to send reset password email", e);
             throw new EmailSendException("Failed to send reset password email", e);
         }
+    }
+
+    private void updateMailSenderToken(String newAccessToken) {
+        JavaMailSenderImpl mailSenderImpl = (JavaMailSenderImpl) mailSender;
+        Properties props = mailSenderImpl.getJavaMailProperties();
+        props.put("mail.smtp.oauth2.access.token", newAccessToken);
     }
 
     private String createEmailTemplate(String resetLink) {

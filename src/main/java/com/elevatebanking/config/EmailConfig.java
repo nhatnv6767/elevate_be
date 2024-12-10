@@ -1,5 +1,7 @@
 package com.elevatebanking.config;
 
+import com.elevatebanking.service.nonImp.GoogleTokenService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,7 +11,10 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import java.util.Properties;
 
 @Configuration
+@RequiredArgsConstructor
 public class EmailConfig {
+    private final GoogleTokenService tokenService;
+
     @Value("${spring.mail.host}")
     private String host;
 
@@ -37,14 +42,6 @@ public class EmailConfig {
     @Bean
     public JavaMailSender javaMailSender() {
 
-        System.out.println("host: " + host);
-        System.out.println("port: " + port);
-        System.out.println("username: " + username);
-        // System.out.println("password: " + password);
-        System.out.println("clientId: " + clientId);
-        System.out.println("clientSecret: " + clientSecret);
-        System.out.println("scope: " + scope);
-
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
         mailSender.setHost(host);
         mailSender.setPort(port);
@@ -55,15 +52,13 @@ public class EmailConfig {
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.ssl.trust", "smtp.gmail.com");
-        props.put("mail.debug", "true");
-
-        // Cấu hình XOAUTH2
         props.put("mail.smtp.auth.mechanisms", "XOAUTH2");
-        props.put("mail.smtp.sasl.enable", "true");
-        props.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
-        props.put("mail.smtp.auth.oauth2.disable", "false");
-        props.put("mail.smtp.oauth2.access.token", accessToken);
+        props.put("mail.smtp.auth.login.disable", "true");
+        props.put("mail.smtp.auth.plain.disable", "true");
+
+        // Refresh token trước mỗi lần gửi mail
+        String newAccessToken = tokenService.refreshAccessToken();
+        props.put("mail.smtp.oauth2.access.token", newAccessToken);
 
         return mailSender;
 
