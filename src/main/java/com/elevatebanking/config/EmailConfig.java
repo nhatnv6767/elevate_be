@@ -25,7 +25,8 @@ public class EmailConfig {
     private String username;
 
     // @Value("${spring.mail.password}")
-    // private String password;
+    @Value("${MAIL_ELEVATE_BANKING_PASSWORD}")
+    private String password;
 
     @Value("${SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID}")
     private String clientId;
@@ -46,19 +47,26 @@ public class EmailConfig {
         mailSender.setHost(host);
         mailSender.setPort(port);
         mailSender.setUsername(username);
-        // mailSender.setPassword(password);
 
         Properties props = mailSender.getJavaMailProperties();
         props.put("mail.transport.protocol", "smtp");
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true");
+
+        // Thêm các thuộc tính SASL và OAuth2
+        props.put("mail.smtp.sasl.enable", "true");
+        props.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
         props.put("mail.smtp.auth.mechanisms", "XOAUTH2");
         props.put("mail.smtp.auth.login.disable", "true");
         props.put("mail.smtp.auth.plain.disable", "true");
+        props.put("mail.smtp.oauth2.disable", "false");
 
-        // Refresh token trước mỗi lần gửi mail
+        // Lấy access token mới
         String newAccessToken = tokenService.refreshAccessToken();
         props.put("mail.smtp.oauth2.access.token", newAccessToken);
+
+        // Debug mode
+        props.put("mail.debug", "true");
 
         return mailSender;
 

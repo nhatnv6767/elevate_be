@@ -28,16 +28,25 @@ public class EmailService {
     private String accessToken;
 
     public void sendResetPasswordEmail(String toEmail, String token) {
-        try {
-            sendEmail(toEmail, token);
-        } catch (MailAuthenticationException e) {
-            // Nếu lỗi auth, thử refresh token và gửi lại
-            String newAccessToken = tokenService.refreshAccessToken();
-            updateMailSenderToken(newAccessToken);
-            sendEmail(toEmail, token);
+        int maxRetries = 2;
+        int attempt = 0;
+
+        while (attempt < maxRetries) {
+            try {
+                sendEmail(toEmail, token);
+                return;
+            } catch (MailAuthenticationException e) {
+                attempt++;
+                if (attempt >= maxRetries) {
+                    throw new EmailSendException("Failed to send email after " + maxRetries + " attempts", e);
+                }
+
+                String newAccessToken = tokenService.refreshAccessToken();
+                updateMailSenderToken(newAccessToken);
+                log.info("Retrying email send with new access token, attempt {}", attempt);
+            }
         }
     }
-
 
     private void sendEmail(String toEmail, String token) {
         try {
@@ -47,11 +56,7 @@ public class EmailService {
             helper.setFrom(fromEmail);
             helper.setTo(toEmail);
             helper.setSubject("Reset Your Password - Elevate Banking");
-
-            String resetLink = "http://localhost:8080/reset-password?token=" + token;
-            String content = createEmailTemplate(resetLink);
-
-            helper.setText(content, true);
+            helper.setText(createEmailTemplate("http://localhost:8080/reset-password?token=" + token), true);
 
             mailSender.send(message);
         } catch (Exception e) {
@@ -64,6 +69,9 @@ public class EmailService {
         JavaMailSenderImpl mailSenderImpl = (JavaMailSenderImpl) mailSender;
         Properties props = mailSenderImpl.getJavaMailProperties();
         props.put("mail.smtp.oauth2.access.token", newAccessToken);
+        props.put("mail.smtp.sasl.enable", "true");
+        props.put("mail.smtp.sasl.mechanisms", "XOAUTH2");
+        props.put("mail.smtp.auth.oauth2.disable", "false");
     }
 
     private String createEmailTemplate(String resetLink) {
