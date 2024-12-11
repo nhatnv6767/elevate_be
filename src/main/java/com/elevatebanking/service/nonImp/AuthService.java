@@ -98,7 +98,7 @@ public class AuthService implements IAuthService {
                 request.getEmail()).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         String token = tokenService.createToken(user);
-        emailService.sendResetPasswordEmail(user.getEmail(), token);
+        emailService.sendResetPasswordEmail(user.getEmail(), token, request.getUsername());
     }
 
     @Override

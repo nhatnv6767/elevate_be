@@ -1,6 +1,9 @@
 package com.elevatebanking.service.nonImp;
 
+import com.elevatebanking.entity.user.User;
+import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.exception.TooManyAttemptsException;
+import com.elevatebanking.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -15,6 +18,7 @@ public class PasswordResetTokenService {
 
     private final RedisTemplate<String, String> redisTemplate;
     private final EmailService emailService;
+    private final UserRepository userRepository;
 
     private static final String TOKEN_PREFIX = "pwd_reset:";
     private static final String ATTEMPT_PREFIX = "reset_attempt:";
@@ -24,8 +28,9 @@ public class PasswordResetTokenService {
 
     public void processForgotPassword(String email) {
         validateResetAttempts(email);
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         String token = createResetToken(email);
-        emailService.sendResetPasswordEmail(email, token);
+        emailService.sendResetPasswordEmail(email, token, user.getUsername());
     }
 
     private void validateResetAttempts(String email) {
