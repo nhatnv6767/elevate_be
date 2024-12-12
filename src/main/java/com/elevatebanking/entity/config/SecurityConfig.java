@@ -78,6 +78,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/mappings/**").permitAll()
                         .requestMatchers("/reset-password/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        // TODO: check role after
+                        .requestMatchers("/api/v1/accounts/**").permitAll()
                         .requestMatchers("/api/v1/profile/**").authenticated()
                         .requestMatchers("/api/v1/users/**").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
