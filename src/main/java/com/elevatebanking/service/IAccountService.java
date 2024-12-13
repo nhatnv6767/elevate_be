@@ -12,6 +12,7 @@ public interface IAccountService {
 
     Optional<Account> getAccountById(String id);
 
+    // accountNumber
     Optional<Account> getAccountByNumber(String accountNumber);
 
     List<Account> getAccountsByUserId(String userId);

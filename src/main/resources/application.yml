@@ -1,4 +1,10 @@
 spring:
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+    cache: false
   application:
     name: ElevateBanking
 
@@ -74,7 +80,7 @@ spring:
     host: smtp.gmail.com
     port: 587
     username: ${MAIL_USERNAME}
-    password: your-app-password
+    password: ${MAIL_ELEVATE_BANKING_PASSWORD}
     properties:
       mail:
         smtp:

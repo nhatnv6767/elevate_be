@@ -2,6 +2,7 @@ package com.elevatebanking.service.imp;
 
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.exception.InsufficientBalanceException;
 import com.elevatebanking.exception.InvalidOperationException;
@@ -13,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,15 +42,24 @@ public class AccountServiceImpl implements IAccountService {
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
+    @Transactional
     public Account createAccount(String userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new InvalidOperationException("Cannot create account for inactive user");
+        }
+
         Account account = new Account();
         account.setUser(user);
         account.setAccountNumber(accountNumberGenerator.generate());
         account.setBalance(BigDecimal.ZERO);
         account.setStatus(AccountStatus.ACTIVE);
 
-        return accountRepository.save(account);
+        Account savedAccount = accountRepository.save(account);
+        log.info("Created new account {} for user {}", account.getAccountNumber(), user.getUsername());
+        return savedAccount;
     }
 
     @Override
@@ -58,20 +69,33 @@ public class AccountServiceImpl implements IAccountService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Account> getAccountByNumber(String accountNumber) {
         return accountRepository.findByAccountNumber(accountNumber);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Account> getAccountsByUserId(String userId) {
         return accountRepository.findByUserId(userId);
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
+    @Transactional(readOnly = true)
     public Account updateAccountStatus(String id, AccountStatus status) {
         Account account = getAccountById(id).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+
+        // Froze account that means when have trouble with transaction, and wanna refund the money
+        if (account.getStatus() == AccountStatus.FROZEN && status != AccountStatus.ACTIVE) {
+            throw new InvalidOperationException("Frozen account can only be activated");
+        }
+
         account.setStatus(status);
-        return accountRepository.save(account);
+        Account updatedAccount = accountRepository.save(account);
+        log.info("Updated account {} status to {}", account.getAccountNumber(), status);
+
+        return updatedAccount;
     }
 
     @Override
@@ -84,11 +108,17 @@ public class AccountServiceImpl implements IAccountService {
 
         Account account = getAccountById(accountId).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         // cache the balance for 5 minutes
-        redisTemplate.opsForValue().set("balance:" + accountId, account.getBalance().toString(), 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(
+                "balance:" + accountId,
+                account.getBalance().toString(),
+                5,
+                TimeUnit.MINUTES
+        );
         return account.getBalance();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Account updateBalance(String accountId, BigDecimal newBalance) {
         Account account = getAccountById(accountId).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
@@ -99,7 +129,13 @@ public class AccountServiceImpl implements IAccountService {
         Account updatedAccount = accountRepository.save(account);
 
         // update cache
-        redisTemplate.opsForValue().set("balance:" + accountId, newBalance.toString(), 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(
+                "balance:" + accountId,
+                newBalance.toString(),
+                5,
+                TimeUnit.MINUTES
+        );
+        log.info("Updated account {} balance to {}", account.getAccountNumber(), newBalance);
         return updatedAccount;
     }
 
