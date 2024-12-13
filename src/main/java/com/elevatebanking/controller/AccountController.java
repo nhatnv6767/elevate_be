@@ -8,7 +8,6 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -58,6 +57,7 @@ public class AccountController {
     @Operation(summary = "Get account details by account number")
     @GetMapping("/number/{accountNumber}")
     public ResponseEntity<Account> getAccountByNumber(@PathVariable String accountNumber) {
+        //
         return accountService.getAccountByNumber(accountNumber).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
@@ -74,6 +74,8 @@ public class AccountController {
         BigDecimal balance = accountService.getBalance(id);
         return ResponseEntity.ok(balance);
     }
+
+    // 3d60576c-dc75-458f-8d21-1de38a5600cd
 
     @Operation(summary = "Update account status")
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
