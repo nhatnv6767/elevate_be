@@ -1,5 +1,6 @@
 package com.elevatebanking.service;
 
+import com.elevatebanking.dto.accounts.AccountDTOs;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
 
@@ -26,4 +27,6 @@ public interface IAccountService {
     boolean existsByAccountNumber(String accountNumber);
 
     void validateAccount(String accountId, BigDecimal amount);
+
+    AccountDTOs.AccountBalanceResponse getBalanceInfo(String id);
 }

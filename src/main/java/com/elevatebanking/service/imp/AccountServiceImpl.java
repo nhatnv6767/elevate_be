@@ -1,5 +1,6 @@
 package com.elevatebanking.service.imp;
 
+import com.elevatebanking.dto.accounts.AccountDTOs;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
 import com.elevatebanking.entity.enums.UserStatus;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -115,6 +117,18 @@ public class AccountServiceImpl implements IAccountService {
                 TimeUnit.MINUTES
         );
         return account.getBalance();
+    }
+
+    @Override
+    public AccountDTOs.AccountBalanceResponse getBalanceInfo(String id) {
+        Account account = getAccountById(id).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        BigDecimal balance = getBalance(id);
+
+        return AccountDTOs.AccountBalanceResponse.builder()
+                .accountNumber(account.getAccountNumber())
+                .balance(balance)
+                .lastUpdated(LocalDateTime.now())
+                .build();
     }
 
     @Override
