@@ -30,6 +30,8 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class AccountServiceImpl implements IAccountService {
 
+    private static final int MAX_ACCOUNTS_PER_USER = 5;
+
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
     private final AccountNumberGenerator accountNumberGenerator;
@@ -52,6 +54,15 @@ public class AccountServiceImpl implements IAccountService {
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new InvalidOperationException("Cannot create account for inactive user");
         }
+
+        // check if user already has 5 accounts
+        List<Account> existingAccounts = accountRepository.findByUserId(userId);
+        if (existingAccounts.size() >= MAX_ACCOUNTS_PER_USER) {
+            throw new InvalidOperationException(
+                    String.format("User %s already has %d accounts", user.getUsername(), MAX_ACCOUNTS_PER_USER)
+            );
+        }
+
 
         Account account = new Account();
         account.setUser(user);
