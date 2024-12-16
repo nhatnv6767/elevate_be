@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -255,9 +256,7 @@ public class TransactionServiceImpl implements ITransactionService {
     public TransactionResponse transfer(TransferRequest request) {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountId(), request.getToAccountId(), request.getAmount());
 
-        if (request.getAmount().compareTo(SINGLE_TRANSFER_LIMIT) > 0) {
-            throw new InvalidOperationException("Amount exceeds single transfer limit");
-        }
+        validateTransactionAmount(request.getAmount());
         Account fromAccount = accountService.getAccountById(request.getFromAccountId()).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
         Account toAccount = accountService.getAccountById(request.getToAccountId()).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
 
@@ -306,22 +305,102 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public TransactionResponse deposit(DepositRequest request) {
-        return null;
+        log.info("Processing deposit request: account {}, amount: {}", request.getAccountId(), request.getAmount());
+
+
+        validateTransactionAmount(request.getAmount());
+//        if(request.getAmount().compareTo(SINGLE_TRANSFER_LIMIT) > 0){
+//            throw new InvalidOperationException("Amount exceeds single transfer limit");
+//        }
+        Account account = accountService.getAccountById(request.getAccountId()).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        accountService.validateAccount(account.getId(), null);
+
+        Transaction transaction = new Transaction();
+        transaction.setToAccount(account);
+        transaction.setAmount(request.getAmount());
+        transaction.setType(TransactionType.DEPOSIT);
+        transaction.setDescription(request.getDescription());
+        transaction.setStatus(TransactionStatus.PENDING);
+
+        transaction = transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.initiated");
+
+        try {
+            processDeposit(account.getId(), request.getAmount());
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction = transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.completed");
+        } catch (Exception e) {
+            log.error("Error processing deposit: {}", e.getMessage());
+            if (transaction != null) {
+                transaction.setStatus(TransactionStatus.FAILED);
+                transaction = transactionRepository.save(transaction);
+                publishTransactionEvent(transaction, "transaction.failed");
+            }
+            throw new RuntimeException("Error processing deposit");
+        }
+
+        return mapToTransactionResponse(transaction);
+
     }
 
     @Override
     public TransactionResponse withdraw(WithdrawRequest request) {
-        return null;
+        log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountId(), request.getAmount());
+
+        validateTransactionAmount(request.getAmount());
+
+        Account account = accountService.getAccountById(request.getAccountId()).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        accountService.validateAccount(account.getId(), request.getAmount());
+
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(account);
+        transaction.setAmount(request.getAmount());
+        transaction.setType(TransactionType.WITHDRAWAL);
+        transaction.setDescription(request.getDescription());
+        transaction.setStatus(TransactionStatus.PENDING);
+
+        transaction = transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.initiated");
+
+        try {
+            processWithdrawal(account.getId(), request.getAmount());
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction = transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.completed");
+
+        } catch (Exception e) {
+            log.error("Error processing withdrawal: {}", e.getMessage());
+            if (transaction != null) {
+                transaction.setStatus(TransactionStatus.FAILED);
+                transaction = transactionRepository.save(transaction);
+                publishTransactionEvent(transaction, "transaction.failed");
+            }
+            throw new RuntimeException("Error processing withdrawal");
+        }
+        return mapToTransactionResponse(transaction);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public TransactionResponse getTransaction(String id) {
-        return null;
+        Transaction transaction = transactionRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+        return mapToTransactionResponse(transaction);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate, LocalDateTime endDate) {
-        return List.of();
+        List<Transaction> transactions;
+        if (startDate != null && endDate != null) {
+            transactions = transactionRepository.findTransactionsByAccountAndDateRange(accountId, startDate, endDate);
+        } else {
+            transactions = transactionRepository.findTransactionsByAccountId(accountId);
+        }
+
+        return transactions.stream()
+                .map(this::mapToTransactionHistoryResponse)
+                .collect(Collectors.toList());
     }
 
     private TransactionResponse mapToTransactionResponse(Transaction transaction) {
