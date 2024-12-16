@@ -1,8 +1,10 @@
 package com.elevatebanking.service;
 
+import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.transaction.Transaction;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,4 +25,17 @@ public interface ITransactionService {
     List<Transaction> getPendingTransactions();
 
     void cancelTransaction(String transactionId);
+
+
+    // new service
+
+    TransactionResponse transfer(TransferRequest request);
+
+    TransactionResponse deposit(DepositRequest request);
+
+    TransactionResponse withdraw(WithdrawRequest request);
+
+    TransactionResponse getTransaction(String id);
+
+    List<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate, LocalDateTime endDate);
 }

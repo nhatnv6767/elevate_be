@@ -1,5 +1,7 @@
 package com.elevatebanking.service.imp;
 
+import com.elevatebanking.dto.transaction.TransactionDTOs.*;
+import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
@@ -246,4 +248,118 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
 
+    //// NEW SERVICE
+
+
+    @Override
+    public TransactionResponse transfer(TransferRequest request) {
+        log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountId(), request.getToAccountId(), request.getAmount());
+
+        if (request.getAmount().compareTo(SINGLE_TRANSFER_LIMIT) > 0) {
+            throw new InvalidOperationException("Amount exceeds single transfer limit");
+        }
+        Account fromAccount = accountService.getAccountById(request.getFromAccountId()).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
+        Account toAccount = accountService.getAccountById(request.getToAccountId()).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
+
+        // validate account and balances
+        accountService.validateAccount(fromAccount.getId(), request.getAmount());
+        accountService.validateAccount(toAccount.getId(), null);
+
+        // create transaction and save
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(fromAccount);
+        transaction.setToAccount(toAccount);
+        transaction.setAmount(request.getAmount());
+        transaction.setType(TransactionType.TRANSFER);
+        transaction.setDescription(request.getDescription());
+        transaction.setStatus(TransactionStatus.PENDING);
+
+        transaction = transactionRepository.save(transaction);
+
+        // publish transaction event
+        publishTransactionEvent(transaction, "transaction.initiated");
+
+        try {
+            processTransfer(
+                    fromAccount.getId(),
+                    toAccount.getId(),
+                    request.getAmount(),
+                    request.getDescription()
+            );
+
+            // update transaction status
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction = transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.completed");
+        } catch (Exception e) {
+            log.error("Error processing transfer: {}", e.getMessage());
+            if (transaction != null) {
+                transaction.setStatus(TransactionStatus.FAILED);
+                transaction = transactionRepository.save(transaction);
+                publishTransactionEvent(transaction, "transaction.failed");
+            }
+            throw new RuntimeException("Error processing transfer");
+        }
+
+        return mapToTransactionResponse(transaction);
+    }
+
+    @Override
+    public TransactionResponse deposit(DepositRequest request) {
+        return null;
+    }
+
+    @Override
+    public TransactionResponse withdraw(WithdrawRequest request) {
+        return null;
+    }
+
+    @Override
+    public TransactionResponse getTransaction(String id) {
+        return null;
+    }
+
+    @Override
+    public List<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate, LocalDateTime endDate) {
+        return List.of();
+    }
+
+    private TransactionResponse mapToTransactionResponse(Transaction transaction) {
+        return TransactionResponse.builder()
+                .transactionId(transaction.getId())
+                .type(transaction.getType().name())
+                .amount(transaction.getAmount())
+                .status(transaction.getStatus().name())
+                .fromAccount(transaction.getFromAccount() != null ?
+                        transaction.getFromAccount().getAccountNumber() : null)
+                .toAccount(transaction.getToAccount() != null ?
+                        transaction.getToAccount().getAccountNumber() : null)
+                .description(transaction.getDescription())
+                .timestamp(transaction.getCreatedAt())
+                .build();
+    }
+
+    private TransactionHistoryResponse mapToTransactionHistoryResponse(Transaction transaction) {
+        TransactionHistoryResponse.TransactionParty fromParty = null;
+        TransactionHistoryResponse.TransactionParty toParty = null;
+
+        if (transaction.getFromAccount() != null) {
+            toParty = TransactionHistoryResponse.TransactionParty.builder()
+                    .accountId(transaction.getToAccount().getId())
+                    .accountNumber(transaction.getToAccount().getAccountNumber())
+                    .accountName(transaction.getToAccount().getUser().getFullName())
+                    .build();
+        }
+
+        return TransactionHistoryResponse.builder()
+                .transactionId(transaction.getId())
+                .type(transaction.getType().name())
+                .amount(transaction.getAmount())
+                .status(transaction.getStatus().name())
+                .description(transaction.getDescription())
+                .timestamp(transaction.getCreatedAt())
+                .from(fromParty)
+                .to(toParty)
+                .build();
+    }
 }
