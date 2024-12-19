@@ -5,9 +5,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.GenericGenerator;
 
@@ -18,6 +16,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Notification {
     @Id
     @GeneratedValue(generator = "uuid2")
@@ -43,6 +43,13 @@ public class Notification {
     @NotNull(message = "Read status is required")
     @Column(name = "is_read")
     private Boolean isRead = false;
+
+    @NotBlank(message = "Status is required")
+    @Column(name = "status")
+    private String status;
+
+    @Column(name = "error_message")
+    private String errorMessage;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

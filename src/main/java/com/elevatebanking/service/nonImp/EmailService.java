@@ -51,6 +51,37 @@ public class EmailService {
         }
     }
 
+    public void sendTransactionEmail(String toEmail, String subject, String content) {
+        try {
+            log.info("Sending transaction email to {}", toEmail);
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            Context context = new Context();
+            context.setVariable("title", subject);
+            context.setVariable("message", content);
+            context.setVariable("bankName", "Elevate Banking");
+            context.setVariable("supportEmail", fromEmail);
+
+            // Process the email template
+            String emailContent = templateEngine.process("email/transaction-notification", context);
+
+            // set email properties
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            helper.setText(emailContent, true);// true indicates html
+
+            // send email
+            mailSender.send(message);
+            log.info("Transaction email sent to {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send transaction email {} - {}", toEmail, e.getMessage());
+            throw new EmailSendException("Failed to send transaction email", e);
+        }
+    }
+
 //    private void sendEmail(String toEmail, String token) {
 //        try {
 //            MimeMessage message = mailSender.createMimeMessage();
