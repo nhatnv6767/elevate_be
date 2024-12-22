@@ -74,4 +74,20 @@ public class TransactionEvent {
             this.toAccount.setBalanceAfter(toBalance);
         }
     }
+
+    public boolean canRetry(int maxRetries) {
+        return this.retryCount < maxRetries;
+    }
+
+    public void incrementRetryCount() {
+        this.retryCount++;
+    }
+
+    public boolean isCompleted() {
+        return this.status == TransactionStatus.COMPLETED;
+    }
+
+    public boolean isFailed() {
+        return this.status == TransactionStatus.FAILED;
+    }
 }

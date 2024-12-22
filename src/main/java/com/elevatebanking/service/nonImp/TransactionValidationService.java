@@ -27,6 +27,7 @@ public class TransactionValidationService {
         validateTransactionAmount(amount);
         validateDailyLimit(fromAccount.getId(), amount);
         validateSufficientBalance(fromAccount, amount);
+        validateSameAccount(fromAccount, toAccount);
     }
 
     public void validateDepositTransaction(Account account, BigDecimal amount) {
@@ -80,6 +81,12 @@ public class TransactionValidationService {
     private void validateSufficientBalance(Account account, BigDecimal amount) {
         if (account.getBalance().compareTo(amount) < 0) {
             throw new InvalidOperationException("Insufficient balance");
+        }
+    }
+
+    private void validateSameAccount(Account fromAccount, Account toAccount) {
+        if (fromAccount.getId().equals(toAccount.getId())) {
+            throw new InvalidOperationException("Cannot transfer to the same account");
         }
     }
 }
