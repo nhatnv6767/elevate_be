@@ -40,146 +40,110 @@ public class TransactionServiceImpl implements ITransactionService {
         // validateTransactionAmount(transaction.getAmount());
         // validateDailyLimit(transaction.getFromAccount().getId(),
         // transaction.getAmount());
-
         validationService.validateTransferTransaction(transaction.getFromAccount(), transaction.getToAccount(),
                 transaction.getAmount());
+        return initializeAndSaveTransaction(transaction);
+    }
 
+    private Transaction initializeAndSaveTransaction(Transaction transaction) {
         transaction.setStatus(TransactionStatus.PENDING);
         Transaction savedTransaction = transactionRepository.save(transaction);
         publishTransactionEvent(savedTransaction, "transaction.initiated");
         return savedTransaction;
     }
 
+    private Transaction buildTransaction(Account fromAccount, Account toAccount, BigDecimal amount, String description,
+            TransactionType type) {
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(fromAccount);
+        transaction.setToAccount(toAccount);
+        transaction.setAmount(amount);
+        transaction.setDescription(description);
+        transaction.setType(type);
+        transaction.setStatus(TransactionStatus.PENDING);
+        return transaction;
+    }
+
+    private void executeTransfer(String fromAccountId, String toAccountId, BigDecimal amount) {
+        BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
+        BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
+
+        accountService.updateBalance(fromAccountId, fromBalance);
+        accountService.updateBalance(toAccountId, toBalance);
+    }
+
+    private void executeWithdrawal(String accountId, BigDecimal amount) {
+        BigDecimal newBalance = accountService.getBalance(accountId).subtract(amount);
+        accountService.updateBalance(accountId, newBalance);
+    }
+
+    private void executeDeposit(String accountId, BigDecimal amount) {
+        BigDecimal newBalance = accountService.getBalance(accountId).add(amount);
+        accountService.updateBalance(accountId, newBalance);
+    }
+
+    private void handleTransactionError(Transaction transaction, Exception e) {
+        log.error("Transaction failed: {}", transaction.getId(), e);
+        transaction.setStatus(TransactionStatus.FAILED);
+        transaction = transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.failed");
+    }
+
     @Override
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
             String description) {
-        Transaction transaction = null;
+        // Validate accounts and balance before creating transaction
+
+        Account fromAccount = validateAndGetAccount(fromAccountId, "Source account not found");
+        Account toAccount = validateAndGetAccount(toAccountId, "Destination account not found");
+        validationService.validateTransferTransaction(fromAccount, toAccount, amount);
+
+        Transaction transaction = buildTransaction(fromAccount, toAccount, amount, description,
+                TransactionType.TRANSFER);
+        transaction = initializeAndSaveTransaction(transaction);
+
         try {
-            // Validate accounts and balance before creating transaction
-
-            Account fromAccount = accountService.getAccountById(fromAccountId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
-            Account toAccount = accountService.getAccountById(toAccountId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
-
-            validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-
-            // Create transaction after successful validation
-            transaction = new Transaction();
-            transaction.setFromAccount(accountService.getAccountById(fromAccountId).get());
-            transaction.setToAccount(accountService.getAccountById(toAccountId).get());
-            transaction.setAmount(amount);
-            transaction.setType(TransactionType.TRANSFER);
-            transaction.setDescription(description);
-            transaction.setStatus(TransactionStatus.PENDING);
-
-            // Save transaction
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.initiated");
-
-            try {
-                // Execute money transfer
-                BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
-                BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
-
-                accountService.updateBalance(fromAccountId, fromBalance);
-                accountService.updateBalance(toAccountId, toBalance);
-
-                // Update successful status
-                transaction.setStatus(TransactionStatus.COMPLETED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.completed");
-
-                return transaction;
-            } catch (Exception e) {
-                // Handle error during transaction execution
-                if (transaction != null) {
-                    transaction.setStatus(TransactionStatus.FAILED);
-                    transaction = transactionRepository.save(transaction);
-                    publishTransactionEvent(transaction, "transaction.failed");
-                }
-                throw new RuntimeException("Error executing transfer", e);
-            }
-        } catch (IllegalArgumentException e) {
-            // Handle validation error
-            log.error("Validation error: {}", e.getMessage());
-            throw e;
+            // Execute money transfer
+            executeTransfer(fromAccountId, toAccountId, amount);
+            // Update successful status
+            return completeTransaction(transaction);
         } catch (Exception e) {
-            // Handle other errors
-            log.error("Error processing transfer: {}", e.getMessage());
-            throw new RuntimeException("Error processing transfer", e);
+            // Handle error during transaction execution
+            handleTransactionError(transaction, "Error executing transfer", e);
+            throw new RuntimeException("Error executing transfer", e);
         }
+
     }
 
     @Override
     public Transaction processDeposit(String accountId, BigDecimal amount) {
 
-        Account account = accountService.getAccountById(accountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
-
+        Account account = validateAndGetAccount(accountId, "Account not found");
         // validateTransactionAmount(amount);
         validationService.validateDepositTransaction(account, amount);
-        Transaction transaction = null;
+        Transaction transaction = buildTransaction(null, account, amount, "Deposit", TransactionType.DEPOSIT);
+        transaction = initializeAndSaveTransaction(transaction);
         try {
-            transaction = new Transaction();
-            transaction.setToAccount(accountService.getAccountById(accountId).get());
-            transaction.setAmount(amount);
-            transaction.setType(TransactionType.DEPOSIT);
-            transaction.setStatus(TransactionStatus.PENDING);
-
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.initiated");
-
-            BigDecimal newBalance = accountService.getBalance(accountId).add(amount);
-            accountService.updateBalance(accountId, newBalance);
-
-            transaction.setStatus(TransactionStatus.COMPLETED);
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.completed");
-            return transaction;
+            executeDeposit(accountId, amount);
+            return completeTransaction(transaction);
         } catch (Exception e) {
-            log.error("Error processing deposit: {}", e.getMessage());
-            if (transaction != null) {
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.failed");
-            }
-            throw new RuntimeException("Error processing deposit");
+            handleTransactionError(transaction, "Error executing deposit", e);
+            throw new RuntimeException("Error executing deposit", e);
         }
     }
 
     @Override
     public Transaction processWithdrawal(String accountId, BigDecimal amount) {
 
-        Account account = accountService.getAccountById(accountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        Account account = validateAndGetAccount(accountId, "Account not found");
         validationService.validateWithdrawalTransaction(account, amount);
 
-        Transaction transaction = null;
+        Transaction transaction = buildTransaction(account, null, amount, "Withdrawal", TransactionType.WITHDRAWAL);
         try {
-            transaction = new Transaction();
-            transaction.setFromAccount(accountService.getAccountById(accountId).get());
-            transaction.setAmount(amount);
-            transaction.setType(TransactionType.WITHDRAWAL);
-            transaction.setStatus(TransactionStatus.PENDING);
-
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.initiated");
-
-            BigDecimal newBalance = accountService.getBalance(accountId).subtract(amount);
-            accountService.updateBalance(accountId, newBalance);
-
-            transaction.setStatus(TransactionStatus.COMPLETED);
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.completed");
-            return transaction;
+            executeWithdrawal(accountId, amount);
+            return completeTransaction(transaction);
         } catch (Exception e) {
-            log.error("Error processing withdrawal: {}", e.getMessage());
-            if (transaction != null) {
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.failed");
-            }
+            handleTransactionError(transaction, "Error executing withdrawal", e);
             throw new RuntimeException("Error processing withdrawal");
         }
     }
@@ -215,47 +179,97 @@ public class TransactionServiceImpl implements ITransactionService {
         publishTransactionEvent(transaction, "transaction.cancelled");
     }
 
-    // private void validateDailyLimit(String accountId, BigDecimal amount) {
-    // if (accountId == null || amount == null) {
-    // return;
-    // }
-    // LocalDateTime startOfDay =
-    // LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-    // List<Transaction> dailyTransactions =
-    // transactionRepository.findTransactionsByAccountAndDateRange(accountId,
-    // startOfDay, LocalDateTime.now());
-
-    // /*
-    // * dailyTransactions.stream():
-    // * Chuyển danh sách giao dịch thành một stream để xử lý dữ liệu
-    // * .filter(t -> t.getStatus() == TransactionStatus.COMPLETED):
-    // * Lọc ra chỉ những giao dịch có trạng thái COMPLETED
-    // * Loại bỏ các giao dịch có trạng thái khác (như PENDING, FAILED...)
-    // * .map(Transaction::getAmount):
-    // * Chuyển đổi mỗi giao dịch thành số tiền của giao dịch đó
-    // * Sử dụng method reference để lấy giá trị amount từ mỗi Transaction
-    // * .reduce(BigDecimal.ZERO, BigDecimal::add):
-    // * Khởi đầu với giá trị 0 (BigDecimal.ZERO)
-    // * Cộng dồn tất cả các số tiền lại với nhau
-    // * Sử dụng method reference BigDecimal::add để thực hiện phép cộng
-    // */
-    // BigDecimal dailyTotal = dailyTransactions.stream()
-    // .filter(t -> t.getStatus() == TransactionStatus.COMPLETED)
-    // .map(Transaction::getAmount)
-    // .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-    // if (dailyTotal.add(amount).compareTo(DAILY_TRANSFER_LIMIT) > 0) {
-    // throw new InvalidOperationException("Daily transfer limit exceeded");
-    // }
-    // }
-
     private void publishTransactionEvent(Transaction transaction, String eventType) {
+        if (transaction == null) {
+            throw new IllegalArgumentException("Transaction cannot be null");
+        }
+        if (eventType == null || eventType.trim().isEmpty()) {
+            throw new IllegalArgumentException("Event type cannot be null or empty");
+        }
+
         try {
-            TransactionEvent event = new TransactionEvent(transaction);
+            TransactionEvent event = new TransactionEvent(transaction, eventType);
             kafkaTemplate.send("elevate.transactions", eventType, event);
             //
         } catch (Exception e) {
             log.error("Error publishing transaction event: {}", e.getMessage());
+        }
+    }
+
+    private Transaction createInitialTransaction(Account fromAccount, Account toAccount, BigDecimal amount,
+            TransactionType type, String description) {
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(fromAccount);
+        transaction.setToAccount(toAccount);
+        transaction.setAmount(amount);
+        transaction.setType(type);
+        transaction.setDescription(description);
+        transaction.setStatus(TransactionStatus.PENDING);
+
+        transaction = transactionRepository.save(transaction);
+
+        // publish transaction event
+        publishTransactionEvent(transaction, "transaction.initiated");
+
+        return transaction;
+    }
+
+    private Account validateAndGetAccount(String accountId, String errorMessage) {
+        return accountService.getAccountById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException(errorMessage));
+    }
+
+    private Transaction completeTransaction(Transaction transaction) {
+        log.debug("Completing transaction: {}", transaction.getId());
+        transaction.setStatus(TransactionStatus.COMPLETED);
+        transaction = transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.completed");
+        log.info("Transaction completed successfully: {}", transaction.getId());
+        return transaction;
+    }
+
+    private void handleTransactionError(Transaction transaction, String errorMessage, Exception e) {
+        log.error("{}: {}", errorMessage, e.getMessage());
+        transaction.setStatus(TransactionStatus.FAILED);
+        transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.failed");
+
+    }
+
+    private boolean needsRollback(Transaction transaction) {
+        return transaction.getStatus() == TransactionStatus.FAILED &&
+                (transaction.getType() == TransactionType.TRANSFER ||
+                        transaction.getType() == TransactionType.WITHDRAWAL);
+    }
+
+    private void performRollback(Transaction transaction) {
+        log.info("Performing rollback for transaction: {}", transaction.getId());
+        // add rollback logic here
+        try {
+            switch (transaction.getType()) {
+                case TRANSFER:
+                    executeTransfer(
+                            transaction.getToAccount().getId(), transaction.getFromAccount().getId(),
+                            transaction.getAmount());
+                    break;
+                case WITHDRAWAL:
+                    executeDeposit(transaction.getFromAccount().getId(), transaction.getAmount());
+                    break;
+                // case DEPOSIT:
+                // executeWithdrawal(transaction.getToAccount().getId(),
+                // transaction.getAmount());
+                // break;
+                default:
+                    break;
+            }
+            transaction.setStatus(TransactionStatus.ROLLED_BACK);
+            transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.rolled_back");
+        } catch (Exception e) {
+            log.error("Error performing rollback: {}", e.getMessage());
+            transaction.setStatus(TransactionStatus.ROLLBACK_FAILED);
+            transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.rollback_failed");
         }
     }
 
@@ -266,27 +280,16 @@ public class TransactionServiceImpl implements ITransactionService {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountId(),
                 request.getToAccountId(), request.getAmount());
 
-        Account fromAccount = accountService.getAccountById(request.getFromAccountId())
-                .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
-        Account toAccount = accountService.getAccountById(request.getToAccountId())
-                .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
+        Account fromAccount = validateAndGetAccount(request.getFromAccountId(), "Source account not found");
+        Account toAccount = validateAndGetAccount(request.getToAccountId(), "Destination account not found");
 
         // validate account and balances
         validationService.validateTransferTransaction(fromAccount, toAccount, request.getAmount());
 
-        // create transaction and save
-        Transaction transaction = new Transaction();
-        transaction.setFromAccount(fromAccount);
-        transaction.setToAccount(toAccount);
-        transaction.setAmount(request.getAmount());
-        transaction.setType(TransactionType.TRANSFER);
-        transaction.setDescription(request.getDescription());
-        transaction.setStatus(TransactionStatus.PENDING);
-
-        transaction = transactionRepository.save(transaction);
-
-        // publish transaction event
-        publishTransactionEvent(transaction, "transaction.initiated");
+        // create and save initial transaction
+        Transaction transaction = createInitialTransaction(
+                fromAccount, toAccount, request.getAmount(),
+                TransactionType.TRANSFER, request.getDescription());
 
         try {
             processTransfer(
@@ -454,4 +457,5 @@ public class TransactionServiceImpl implements ITransactionService {
                 .to(toParty)
                 .build();
     }
+
 }
