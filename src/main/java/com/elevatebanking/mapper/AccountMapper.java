@@ -1,6 +1,6 @@
 package com.elevatebanking.mapper;
 
-import com.elevatebanking.dto.accounts.AccountDTOs;
+import com.elevatebanking.dto.accounts.AccountDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.base.interfaces.Status;
 import com.elevatebanking.entity.enums.AccountStatus;
@@ -17,15 +17,15 @@ public interface AccountMapper {
     AccountMapper INSTANCE = Mappers.getMapper(AccountMapper.class);
 
     @Mapping(target = "userId", source = "user.id")
-    AccountDTOs.AccountResponse accountToAccountResponse(Account account);
+    AccountResponse accountToAccountResponse(Account account);
 
-    AccountDTOs.AccountBalanceResponse accountToBalanceResponse(Account account);
+    AccountBalanceResponse accountToBalanceResponse(Account account);
 
-    AccountDTOs.AccountSummaryResponse accountToSummaryResponse(Account account);
+    AccountSummaryResponse accountToSummaryResponse(Account account);
 
-    List<AccountDTOs.AccountResponse> accountsToAccountResponses(List<Account> accounts);
+    List<AccountResponse> accountsToAccountResponses(List<Account> accounts);
 
-    List<AccountDTOs.AccountSummaryResponse> accountsToSummaryResponses(List<Account> accounts);
+    List<AccountSummaryResponse> accountsToSummaryResponses(List<Account> accounts);
 
     default AccountStatus mapStatus(Status status) {
         if (status == null) {

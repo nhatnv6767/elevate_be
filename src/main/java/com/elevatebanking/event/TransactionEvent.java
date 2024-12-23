@@ -10,7 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.*;
 
 @Data
 @NoArgsConstructor
@@ -26,6 +26,37 @@ public class TransactionEvent {
     private String description;
     private LocalDateTime timestamp;
     private Integer retryCount;
+
+    private Map<String, Object> metadata; // additional data
+    private String errorMessage; // error message
+    private List<String> processedSteps; // list of processed steps
+
+    public enum EventType {
+        TRANSACTION_INITIATED("transaction.initiated"),
+        TRANSACTION_VALIDATED("transaction.validated"),
+        TRANSACTION_COMPLETED("transaction.completed"),
+        TRANSACTION_FAILED("transaction.failed"),
+        TRANSACTION_ROLLBACK("transaction.rollback");
+
+        private final String value;
+
+        EventType(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return this.value;
+        }
+
+        public static EventType fromValue(String value) {
+            for (EventType type : values()) {
+                if (type.value.equals(value)) {
+                    return type;
+                }
+            }
+            throw new IllegalArgumentException("Invalid event type: " + value);
+        }
+    }
 
 
     @Data
@@ -48,6 +79,11 @@ public class TransactionEvent {
         this.description = transaction.getDescription();
         this.timestamp = LocalDateTime.now();
         this.retryCount = 0;
+
+        // new fileds
+        this.metadata = new HashMap<>();
+        this.processedSteps = new ArrayList<>();
+        this.addProcessStep("EVENT_CREATED");
 
         if (transaction.getFromAccount() != null) {
             this.fromAccount = new AccountInfo();
@@ -75,8 +111,10 @@ public class TransactionEvent {
         }
     }
 
-    public boolean canRetry(int maxRetries) {
-        return this.retryCount < maxRetries;
+    public boolean canRetry() {
+        return this.retryCount < 3 &&
+                this.status != TransactionStatus.COMPLETED &&
+                this.status != TransactionStatus.ROLLED_BACK;
     }
 
     public void incrementRetryCount() {
@@ -89,5 +127,31 @@ public class TransactionEvent {
 
     public boolean isFailed() {
         return this.status == TransactionStatus.FAILED;
+    }
+
+    // new methods
+
+    public void addMetadata(String key, Object value) {
+        if (this.metadata == null) {
+            this.metadata = new HashMap<>();
+        }
+        this.metadata.put(key, value);
+    }
+
+    public void addProcessStep(String step) {
+        if (this.processedSteps == null) {
+            this.processedSteps = new ArrayList<>();
+        }
+        this.processedSteps.add(step + " at " + LocalDateTime.now());
+    }
+
+    public void setError(String message) {
+        this.errorMessage = message;
+        this.addProcessStep("ERROR: " + message);
+
+    }
+
+    public boolean isExpired() {
+        return LocalDateTime.now().minusMinutes(15).isAfter(this.timestamp);
     }
 }

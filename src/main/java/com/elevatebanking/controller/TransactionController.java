@@ -1,7 +1,10 @@
 package com.elevatebanking.controller;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
+import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.util.SecurityUtils;
+import com.github.dockerjava.api.exception.UnauthorizedException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,6 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -24,12 +30,20 @@ import java.util.List;
 @SecurityRequirement(name = "Bearer Authentication")
 public class TransactionController {
     private final ITransactionService transactionService;
+    private final IAccountService accountService;
 
     @Operation(summary = "Process a new transfer between accounts")
     @PostMapping("/transfer")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
     public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransferRequest request) {
-        log.info("Processing transfer request from account: {} to account: {}, amount: {}", request.getFromAccountId(), request.getToAccountId(), request.getAmount());
+        String userId = SecurityUtils.getCurrentUserId();
+
+        if (!accountService.isAccountOwner(request.getFromAccountId(), userId)) {
+            throw new UnauthorizedException("User is not authorized to perform this operation");
+        }
+
+        log.info("Processing transfer request from account: {} to account: {}, amount: {}", request.getFromAccountId(),
+                request.getToAccountId(), request.getAmount());
         return ResponseEntity.ok(transactionService.transfer(request));
     }
 
@@ -45,7 +59,12 @@ public class TransactionController {
     @PostMapping("/withdraw")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
     public ResponseEntity<TransactionResponse> withdraw(@Valid @RequestBody WithdrawRequest request) {
-        log.info("Processing withdrawal request from account: {}, amount: {}", request.getAccountId(), request.getAmount());
+        String userId = SecurityUtils.getCurrentUserId();
+        if (!accountService.isAccountOwner(request.getAccountId(), userId)) {
+            throw new UnauthorizedException("User is not authorized to perform this operation");
+        }
+        log.info("Processing withdrawal request from account: {}, amount: {}", request.getAccountId(),
+                request.getAmount());
         return ResponseEntity.ok(transactionService.withdraw(request));
     }
 
@@ -62,12 +81,22 @@ public class TransactionController {
     @PreAuthorize("hasAnyRole('USER', 'TELLER', 'ADMIN')")
     public ResponseEntity<List<TransactionHistoryResponse>> getTransactionHistory(
             @RequestParam String accountId,
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+
+        String userId = SecurityUtils.getCurrentUserId();
+        if (!accountService.isAccountOwner(accountId, userId)) {
+            throw new UnauthorizedException("User is not authorized to perform this operation");
+        }
+
         log.info("Fetching transaction history fro account: {}, from: {}, to: {}", accountId, startDate, endDate);
         return ResponseEntity.ok(transactionService.getTransactionHistory(accountId, startDate, endDate));
+    }
+
+    private boolean hasAdminOrTellerRole() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth.getAuthorities().stream()
+                .anyMatch(r -> r.getAuthority().equals("ROLE_ADMIN") || r.getAuthority().equals("ROLE_TELLER"));
     }
 
 }
