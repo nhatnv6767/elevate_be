@@ -7,12 +7,14 @@ import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.event.NotificationEvent;
 import com.elevatebanking.event.TransactionEvent;
 import com.elevatebanking.exception.InvalidOperationException;
+import com.elevatebanking.exception.NonRetryableException;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.Acknowledgment;
@@ -33,13 +35,17 @@ public class TransactionEventProcessor {
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final String MAIN_TOPIC = "elevate.transactions";
+    private static final String RETRY_TOPIC = "elevate.transactions.retry";
+    private static final String DLQ_TOPIC = "elevate.transactions.dlq";
 
     @KafkaListener(
-            topics = "elevate.transaction",
+            topics = MAIN_TOPIC,
             groupId = "transaction-processor",
             containerFactory = "transactionKafkaListenerContainerFactory"
     )
     public void processTransactionEvent(TransactionEvent event, Acknowledgment ack) {
+        MDC.put("transactionId", event.getTransactionId());
         log.info("Processing transaction event: {}", event);
         try {
             switch (event.getEventType()) {
@@ -305,5 +311,90 @@ public class TransactionEventProcessor {
         } else {
             return transaction.getFromAccount().getUser().getId();
         }
+    }
+
+    // process event
+    private void handleRetryableError(TransactionEvent event, Exception e, Acknowledgment ack) {
+        log.warn("Retryable error processing event: {} - {}", event.getTransactionId(), e.getMessage());
+        event.incrementRetryCount();
+        event.addProcessStep("RETRY_INITIATED: " + e.getMessage());
+
+        if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
+            // TODO: send to retry topic
+        } else {
+            // TODO: send to DLQ
+        }
+        ack.acknowledge();
+
+    }
+
+    private void handleNonRetryableError(TransactionEvent event, Exception e, Acknowledgment ack) {
+        log.error("Non-retryable error processing event: {} - {}", event.getTransactionId(), e.getMessage());
+        event.setStatus(TransactionStatus.FAILED);
+        event.addProcessStep("ERROR: " + e.getMessage());
+        // TODO: send to DLQ
+        ack.acknowledge();
+    }
+
+    private void sendToRetryTopic(TransactionEvent event) {
+        try {
+            kafkaTemplate.send(RETRY_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
+                if (ex != null) {
+                    log.error("Error sending retry topic: {} - {}", event.getTransactionId(), ex.getMessage());
+                    // TODO: send to DLQ
+                }
+            });
+        } catch (Exception e) {
+            log.error("Error sending event to retry topic: {} - {}", event.getTransactionId(), e.getMessage());
+            // TODO: send to DLQ
+        }
+    }
+
+    private void sendToDLQ(TransactionEvent event, String reason) {
+        try {
+            event.addProcessStep("SENT_TO_DLQ: " + reason);
+            kafkaTemplate.send(DLQ_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
+                if (ex != null) {
+                    log.error("Error sending DLQ: {} - {}", event.getTransactionId(), ex.getMessage());
+                }
+            });
+            // TODO: Update transaction status to FAILED
+
+            // TODO: Send notification event
+        } catch (Exception e) {
+            log.error("Error sending event to DLQ: {} - {}", event.getTransactionId(), e.getMessage());
+        }
+    }
+
+    private long calculateBackoffInterval(int retryCount) {
+        return (long) Math.pow(2, retryCount) * 1000L; // exponential backoff in seconds: 2^retryCount * 1000
+    }
+
+    private void validateEvent(TransactionEvent event) {
+        if (event == null || event.getTransactionId() == null) {
+            throw new NonRetryableException("Invalid event format");
+        }
+        if (event.isExpired()) {
+            throw new NonRetryableException("Event is expired");
+        }
+    }
+
+    private void updateTransactionStatus(String transactionId, TransactionStatus status) {
+        try {
+            Transaction transaction = transactionRepository.findById(transactionId).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
+            transaction.setStatus(status);
+            transactionRepository.save(transaction);
+        } catch (Exception e) {
+            log.error("Error updating transaction status: {} - {}", transactionId, e.getMessage());
+        }
+    }
+
+    private void sendFailureNotification(TransactionEvent event) {
+
+
+        NotificationEvent notification = NotificationEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .userId(event.getUserId())
+                .build();
     }
 }

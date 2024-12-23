@@ -26,6 +26,7 @@ public class TransactionEvent {
     private String description;
     private LocalDateTime timestamp;
     private Integer retryCount;
+    private String userId;
 
     private Map<String, Object> metadata; // additional data
     private String errorMessage; // error message
