@@ -1,6 +1,6 @@
 package com.elevatebanking.service.imp;
 
-import com.elevatebanking.dto.accounts.AccountDTOs;
+import com.elevatebanking.dto.accounts.AccountDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
 import com.elevatebanking.entity.enums.UserStatus;
@@ -11,6 +11,7 @@ import com.elevatebanking.repository.AccountRepository;
 import com.elevatebanking.repository.UserRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.util.AccountNumberGenerator;
+import com.github.dockerjava.api.exception.UnauthorizedException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -131,16 +132,17 @@ public class AccountServiceImpl implements IAccountService {
     }
 
     @Override
-    public AccountDTOs.AccountBalanceResponse getBalanceInfo(String id) {
+    public AccountBalanceResponse getBalanceInfo(String id) {
         Account account = getAccountById(id).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         BigDecimal balance = getBalance(id);
 
-        return AccountDTOs.AccountBalanceResponse.builder()
+        return AccountBalanceResponse.builder()
                 .accountNumber(account.getAccountNumber())
                 .balance(balance)
                 .lastUpdated(LocalDateTime.now())
                 .build();
     }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -179,6 +181,20 @@ public class AccountServiceImpl implements IAccountService {
 
         if (amount != null && account.getBalance().compareTo(amount) < 0) {
             throw new InsufficientBalanceException("Insufficient balance");
+        }
+    }
+
+
+    @Override
+    public boolean isAccountOwner(String accountId, String userId) {
+        // check if account exists and the user is the owner
+        return accountRepository.findById(accountId).map(account -> account.getUser().getId().equals(userId)).orElse(false);
+    }
+
+    @Override
+    public void validateAccountOwnership(String accountId, String userId) {
+        if (!isAccountOwner(accountId, userId)) {
+            throw new UnauthorizedException("User is not the owner of the account");
         }
     }
 }

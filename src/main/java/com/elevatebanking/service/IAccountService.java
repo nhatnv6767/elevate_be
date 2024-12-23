@@ -29,4 +29,8 @@ public interface IAccountService {
     void validateAccount(String accountId, BigDecimal amount);
 
     AccountDTOs.AccountBalanceResponse getBalanceInfo(String id);
+
+    boolean isAccountOwner(String accountId, String userId);
+
+    void validateAccountOwnership(String accountId, String userId);
 }
