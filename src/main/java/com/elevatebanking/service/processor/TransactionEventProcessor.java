@@ -140,12 +140,25 @@ public class TransactionEventProcessor {
     }
 
     private void handleProcessingError(TransactionEvent event, Exception e, Acknowledgment ack) {
-        if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
-            kafkaTemplate.send("elevate.transactions.retry", event);
+        if (e instanceof NonRetryableException) {
+            handleNonRetryableError(event, e, ack);
         } else {
-            kafkaTemplate.send("elevate.transactions.dlq", event);
+            handleRetryableError(event, e, ack);
         }
-        ack.acknowledge();
+        try {
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+            if (needsRollback(transaction)) {
+                performRollback(transaction);
+            }
+        } catch (Exception rollbackEx) {
+            log.error("Error during rollback: {}", rollbackEx.getMessage());
+        }
+//        if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
+//            kafkaTemplate.send("elevate.transactions.retry", event);
+//        } else {
+//            kafkaTemplate.send("elevate.transactions.dlq", event);
+//        }
+//        ack.acknowledge();
     }
 
     private void processTransferTransaction(Transaction transaction, TransactionEvent event) {
@@ -227,19 +240,21 @@ public class TransactionEventProcessor {
             }
         } catch (Exception e) {
             log.error("Error rolling back transaction: {}", transaction.getId(), e);
-            sendNotificationEvent(transaction, "CRITICAL: Manual rollback investigation required");
+            TransactionEvent event = new TransactionEvent(transaction, "transaction.rollback");
+            event.setError("CRITICAL: Manual rollback investigation required");
+            sendNotificationEvent(event, "CRITICAL: Manual rollback investigation required");
         }
     }
 
-    private void sendNotificationEvent(Transaction transaction, String message) {
+    private void sendNotificationEvent(TransactionEvent event, String message) {
 
-        log.info("Sending notification event: {} {}", transaction.getId(), message);
+        log.info("Sending notification event: {} {}", event.getTransactionId(), message);
         try {
             // xac dinh loai thong bao va priority dua tren transaction status
             NotificationEvent.NotificationType notificationType;
             NotificationEvent.Priority priority;
 
-            switch (transaction.getStatus()) {
+            switch (event.getStatus()) {
                 case COMPLETED:
                     notificationType = NotificationEvent.NotificationType.TRANSACTION_COMPLETED;
                     priority = NotificationEvent.Priority.MEDIUM;
@@ -254,15 +269,15 @@ public class TransactionEventProcessor {
             }
 
             // xay dung title dua tren loai giao dich
-            String title = buildNotificationTitle(transaction);
+            String title = buildNotificationTitle(event.getType(), event.getStatus());
 
             // tao notification event
             NotificationEvent notificationEvent = NotificationEvent.builder()
                     .eventId(UUID.randomUUID().toString())
-                    .userId(getUserId(transaction))
+                    .userId(getNotificationRecipient(event))
                     .title(title)
                     .message(message)
-                    .transactionId(transaction.getId())
+                    .transactionId(event.getTransactionId())
                     .type(notificationType.name())
                     .priority(priority.name())
                     .timestamp(LocalDateTime.now())
@@ -273,13 +288,13 @@ public class TransactionEventProcessor {
             log.info("Notification event sent: {} - {}", notificationEvent.getEventId(), notificationEvent);
 
         } catch (Exception e) {
-            log.error("Error sending notification event: {} -  {}", transaction.getId(), e.getMessage());
+            log.error("Error sending notification event: {} -  {}", event.getTransactionId(), e.getMessage());
         }
     }
 
-    private String buildNotificationTitle(Transaction transaction) {
+    private String buildNotificationTitle(TransactionType type, TransactionStatus status) {
         StringBuilder title = new StringBuilder();
-        switch (transaction.getType()) {
+        switch (type) {
             case TRANSFER:
                 title.append("Money Transfer ");
                 break;
@@ -291,7 +306,7 @@ public class TransactionEventProcessor {
                 break;
         }
 
-        switch (transaction.getStatus()) {
+        switch (status) {
             case COMPLETED:
                 title.append("Successful");
                 break;
@@ -302,7 +317,7 @@ public class TransactionEventProcessor {
                 title.append("Initiated");
                 break;
             default:
-                title.append(transaction.getStatus().name());
+                title.append(status.name());
         }
         return title.toString();
     }
