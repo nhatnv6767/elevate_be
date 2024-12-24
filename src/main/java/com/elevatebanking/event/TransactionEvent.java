@@ -155,4 +155,17 @@ public class TransactionEvent {
     public boolean isExpired() {
         return LocalDateTime.now().minusMinutes(15).isAfter(this.timestamp);
     }
+
+    public boolean isRetryable() {
+        // Một giao dịch được coi là có thể retry nếu:
+        // 1. Chưa vượt quá số lần retry tối đa
+        // 2. Chưa hết hạn
+        // 3. Không ở trạng thái cuối cùng (COMPLETED hoặc ROLLED_BACK)
+        // 4. Không phải lỗi nghiêm trọng
+        return canRetry() &&
+                !isExpired() &&
+                status != TransactionStatus.COMPLETED &&
+                status != TransactionStatus.ROLLED_BACK &&
+                (errorMessage == null || !errorMessage.contains("CRITICAL"));
+    }
 }

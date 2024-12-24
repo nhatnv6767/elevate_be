@@ -4,6 +4,8 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Data
 @Builder
@@ -16,6 +18,7 @@ public class NotificationEvent {
     private String type; // TRANSACTION, SECURITY, SYSTEM
     private String priority; // HIGH, MEDIUM, LOW
     private LocalDateTime timestamp;
+    private Map<String, Object> metadata;
 
     public enum NotificationType {
         TRANSACTION_INITIATED,
@@ -39,6 +42,7 @@ public class NotificationEvent {
                 .userId(userId)
                 .title(title)
                 .message(message)
+                .metadata(new HashMap<>())
                 .build();
     }
 }
