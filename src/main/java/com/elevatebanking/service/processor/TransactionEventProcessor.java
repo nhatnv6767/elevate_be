@@ -107,10 +107,13 @@ public class TransactionEventProcessor {
             // process based on transaction type
             switch (transaction.getType()) {
                 case TRANSFER:
+                    processTransferTransaction(transaction, event);
                     break;
                 case DEPOSIT:
+                    processDepositTransaction(transaction, event);
                     break;
                 case WITHDRAWAL:
+                    processWithdrawalTransaction(transaction, event);
                     break;
                 default:
                     log.error("Unknown transaction type: {}", transaction.getType());
@@ -126,10 +129,14 @@ public class TransactionEventProcessor {
 
     private void handleTransactionCompleted(TransactionEvent event) {
         log.info("Handling transaction completed event: {}", event.getTransactionId());
+        updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
+        sendNotificationEvent(event, buildCompletedMessage(event));
     }
 
     private void handleTransactionFailed(TransactionEvent event) {
         log.info("Handling transaction failed event: {}", event.getTransactionId());
+        updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
+        sendFailureNotification(event);
     }
 
     private void handleProcessingError(TransactionEvent event, Exception e, Acknowledgment ack) {
@@ -321,8 +328,10 @@ public class TransactionEventProcessor {
 
         if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
             // TODO: send to retry topic
+            sendToRetryTopic(event);
         } else {
             // TODO: send to DLQ
+            sendToDLQ(event, "Max retries exceeded");
         }
         ack.acknowledge();
 
@@ -333,6 +342,7 @@ public class TransactionEventProcessor {
         event.setStatus(TransactionStatus.FAILED);
         event.addProcessStep("ERROR: " + e.getMessage());
         // TODO: send to DLQ
+        sendToDLQ(event, "Non-retryable error" + e.getMessage());
         ack.acknowledge();
     }
 
@@ -342,11 +352,13 @@ public class TransactionEventProcessor {
                 if (ex != null) {
                     log.error("Error sending retry topic: {} - {}", event.getTransactionId(), ex.getMessage());
                     // TODO: send to DLQ
+                    sendToDLQ(event, "Failed to send to retry topic");
                 }
             });
         } catch (Exception e) {
             log.error("Error sending event to retry topic: {} - {}", event.getTransactionId(), e.getMessage());
             // TODO: send to DLQ
+            sendToDLQ(event, "Error sending to retry topic");
         }
     }
 
@@ -359,8 +371,10 @@ public class TransactionEventProcessor {
                 }
             });
             // TODO: Update transaction status to FAILED
+            updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
 
             // TODO: Send notification event
+            sendFailureNotification(event);
         } catch (Exception e) {
             log.error("Error sending event to DLQ: {} - {}", event.getTransactionId(), e.getMessage());
         }
@@ -391,10 +405,97 @@ public class TransactionEventProcessor {
 
     private void sendFailureNotification(TransactionEvent event) {
 
+        String message = String.format("Transaction %s (%s) of amount %s failed.",
+                event.getTransactionId(),
+                event.getType(),
+                event.getAmount()
+        );
+
+        if (event.getErrorMessage() != null) {
+            message += " Reason: " + event.getErrorMessage();
+        }
+
 
         NotificationEvent notification = NotificationEvent.builder()
                 .eventId(UUID.randomUUID().toString())
-                .userId(event.getUserId())
+                .userId(getNotificationRecipient(event))
+                .title(buildFailureTitle(event))
+                .message(message)
+                .type(NotificationEvent.NotificationType.TRANSACTION_FAILED.name())
+                .priority(event.isRetryable() ? NotificationEvent.Priority.MEDIUM.name() : NotificationEvent.Priority.HIGH.name())
+                .metadata(event.getMetadata())
+                .timestamp(LocalDateTime.now())
                 .build();
+
+        notificationEventKafkaTemplate.send("elevate.notifications", notification.getEventId(), notification);
     }
+
+    private String getNotificationRecipient(TransactionEvent event) {
+        // giao dich transfer, ca nguoi gui va nguoi nhan deu nhan notification
+        if (event.getType() == TransactionType.TRANSFER) {
+            return event.getFromAccount().getAccountId(); // mac dinh gui cho nguoi chuyen
+        } else if (event.getType() == TransactionType.DEPOSIT) {
+            return event.getToAccount().getAccountId();
+        } else { // withdrawal
+            return event.getFromAccount().getAccountId();
+        }
+    }
+
+    private String buildFailureTitle(TransactionEvent event) {
+        StringBuilder title = new StringBuilder();
+
+        switch (event.getType()) {
+            case TRANSFER:
+                title.append("Transfer Failed");
+                break;
+            case DEPOSIT:
+                title.append("Deposit Failed");
+                break;
+            case WITHDRAWAL:
+                title.append("Withdrawal Failed");
+                break;
+            default:
+                title.append("Transaction Failed");
+        }
+        return title.toString();
+    }
+
+    private String buildCompletedMessage(TransactionEvent event) {
+        StringBuilder message = new StringBuilder();
+        switch (event.getType()) {
+            case TRANSFER:
+                message.append(String.format("Transfer of %s from account %s to account %s completed successfully.",
+                        event.getAmount(),
+                        event.getFromAccount().getAccountNumber(),
+                        event.getToAccount().getAccountNumber()
+                ));
+                break;
+            case DEPOSIT:
+                message.append(String.format("Deposit of %s to account %s completed successfully.",
+                        event.getAmount(),
+                        event.getToAccount().getAccountNumber()
+                ));
+                break;
+            case WITHDRAWAL:
+                message.append(String.format("Withdrawal of %s from account %s completed successfully.",
+                        event.getAmount(),
+                        event.getFromAccount().getAccountNumber()
+                ));
+                break;
+            default:
+                message.append(String.format("Transaction of %s completed successfully.", event.getAmount()));
+        }
+        if (event.getType() == TransactionType.TRANSFER || event.getType() == TransactionType.WITHDRAWAL) {
+            if (event.getFromAccount() != null && event.getFromAccount().getBalanceAfter() != null) {
+                message.append(String.format(" New balance: %s", event.getFromAccount().getBalanceAfter()));
+            }
+        } else if (event.getType() == TransactionType.DEPOSIT) {
+            if (event.getToAccount() != null && event.getToAccount().getBalanceAfter() != null) {
+                message.append(String.format(" New balance: %s", event.getToAccount().getBalanceAfter()));
+            }
+        }
+        return message.toString();
+    }
+
+
 }
