@@ -52,6 +52,7 @@
 //}
 package com.elevatebanking.config;
 
+import com.elevatebanking.event.NotificationEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -68,6 +69,7 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
@@ -83,6 +85,35 @@ public class KafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    @Value("${spring.kafka.consumer.group-id}")
+    private String groupId;
+
+    @Bean
+    public ProducerFactory<String, NotificationEvent> notificationProducerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+
+        // timeout and retry settings
+        configProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 5000); // 5 seconds
+        configProps.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 5000);
+        configProps.put(ProducerConfig.RETRIES_CONFIG, 3);
+        configProps.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, 1000);
+
+        // reliability settings
+        configProps.put(ProducerConfig.ACKS_CONFIG, "all");
+        configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 1);
+
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    @Bean
+    public KafkaTemplate<String, NotificationEvent> notificationKafkaTemplate() {
+        return new KafkaTemplate<>(notificationProducerFactory());
+    }
 
     @Bean
     public ProducerFactory<String, TransactionEvent> producerFactory() {
@@ -100,15 +131,17 @@ public class KafkaConfig {
         // reliability settings
         configProps.put(ProducerConfig.ACKS_CONFIG, "all");
         configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 1);
+
 
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
     @Bean
-    public ConsumerFactory<String, TransactionEvent> testConsumerFactory() {
+    public ConsumerFactory<String, TransactionEvent> transactionConsumerFactory() {
         Map<String, Object> config = new HashMap<>();
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        config.put(ConsumerConfig.GROUP_ID_CONFIG, "test-group");
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
 
@@ -127,18 +160,20 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, TransactionEvent> kafkaListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, TransactionEvent> transactionKafkaListenerContainerFactory() {
         ConcurrentKafkaListenerContainerFactory<String, TransactionEvent> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(testConsumerFactory());
+        factory.setConsumerFactory(transactionConsumerFactory());
 
-        DefaultErrorHandler errorHandler = new DefaultErrorHandler((consumerRecord, exception) -> {
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler((record, ex) -> {
             log.error("Error processing message: topic = {}, offset = {}, key = {}, value = {}",
-                    consumerRecord.topic(),
-                    consumerRecord.offset(),
-                    consumerRecord.key(),
-                    consumerRecord.value(),
-                    exception);
+                    record.topic(),
+                    record.offset(),
+                    record.key(),
+                    record.value(),
+                    ex);
         });
 
         // error handling
@@ -169,6 +204,14 @@ public class KafkaConfig {
                         "cleanup.policy", "delete",
                         "retention.ms", "604800000" // 7 day
                 ))
+                .build();
+    }
+
+    @Bean
+    public NewTopic retryTopic() {
+        return TopicBuilder.name("elevate.transactions.retry")
+                .partitions(4)
+                .replicas(1)
                 .build();
     }
 

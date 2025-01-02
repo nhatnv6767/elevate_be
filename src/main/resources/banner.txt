@@ -1,0 +1,24 @@
+'########:'##:::::::'########:'##::::'##::::'###::::'########:'########:
+ ##.....:: ##::::::: ##.....:: ##:::: ##:::'## ##:::... ##..:: ##.....::
+ ##::::::: ##::::::: ##::::::: ##:::: ##::'##:. ##::::: ##:::: ##:::::::
+ ######::: ##::::::: ######::: ##:::: ##:'##:::. ##:::: ##:::: ######:::
+ ##...:::: ##::::::: ##...::::. ##:: ##:: #########:::: ##:::: ##...::::
+ ##::::::: ##::::::: ##::::::::. ## ##::: ##.... ##:::: ##:::: ##:::::::
+ ########: ########: ########:::. ###:::: ##:::: ##:::: ##:::: ########:
+........::........::........:::::...:::::..:::::..:::::..:::::........::
+
+:: Personal Project :: (v1.0.2)
+=======================================
+GitHub Repository: https://github.com/nhatnv6767/elevate_be
+Author: Nhat Nguyen
+=======================================
+
+Welcome to Elevate - A Personal Growth Platform
+This project aims to help individuals track and enhance their personal development journey
+through goal setting, habit tracking, and progress monitoring.
+
+Built with Spring Boot and love for continuous improvement.
+
+Started: January 2024
+Last Updated: Running Version 1.0.2
+=======================================
