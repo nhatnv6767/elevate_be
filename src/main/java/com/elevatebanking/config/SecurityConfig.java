@@ -1,5 +1,6 @@
-package com.elevatebanking.entity.config;
+package com.elevatebanking.config;
 
+import com.elevatebanking.entity.config.SecurityProperties;
 import com.elevatebanking.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -75,6 +76,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/mappings/**").permitAll()
                         .requestMatchers("/reset-password/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
