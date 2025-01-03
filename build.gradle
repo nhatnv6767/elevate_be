@@ -188,6 +188,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
 
+    // https://mvnrepository.com/artifact/org.springframework.retry/spring-retry
+    implementation group: 'org.springframework.retry', name: 'spring-retry', version: '2.0.10'
+
+
 }
 
 sourceSets {

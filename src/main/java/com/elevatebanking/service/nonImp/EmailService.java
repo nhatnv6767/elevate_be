@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
@@ -27,6 +29,11 @@ public class EmailService {
 //    @Value("${MAIL_OAUTH2_ACCESS_TOKEN}")
 //    private String accessToken;
 
+    @Retryable(
+            exceptionExpression = "#{@emailSendException}",
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
     public void sendResetPasswordEmail(String toEmail, String token, String username) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -51,6 +58,11 @@ public class EmailService {
         }
     }
 
+    @Retryable(
+            exceptionExpression = "#{@emailSendException}",
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
     public void sendTransactionEmail(String toEmail, String subject, String content) {
         try {
             log.info("Sending transaction email to {}", toEmail);
