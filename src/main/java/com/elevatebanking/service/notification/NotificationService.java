@@ -1,4 +1,4 @@
-package com.elevatebanking.service.nonImp;
+package com.elevatebanking.service.notification;
 
 import com.elevatebanking.event.NotificationEvent;
 import lombok.AccessLevel;
@@ -12,5 +12,5 @@ import org.springframework.stereotype.Service;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class NotificationService {
     KafkaTemplate<String, NotificationEvent> kafkaTemplate;
-    
+
 }

@@ -1,4 +1,4 @@
-package com.elevatebanking.service.imp;
+package com.elevatebanking.service.transaction;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
@@ -10,7 +10,6 @@ import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
-import com.elevatebanking.service.nonImp.TransactionValidationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
@@ -53,7 +52,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction buildTransaction(Account fromAccount, Account toAccount, BigDecimal amount, String description,
-            TransactionType type) {
+                                         TransactionType type) {
         Transaction transaction = new Transaction();
         transaction.setFromAccount(fromAccount);
         transaction.setToAccount(toAccount);
@@ -91,7 +90,7 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
-            String description) {
+                                       String description) {
         // Validate accounts and balance before creating transaction
 
         Account fromAccount = validateAndGetAccount(fromAccountId, "Source account not found");
@@ -197,7 +196,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction createInitialTransaction(Account fromAccount, Account toAccount, BigDecimal amount,
-            TransactionType type, String description) {
+                                                 TransactionType type, String description) {
         Transaction transaction = new Transaction();
         transaction.setFromAccount(fromAccount);
         transaction.setToAccount(toAccount);
@@ -407,7 +406,7 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     @Transactional(readOnly = true)
     public List<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate,
-            LocalDateTime endDate) {
+                                                                  LocalDateTime endDate) {
         List<Transaction> transactions;
         if (startDate != null && endDate != null) {
             transactions = transactionRepository.findTransactionsByAccountAndDateRange(accountId, startDate, endDate);
