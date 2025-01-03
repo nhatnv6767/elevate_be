@@ -66,6 +66,15 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
+    developmentOnly
+    runtimeClasspath {
+        extendsFrom developmentOnly
+    }
+}
+processResources {
+    filesMatching('application.yml') {
+        expand project.properties
+    }
 }
 
 repositories {
@@ -224,4 +233,8 @@ springBoot {
 
 tasks.withType(JavaCompile) {
     options.annotationProcessorPath = configurations.annotationProcessor
+}
+
+bootRun {
+    systemProperty 'spring.profiles.active', System.getProperty('spring.profiles.active', 'dev')
 }

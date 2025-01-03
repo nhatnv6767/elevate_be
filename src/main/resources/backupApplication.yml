@@ -1,0 +1,187 @@
+spring:
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+    cache: false
+  application:
+    name: ElevateBanking
+
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://192.168.1.128:5432/elevate_banking
+    username: root
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      auto-commit: true
+      connection-test-query: SELECT 1
+      validation-timeout: 5000
+      socket-timeout: 60000
+      initialization-fail-timeout: 0
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 300000
+      connection-timeout: 60000
+      max-lifetime: 1800000
+      keepalive-time: 30000
+      leak-detection-threshold: 60000
+      data-source-properties:
+        ssl: false
+        sslmode: disable
+
+  # JPA/Hibernate Configuration
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    generate-ddl: true
+    hibernate:
+      #      ddl-auto: update # LAN 1
+      ddl-auto: update # LAN 2
+    defer-datasource-initialization: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        hbm2ddl:
+          auto: update
+          import_files: data.sql
+        jdbc:
+          lob:
+            non_contextual_creation: true
+        default_schema: public
+
+  # Redis Configuration
+  data:
+    redis:
+      host: 192.168.1.128
+      port: 6379
+      database: 0
+      timeout: 60000
+      connect-timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+    jpa:
+      repositories:
+        bootstrap-mode: deferred
+
+  # SQL Configuration
+  sql:
+    init:
+      platform: postgresql
+      mode: never
+      continue-on-error: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_ELEVATE_BANKING_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: 192.168.1.128:9092
+    producer:
+      bootstrap-servers: 192.168.1.128:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+        enable.idempotence: true
+        spring.json.trusted.packages: "*"
+        security.protocol: PLAINTEXT
+        max.block.ms: 10000
+        request.timeout.ms: 10000
+        retry.backoff.ms: 1000
+        retries: 3
+    consumer:
+      group-id: elevate-banking-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        security.protocol: PLAINTEXT
+    admin:
+      properties:
+        bootstrap.servers: 192.168.1.128:9092
+        security.protocol: PLAINTEXT
+        request.timeout.ms: 20000
+        default.api.timeout.ms: 20000
+    properties:
+      security.protocol: PLAINTEXT
+#    consumer:
+#      group-id: elevate-banking-group
+#      auto-offset-reset: earliest
+#      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+#      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+#      bootstrap-servers: 192.168.1.128:29092
+#      properties:
+#        spring.json.trusted.packages: "com.elevatebanking.event"
+
+
+# Application Security Configuration
+app:
+  security:
+    admin:
+      username: admin
+      password: 123456
+      roles: USER
+  docker:
+    enabled: true
+  frontend:
+    url: http://192.168.1.202:3000
+
+# Docker Configuration
+docker:
+  host: tcp://192.168.1.128:2375
+  api:
+    version: 1.41
+  connection:
+    timeout: 30000
+  response:
+    timeout: 45000
+
+# Swagger/SpringDoc Configuration
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operationsSorter: alpha
+    tags-sorter: alpha
+    doc-expansion: none
+    tryItOutEnabled: true
+  api-docs:
+    path: /api-docs
+    enabled: true
+  writer-with-default-pretty-printer: true
+  show-actuator: true
+  cache:
+    disabled: false
+  group-configs:
+    - group: auth
+      paths-to-match: /api/v1/auth/**
+    - group: accounts
+      paths-to-match: /api/v1/accounts/**
+    - group: transactions
+      paths-to-match: /api/v1/transactions/**
+
+# JWT Configuration
+jwt:
+  #  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
+  secret: d0a8c264294f82a0225df5de62105e55a9256889c0ca637b6ae3d737dc06ddec031d4c59c08f8f07571102e5ac317381df36376e7ce32f329e01d025eeab1ad6
+  expiration: 2592000000
+  refresh-expiration: 86400000000
+
+
+debug: true
