@@ -39,4 +39,29 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
     @Query("SELECT count (t) from Transaction t where t.fromAccount.id =:accountId and t.createdAt >=:since")
     long countTransactionsInTimeframe(@Param("accountId") String accountId, @Param("since") LocalDateTime since);
 
+    @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :threshold")
+    List<Transaction> findStuckTransactions(LocalDateTime threshold);
+
+    @Query("SELECT count(t) FROM Transaction t WHERE t.createdAt BETWEEN :start AND :end")
+    long countTransactionsInTimeframe(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT count(t) FROM Transaction t WHERE t.status = :status AND t.createdAt BETWEEN :start AND :end")
+    long countTransactionsByStatusInTimeframe(
+            @Param("status") TransactionStatus status,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    @Query("SELECT COALESCE(AVG((CAST(t.updatedAt as long) - CAST(t.createdAt as long)) / 1000000.0), 0) " +
+            "FROM Transaction t " +
+            "WHERE t.createdAt BETWEEN :start AND :end " +
+            "AND t.status = 'COMPLETED'")
+    double calculateAverageProcessingTime(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    // that means: find all transactions with status and createdAtAfter
+    List<Transaction> findByStatusAndCreatedAtAfter(
+            TransactionStatus status,
+            LocalDateTime since);
+
 }

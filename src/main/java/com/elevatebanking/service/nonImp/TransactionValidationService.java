@@ -112,7 +112,7 @@ public class TransactionValidationService {
     private void validateSameAccount(Account fromAccount, Account toAccount) {
         if (fromAccount.getId().equals(toAccount.getId())) {
             throw new InvalidOperationException("Cannot transfer to the same account");
-            //
+            //..
         }
     }
 }

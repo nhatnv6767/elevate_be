@@ -48,6 +48,8 @@ public class TransactionEventProcessor {
         MDC.put("transactionId", event.getTransactionId());
         log.info("Processing transaction event: {}", event);
         try {
+
+            validateEvent(event);
             switch (event.getEventType()) {
                 case "transaction.initiated":
                     handleTransactionInitiated(event);
@@ -74,15 +76,24 @@ public class TransactionEventProcessor {
     )
     public void processRetryEvent(TransactionEvent event, Acknowledgment ack) {
         log.info("Processing retry event: {}", event);
+
+        if (event.getNextRetryAt() != null && LocalDateTime.now().isBefore(event.getNextRetryAt())) {
+            sendToRetryTopic(event);
+            ack.acknowledge();
+            return;
+        }
+
         try {
             // increate retry count
-            event.setRetryCount(event.getRetryCount() + 1);
-            if (event.getRetryCount() <= MAX_RETRY_ATTEMPTS) {
-                processTransactionEvent(event, ack);
-            } else {
-                kafkaTemplate.send("elevate.transaction.dlq", event);
-                ack.acknowledge();
-            }
+            // TODO: update retry count
+//            event.setRetryCount(event.getRetryCount() + 1);
+//            if (event.getRetryCount() <= MAX_RETRY_ATTEMPTS) {
+//                processTransactionEvent(event, ack);
+//            } else {
+//                kafkaTemplate.send("elevate.transaction.dlq", event);
+//                ack.acknowledge();
+//            }
+            processTransactionEvent(event, ack);
 
         } catch (Exception e) {
             log.error("Error processing retry event: {}", event, e);
@@ -343,6 +354,8 @@ public class TransactionEventProcessor {
 
         if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
             // TODO: send to retry topic
+            long backoffIntervel = calculateBackoffInterval(event.getRetryCount());
+            event.setNextRetryAt(LocalDateTime.now().plusSeconds(backoffIntervel));
             sendToRetryTopic(event);
         } else {
             // TODO: send to DLQ
@@ -358,6 +371,8 @@ public class TransactionEventProcessor {
         event.addProcessStep("ERROR: " + e.getMessage());
         // TODO: send to DLQ
         sendToDLQ(event, "Non-retryable error" + e.getMessage());
+        updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
+        sendFailureNotification(event);
         ack.acknowledge();
     }
 
@@ -419,17 +434,7 @@ public class TransactionEventProcessor {
     }
 
     private void sendFailureNotification(TransactionEvent event) {
-
-        String message = String.format("Transaction %s (%s) of amount %s failed.",
-                event.getTransactionId(),
-                event.getType(),
-                event.getAmount()
-        );
-
-        if (event.getErrorMessage() != null) {
-            message += " Reason: " + event.getErrorMessage();
-        }
-
+        String message = buildFailureMessage(event);
 
         NotificationEvent notification = NotificationEvent.builder()
                 .eventId(UUID.randomUUID().toString())
@@ -443,6 +448,19 @@ public class TransactionEventProcessor {
                 .build();
 
         notificationEventKafkaTemplate.send("elevate.notifications", notification.getEventId(), notification);
+    }
+
+    private String buildFailureMessage(TransactionEvent event) {
+        String message = String.format("Transaction %s (%s) of amount %s failed.",
+                event.getTransactionId(),
+                event.getType(),
+                event.getAmount()
+        );
+
+        if (event.getErrorMessage() != null) {
+            message += " Reason: " + event.getErrorMessage();
+        }
+        return message;
     }
 
     private String getNotificationRecipient(TransactionEvent event) {
