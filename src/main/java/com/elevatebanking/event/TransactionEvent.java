@@ -32,6 +32,10 @@ public class TransactionEvent {
     private String errorMessage; // error message
     private List<String> processedSteps; // list of processed steps
 
+
+    private LocalDateTime nextRetryAt;
+    private String processingStage;
+
     public enum EventType {
         TRANSACTION_INITIATED("transaction.initiated"),
         TRANSACTION_VALIDATED("transaction.validated"),
@@ -164,8 +168,6 @@ public class TransactionEvent {
         // 4. Không phải lỗi nghiêm trọng
         return canRetry() &&
                 !isExpired() &&
-                status != TransactionStatus.COMPLETED &&
-                status != TransactionStatus.ROLLED_BACK &&
                 (errorMessage == null || !errorMessage.contains("CRITICAL"));
     }
 }
