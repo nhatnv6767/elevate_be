@@ -31,8 +31,21 @@ public class AuditLog extends AuditableEntity {
     @Column(length = 50, nullable = false)
     private String action;
 
+    @Column(name = "entity_type", length = 50)
+    private String entityType;
+
+    @Column(name = "entity_id")
+    private String entityId;
+
     @Column(columnDefinition = "jsonb")
     private String details;
+
+
+    @Column(name = "previous_state", columnDefinition = "jsonb")
+    private String previousState;
+
+    @Column(name = "current_state", columnDefinition = "jsonb")
+    private String currentState;
 
     @Pattern(regexp = "^([0-9]{1,3}\\.){3}[0-9]{1,3}$", message = "Invalid IP address format")
     @Column(name = "ip_address")
@@ -42,7 +55,20 @@ public class AuditLog extends AuditableEntity {
     @Column(name = "user_agent")
     private String userAgent;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+   
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 20)
+    private AuditStatus status = AuditStatus.SUCCESS;
+
+    public enum AuditStatus {
+        SUCCESS,
+        FAILED,
+        PENDING
+    }
+
+
+    @Column(name = "metadata", columnDefinition = "jsonb")
+    private String metadata;
+
+
 }
