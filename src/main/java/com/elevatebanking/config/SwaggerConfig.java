@@ -55,6 +55,7 @@ public class SwaggerConfig {
                 .info(new io.swagger.v3.oas.models.info.Info()
                         .title("Elevate Banking API")
                         .version("1.0"));
+        
     }
 }
 
