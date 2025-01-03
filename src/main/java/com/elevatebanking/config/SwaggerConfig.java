@@ -1,5 +1,7 @@
 package com.elevatebanking.config;
 
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
@@ -44,6 +46,16 @@ public class SwaggerConfig {
                 .license(new License()
                         .name("Private License")
                         .url("https://elevatebanking.eft/licenses"));
+    }
+
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+                .components(new Components())
+                .info(new io.swagger.v3.oas.models.info.Info()
+                        .title("Elevate Banking API")
+                        .version("1.0"));
+        
     }
 }
 
