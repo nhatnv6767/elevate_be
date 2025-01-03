@@ -221,5 +221,6 @@ public class KafkaConfig {
                 .partitions(1)
                 .replicas(1)
                 .build();
+        //
     }
 }
