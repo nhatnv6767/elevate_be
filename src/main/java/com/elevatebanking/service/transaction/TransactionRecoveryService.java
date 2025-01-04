@@ -11,7 +11,9 @@ import com.elevatebanking.repository.TransactionRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,10 @@ public class TransactionRecoveryService {
     TransactionCompensationService transactionCompensationService;
     AccountRepository accountRepository;
     KafkaTemplate<String, TransactionEvent> kafkaTemplate;
+
+    @Value("${spring.kafka.topics.transaction}")
+    @NonFinal
+    private String transactionTopic;
 
     @Scheduled(fixedRate = 300000) // 5 minutes
     public void recoverStuckTransactions() {
@@ -137,7 +143,7 @@ public class TransactionRecoveryService {
             // create and send event
             TransactionEvent event = new TransactionEvent(transaction, "transaction.completed");
             event.addProcessStep("COMPLETED_BY_RECOVERY");
-            kafkaTemplate.send("elevate.transactions", event.getTransactionId(), event);
+            kafkaTemplate.send(transactionTopic, event.getTransactionId(), event);
             log.info("Successfully completed recovered transaction: {}", transaction.getId());
         } catch (Exception e) {
             log.error("Failed to complete recovered transaction: {}", transaction.getId(), e);

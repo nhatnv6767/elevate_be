@@ -64,4 +64,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             TransactionStatus status,
             LocalDateTime since);
 
+    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.user.id = :userId or t.toAccount.user.id = :userId) AND t.createdAt BETWEEN :startDate AND :endDate")
+    List<Transaction> findTransactionsByUserAndDateRange(
+            @Param("userId") String userId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
+
 }

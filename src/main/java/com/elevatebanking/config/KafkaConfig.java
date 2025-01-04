@@ -80,6 +80,18 @@ public class KafkaConfig {
     @Value("${spring.kafka.consumer.groups.notification}")
     private String notificationGroupId;
 
+    @Value("${spring.kafka.topics.transaction}")
+    private String transactionTopic;
+
+    @Value("${spring.kafka.topics.transaction-retry}")
+    private String transactionRetryTopic;
+
+    @Value("${spring.kafka.topics.notification}")
+    private String notificationTopic;
+
+    @Value("${spring.kafka.topics.notification-retry}")
+    private String notificationRetryTopic;
+
 
     // common producer config
     private <T> Map<String, Object> getProducerConfigs() {
@@ -232,7 +244,7 @@ public class KafkaConfig {
     // Topic beans
     @Bean
     public NewTopic transactionTopic() {
-        return buildTopic("elevate.transactions", 4, 1, Map.of(
+        return buildTopic(transactionTopic, 4, 1, Map.of(
                 "cleanup.policy", "delete",
                 "retention.ms", "604800000" // 7 days
         ));
@@ -240,7 +252,7 @@ public class KafkaConfig {
 
     @Bean
     public NewTopic retryTopic() {
-        return buildTopic("elevate.transactions.retry", 4, 1, Collections.emptyMap());
+        return buildTopic(transactionRetryTopic, 4, 1, Collections.emptyMap());
     }
 
     @Bean
@@ -255,7 +267,7 @@ public class KafkaConfig {
 
     @Bean
     public NewTopic notificationTopic() {
-        return buildTopic("elevate.notifications", 4, 1, Map.of(
+        return buildTopic(notificationTopic, 4, 1, Map.of(
                 "cleanup.policy", "delete",
                 "retention.ms", "604800000" // 7 days
         ));
@@ -263,7 +275,7 @@ public class KafkaConfig {
 
     @Bean
     public NewTopic notificationRetryTopic() {
-        return buildTopic("elevate.notifications.retry", 4, 1, Collections.emptyMap());
+        return buildTopic(notificationRetryTopic, 4, 1, Collections.emptyMap());
     }
 
     @Bean

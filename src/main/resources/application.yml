@@ -33,6 +33,11 @@ spring:
 
   # JPA/Hibernate Configuration
   jpa:
+    repositories: #redis
+      bootstrap-mode: deferred #redis
+    redis:
+      repositories: #redis
+        enabled: false #redis
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: true
     generate-ddl: true
@@ -104,6 +109,12 @@ spring:
         request.timeout.ms: 10000
         retry.backoff.ms: 1000
         retries: 3
+    topics:
+      transaction: elevate.transactions
+      transaction-retry: elevate.transactions.retry
+      notification: elevate.notifications
+      notification-retry: elevate.notifications.retry
+      notification-dlq: elevate.notifications.dlq
     consumer:
       groups:
         transaction: elevate-transaction-group
@@ -189,5 +200,26 @@ jwt:
   expiration: 2592000000
   refresh-expiration: 86400000000
 
+transaction:
+  limits:
+    tiers:
+      basic:
+        single-transaction-limit: 1000000
+        daily-limit: 5000000
+        monthly-limit: 50000000
+        max-transactions-per-minute: 3
+        max-transactions-per-day: 20
+      premium:
+        single-transaction-limit: 5000000
+        daily-limit: 25000000
+        monthly-limit: 250000000
+        max-transactions-per-minute: 3
+        max-transactions-per-day: 100
+      business:
+        single-transaction-limit: 5000000
+        daily-limit: 25000000
+        monthly-limit: 250000000
+        max-transactions-per-minute: 3
+        max-transactions-per-day: 100
 
-debug: true
+debug: false

@@ -23,9 +23,9 @@ public class NotificationEventProcessor {
     private final KafkaTemplate<String, NotificationEvent> kafkaTemplate;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final String MAIN_TOPIC = "elevate.notifications";
-    private static final String RETRY_TOPIC = "elevate.notifications.retry";
-    private static final String DLQ_TOPIC = "elevate.notifications.dlq";
+    private static final String MAIN_TOPIC = "${spring.kafka.topics.notification}";
+    private static final String RETRY_TOPIC = "${spring.kafka.topics.notification-retry}";
+    private static final String DLQ_TOPIC = "${spring.kafka.topics.notification-dlq}";
 
     @KafkaListener(
             topics = MAIN_TOPIC,

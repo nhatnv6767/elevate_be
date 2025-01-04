@@ -35,7 +35,7 @@ public class TransactionEventProcessor {
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final String MAIN_TOPIC = "elevate.transactions";
+    private static final String MAIN_TOPIC = "${spring.kafka.topics.transaction}";
     private static final String RETRY_TOPIC = "elevate.transactions.retry";
     private static final String DLQ_TOPIC = "elevate.transactions.dlq";
 
