@@ -66,15 +66,6 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
-    developmentOnly
-    runtimeClasspath {
-        extendsFrom developmentOnly
-    }
-}
-processResources {
-    filesMatching('application.yml') {
-        expand project.properties
-    }
 }
 
 repositories {
@@ -197,6 +188,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
 
+    // https://mvnrepository.com/artifact/org.springframework.retry/spring-retry
+    implementation group: 'org.springframework.retry', name: 'spring-retry', version: '2.0.10'
+
+
 }
 
 sourceSets {
@@ -233,8 +228,4 @@ springBoot {
 
 tasks.withType(JavaCompile) {
     options.annotationProcessorPath = configurations.annotationProcessor
-}
-
-bootRun {
-    systemProperty 'spring.profiles.active', System.getProperty('spring.profiles.active', 'dev')
 }

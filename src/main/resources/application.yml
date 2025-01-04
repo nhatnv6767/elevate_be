@@ -1,62 +1,155 @@
-server:
-  servlet:
-    encoding:
-      charset: UTF-8
-      force: true
-  port: 8080
-
 spring:
-  profiles:
-    active: dev
-  application:
-    name: elevate-banking
-  servlet:
-    multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
     mode: HTML
     encoding: UTF-8
     cache: false
+  application:
+    name: ElevateBanking
 
-# Health check
-management:
-  endpoints:
-    web:
-      exposure:
-        include: '*'
-  endpoint:
-    health:
-      probes:
-        enabled: true
-  health:
-    livenessState:
-      enabled: true
-    readinessState:
-      enabled: true
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://192.168.1.128:5432/elevate_banking
+    username: root
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      auto-commit: true
+      connection-test-query: SELECT 1
+      validation-timeout: 5000
+      socket-timeout: 60000
+      initialization-fail-timeout: 0
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 300000
+      connection-timeout: 60000
+      max-lifetime: 1800000
+      keepalive-time: 30000
+      leak-detection-threshold: 60000
+      data-source-properties:
+        ssl: false
+        sslmode: disable
 
-# Logging
-logging:
-  level:
-    root: INFO
-    web: OFF
-    org.springframework: INFO
-    org.apache: OFF
-    kafka: OFF
-    org.springframework.security: DEBUG
+  # JPA/Hibernate Configuration
+  jpa:
+    repositories: #redis
+      bootstrap-mode: deferred #redis
+    redis:
+      repositories: #redis
+        enabled: false #redis
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    generate-ddl: true
+    hibernate:
+      #      ddl-auto: update # LAN 1
+      ddl-auto: update # LAN 2
+    defer-datasource-initialization: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        hbm2ddl:
+          auto: update
+          import_files: data.sql
+        jdbc:
+          lob:
+            non_contextual_creation: true
+        default_schema: public
 
+  # Redis Configuration
+  data:
+    redis:
+      host: 192.168.1.128
+      port: 6379
+      database: 0
+      timeout: 60000
+      connect-timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+    jpa:
+      repositories:
+        bootstrap-mode: deferred
 
-# Docker Configuration
-docker:
-  host: tcp://192.168.1.128:2375
-  api:
-    version: 1.41
-  connection:
-    timeout: 30000
-  response:
-    timeout: 45000
+  # SQL Configuration
+  sql:
+    init:
+      platform: postgresql
+      mode: never
+      continue-on-error: true
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_ELEVATE_BANKING_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: 192.168.1.128:9092
+    producer:
+      bootstrap-servers: 192.168.1.128:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+        enable.idempotence: true
+        spring.json.trusted.packages: "*"
+        security.protocol: PLAINTEXT
+        max.block.ms: 10000
+        request.timeout.ms: 10000
+        retry.backoff.ms: 1000
+        retries: 3
+    topics:
+      transaction: elevate.transactions
+      transaction-retry: elevate.transactions.retry
+      notification: elevate.notifications
+      notification-retry: elevate.notifications.retry
+      notification-dlq: elevate.notifications.dlq
+      email: elevate.emails
+      email-retry: elevate.emails.retry
+      email-dlq: elevate.emails.dlq
+    consumer:
+      groups:
+        transaction: elevate-transaction-group
+        transaction-retry: elevate-transaction-retry-group
+        notification: elevate-notification-group
+        notification-retry: elevate-notification-retry-group
+        email: elevate-email-group
+        email-retry: elevate-email-retry-group
+      #      group-id: elevate-banking-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        security.protocol: PLAINTEXT
+    admin:
+      properties:
+        bootstrap.servers: 192.168.1.128:9092
+        security.protocol: PLAINTEXT
+        request.timeout.ms: 20000
+        default.api.timeout.ms: 20000
+    properties:
+      security.protocol: PLAINTEXT
+#    consumer:
+#      group-id: elevate-banking-group
+#      auto-offset-reset: earliest
+#      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+#      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+#      bootstrap-servers: 192.168.1.128:29092
+#      properties:
+#        spring.json.trusted.packages: "com.elevatebanking.event"
+
 
 # Application Security Configuration
 app:
@@ -69,3 +162,68 @@ app:
     enabled: true
   frontend:
     url: http://192.168.1.202:3000
+
+# Docker Configuration
+docker:
+  host: tcp://192.168.1.128:2375
+  api:
+    version: 1.41
+  connection:
+    timeout: 30000
+  response:
+    timeout: 45000
+
+# Swagger/SpringDoc Configuration
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    operationsSorter: alpha
+    tags-sorter: alpha
+    doc-expansion: none
+    tryItOutEnabled: true
+  api-docs:
+    path: /api-docs
+    enabled: true
+  writer-with-default-pretty-printer: true
+  show-actuator: true
+  cache:
+    disabled: false
+  group-configs:
+    - group: auth
+      paths-to-match: /api/v1/auth/**
+    - group: accounts
+      paths-to-match: /api/v1/accounts/**
+    - group: transactions
+      paths-to-match: /api/v1/transactions/**
+
+# JWT Configuration
+jwt:
+  #  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
+  secret: Zc8xS9lJIZBYUwyi8MiGi6dj1XBVp2rhA8SSNPhkPG8=
+  expiration: 2592000000
+  refresh-expiration: 86400000000
+
+transaction:
+  limits:
+    tiers:
+      basic:
+        single-transaction-limit: 1000000
+        daily-limit: 5000000
+        monthly-limit: 50000000
+        max-transactions-per-minute: 3
+        max-transactions-per-day: 20
+      premium:
+        single-transaction-limit: 5000000
+        daily-limit: 25000000
+        monthly-limit: 250000000
+        max-transactions-per-minute: 3
+        max-transactions-per-day: 100
+      business:
+        single-transaction-limit: 5000000
+        daily-limit: 25000000
+        monthly-limit: 250000000
+        max-transactions-per-minute: 3
+        max-transactions-per-day: 100
+
+debug: false
