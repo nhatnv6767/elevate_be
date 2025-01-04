@@ -1,4 +1,7 @@
 spring:
+  redis:
+    key-prefix: "email_dedup:"
+    key-ttl: 300 # 5 minutes TTL
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
@@ -119,6 +122,9 @@ spring:
       email-retry: elevate.emails.retry
       email-dlq: elevate.emails.dlq
     consumer:
+      enable-auto-commit: false
+      isolation-level: read_committed
+      max-poll-records: 1
       groups:
         transaction: elevate-transaction-group
         transaction-retry: elevate-transaction-retry-group

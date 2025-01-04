@@ -5,6 +5,7 @@ import com.elevatebanking.service.nonImp.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.Acknowledgment;
@@ -23,9 +24,10 @@ public class EmailEventProcessor {
     private final KafkaTemplate<String, EmailEvent> kafkaTemplate;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final String MAIN_TOPIC = "${spring.kafka.topics.email}";
-    private static final String RETRY_TOPIC = "${spring.kafka.topics.email-retry}";
-    private static final String DLQ_TOPIC = "${spring.kafka.topics.email-dlq}";
+
+    private static final String MAIN_TOPIC = "elevate.emails";
+    private static final String RETRY_TOPIC = "elevate.emails.retry";
+    private static final String DLQ_TOPIC = "elevate.emails.dlq";
 
     @KafkaListener(topics = MAIN_TOPIC, groupId = "${spring.kafka.consumer.groups.email}", containerFactory = "emailKafkaListenerContainerFactory")
     public void processEmailEvent(EmailEvent event, Acknowledgment ack) {
@@ -33,25 +35,44 @@ public class EmailEventProcessor {
         MDC.put("emailId", emailId);
         log.info("Processing email event: {}", event.getTo());
         try {
-            Map<String, Object> templateData = event.getTemplateData();
-            if (templateData == null) {
+
+            if (event.getTemplateData() == null) {
+                event.setTemplateData(new HashMap<>());
+            }
+            if (event.getContent() != null && event.getContent().contains("|")) {
+                String[] parts = event.getContent().split("\\|");
+                if (parts.length == 2) {
+                    event.getTemplateData().put("username", parts[0].trim());
+                    event.getTemplateData().put("token", parts[1].trim());
+                }
+            }
+
+            if (!validateTemplateData(event)) {
                 log.error("Template data is null for email event: {}", event.getTo());
+                handleProcessingError(event, new RuntimeException("Template data is null"), ack);
                 return;
             }
-            String token = (String) templateData.get("token");
-            String username = (String) templateData.get("username");
-            if (token == null || username == null) {
-                log.error("Token or username is null for email event: {}", event.getTo());
-                return;
-            }
+            String token = (String) event.getTemplateData().get("token");
+            String username = (String) event.getTemplateData().get("username");
             emailService.sendResetPasswordEmail(event.getTo(), token, username);
             ack.acknowledge();
             log.info("Successfully processed email event: {}", event.getTo());
         } catch (Exception e) {
             log.error("Error processing email event: {}", event, e);
+            handleProcessingError(event, e, ack);
         } finally {
             MDC.remove("emailId");
         }
+    }
+
+    private boolean validateTemplateData(EmailEvent event) {
+        Map<String, Object> templateData = event.getTemplateData();
+        return templateData != null &&
+                templateData.containsKey("username") &&
+                templateData.containsKey("token") &&
+                templateData.get("username") != null &&
+                templateData.get("token") != null;
+        
     }
 
     @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.groups.email-retry}", containerFactory = "emailKafkaListenerContainerFactory")
@@ -61,12 +82,13 @@ public class EmailEventProcessor {
     }
 
     private void handleProcessingError(EmailEvent event, Exception e, Acknowledgment ack) {
-        if (event.getMetadata() == null) {
-            event.setTemplateData(new HashMap<>());
-        }
-        int retryCount = (Integer) event.getMetadata().getOrDefault("retryCount", 0);
+        int retryCount = event.getMetadata() != null ? (Integer) event.getMetadata().getOrDefault("retryCount", 0) : 0;
         if (retryCount < MAX_RETRY_ATTEMPTS) {
-            // increment retry count
+
+            if (event.getMetadata() == null) {
+                event.setMetadata(new HashMap<>());
+            }
+
             event.getMetadata().put("retryCount", retryCount + 1);
             event.getMetadata().put("lastError", e.getMessage());
             event.getMetadata().put("retryTime", LocalDateTime.now().toString());
