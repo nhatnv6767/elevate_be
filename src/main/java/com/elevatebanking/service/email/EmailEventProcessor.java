@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+// TODO: XEM LẠI LOGIC XỬ LÝ Ở ĐÂY
 public class EmailEventProcessor {
     private final EmailService emailService;
     private final KafkaTemplate<String, EmailEvent> kafkaTemplate;

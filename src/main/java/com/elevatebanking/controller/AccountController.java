@@ -38,8 +38,10 @@ public class AccountController {
         return ResponseEntity.ok(accountMapper.accountsToSummaryResponses(accounts));
     }
 
-    // TODO: Cải tiến là lúc tạo tài khoản thì thêm được cả balance cho tài khoản luôn, và nếu có lỗi trả về thì phải hiển thị rõ
+    // TODO: 1. Cải tiến là lúc tạo tài khoản phương thức Post (/api/v1/accounts) thì thêm được cả balance cho tài khoản luôn, và nếu có lỗi trả về thì phải hiển thị rõ
     // TODO: ví dụ như lỗi khi user đó có max tài khoản rồi thì trả về nội dung tương ứng
+    // TODO: 2. Vấn đề nữa là khi gửi yêu cầu reset mật khẩu bằng api  api/v1/auth/forgot-password thì dữ liệu lưu vào redis, vậy người dùng cứ spam api này thì có phải dữ liệu bị lưu liên tục vào redis
+    // TODO: cho đến 1 lúc nào đó die server không, có cơ chế để xoá dữ liệu cũ rồi mới lưu dữ liệu cũ không nhỉ, hay có cách gì khác để tối ưu
     @Operation(summary = "Create new account for user")
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
     @PostMapping
