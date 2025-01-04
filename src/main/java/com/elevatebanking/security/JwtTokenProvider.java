@@ -1,7 +1,10 @@
 package com.elevatebanking.security;
 
+import com.elevatebanking.exception.InvalidTokenException;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -16,6 +19,7 @@ import com.elevatebanking.repository.UserRepository;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -41,44 +45,73 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateToken(String username) {
-        return generateToken(username, jwtExpiration);
-    }
-
-    public String generateRefreshToken(String username) {
-        return generateToken(username, refreshExpiration);
-    }
-
-    private String generateToken(String username, long expiration) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + expiration);
-
+    public TokenPair generateTokenPair(String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        String accessToken = generateAccessToken(user);
+        String refreshToken = generateRefreshToken(user);
 
+        // save refresh token in Redis with key "refresh_token:username"
+        String refreshTokenKey = "refresh_token:" + username;
+        redisTemplate.opsForValue().set(
+                refreshTokenKey,
+                refreshToken,
+                refreshExpiration,
+                TimeUnit.MILLISECONDS
+        );
+        return new TokenPair(accessToken, refreshToken);
+    }
 
-        // Log  debug
-        System.out.println("Generated token for user: " + username);
-        System.out.println("User roles: " + user.getRoles().stream()
-                .map(Role::getName)
-                .toList());
-
+    private String generateAccessToken(User user) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpiration);
 
         return Jwts.builder()
-                .setSubject(username)
+                .setSubject(user.getUsername())
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
-
                 .claim("userId", user.getId())
-                .claim("email", user.getEmail())
                 .claim("roles", user.getRoles().stream()
                         .map(Role::getName)
-                        .collect(Collectors.toList()))
-                .claim("fullName", user.getFullName())
-
+                        .collect(Collectors.toList())
+                )
                 .signWith(getSigningKey())
                 .compact();
     }
+
+    private String generateRefreshToken(User user) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + refreshExpiration);
+
+        String refreshTokenId = UUID.randomUUID().toString();
+
+        return Jwts.builder()
+                .setSubject(user.getUsername())
+                .setId(refreshTokenId)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .claim("tokenType", "REFRESH")
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    public String refreshAccessToken(String refreshToken) {
+        if (!validateToken(refreshToken)) {
+            throw new InvalidTokenException("Invalid refresh token");
+        }
+        String username = getUsernameFromToken(refreshToken);
+        // check if refresh token exists in Redis
+        String storedToken = redisTemplate.opsForValue().get("refresh_token:" + username);
+        if (storedToken == null || !storedToken.equals(refreshToken)) {
+            throw new InvalidTokenException("Refresh token not found or expired");
+        }
+
+        // generate new access token
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return generateAccessToken(user);
+    }
+
 
     public String getUsernameFromToken(String token) {
         Claims claims = Jwts.parserBuilder()
@@ -136,5 +169,12 @@ public class JwtTokenProvider {
 
     public long getExpirationTime() {
         return jwtExpiration;
+    }
+
+    @Data
+    @AllArgsConstructor
+    public static class TokenPair {
+        private String accessToken;
+        private String refreshToken;
     }
 }

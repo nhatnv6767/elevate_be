@@ -2,7 +2,6 @@ package com.elevatebanking.dto.auth;
 
 import java.util.List;
 
-import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest.RoleRequest;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
@@ -29,6 +28,6 @@ public class UserUpdateRequest {
 
     private String status;
 
-    private List<RoleRequest> roles;
+    private List<AuthDTOs.RoleRequest> roles;
 
 }

@@ -23,7 +23,19 @@ public class AuthDTOs {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class AuthRequest {
+    public static class LoginRequest {
+        @NotBlank(message = "Username is required")
+        private String username;
+
+        @NotBlank(message = "Password is required")
+        private String password;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RegisterRequest {
         @NotBlank(message = "Username is required")
         private String username;
 
@@ -57,13 +69,14 @@ public class AuthDTOs {
         @Valid
         private List<RoleRequest> roles;
 
-        @Data
-        @NoArgsConstructor
-        @AllArgsConstructor
-        public static class RoleRequest {
-            @NotBlank(message = "Role is required")
-            private String role;
-        }
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoleRequest {
+        @NotBlank(message = "Role is required")
+        private String role;
     }
 
     @Data
@@ -73,7 +86,7 @@ public class AuthDTOs {
     public static class AuthResponse {
         private String userId;
         private String username;
-        private String password;
+        //        private String password;
         private String phone;
         private String identityNumber;
         private String fullName;
@@ -85,6 +98,17 @@ public class AuthDTOs {
         private Long expiresIn;
         private String[] roles;
         private UserStatus status;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TokenRefreshResponse {
+        private String accessToken;
+        private String refreshToken;
+        private String tokenType = "Bearer";
+        private Long expiresIn;
     }
 
     @Data

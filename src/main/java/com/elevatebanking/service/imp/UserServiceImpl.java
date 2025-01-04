@@ -2,8 +2,6 @@ package com.elevatebanking.service.imp;
 
 import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.UserUpdateRequest;
-import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
-import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest.RoleRequest;
 import com.elevatebanking.dto.forgot.ResetPasswordRequest;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.Role;
@@ -39,7 +37,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public AuthDTOs.AuthResponse createUser(AuthRequest authRequest) {
+    public AuthDTOs.AuthResponse createUser(AuthDTOs.RegisterRequest authRequest) {
         try {
             log.debug("Starting to create user: {}", authRequest.getUsername());
             if (existsByUsername(authRequest.getUsername())) {
@@ -120,7 +118,7 @@ public class UserServiceImpl implements IUserService {
 
         if (updateRequest.getRoles() != null && !updateRequest.getRoles().isEmpty()) {
             existingUser.setRoles(new ArrayList<>());
-            for (RoleRequest roleReq : updateRequest.getRoles()) {
+            for (AuthDTOs.RoleRequest roleReq : updateRequest.getRoles()) {
                 Role role = roleRepository.findByName(roleReq.getRole())
                         .orElseThrow(() -> new ResourceNotFoundException("Role not found"));
                 existingUser.getRoles().add(role);

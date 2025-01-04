@@ -1,5 +1,6 @@
 package com.elevatebanking.mapper;
 
+import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.entity.user.Role;
 
 import org.mapstruct.BeanMapping;
@@ -11,20 +12,22 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 import org.mapstruct.factory.Mappers;
 
 import com.elevatebanking.dto.auth.UserUpdateRequest;
-import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
+import com.elevatebanking.dto.auth.AuthDTOs.LoginRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.user.User;
+import org.springframework.context.annotation.Configuration;
 
 import java.time.LocalDate;
 import java.util.List;
 
+@Configuration
 @Mapper(componentModel = "spring", nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public interface UserMapper {
 
     UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
 
     @Mapping(target = "userId", source = "id") // Map id sang userId
-    @Mapping(target = "password", ignore = true)
+//    @Mapping(target = "password", ignore = true)
     @Mapping(target = "tokenType", constant = "Bearer")
     @Mapping(target = "roles", source = "roles", qualifiedByName = "roleListToStringArray")
     @Mapping(target = "accessToken", ignore = true)
@@ -38,7 +41,7 @@ public interface UserMapper {
     @Mapping(target = "roles", ignore = true)
     // @Mapping(target = "status", constant = "ACTIVE")
     @Mapping(target = "dateOfBirth", source = "dateOfBirth", dateFormat = "yyyy-MM-dd")
-    User authRequestToUser(AuthRequest authRequest);
+    User authRequestToUser(AuthDTOs.RegisterRequest authRequest);
 
     @Named("stringToLocalDate")
     default LocalDate stringToLocalDate(String date) {

@@ -33,7 +33,7 @@ public class AuditLogService {
     public void logEvent(String userId, String action, String entityType, String entityId, Object previousState, Object currentState) {
         try {
             AuditLog auditLog = new AuditLog();
-            auditLog.getUser().setId(userId);
+            auditLog.setId(userId);
             auditLog.setAction(action);
             auditLog.setEntityType(entityType);
             auditLog.setEntityId(entityId);

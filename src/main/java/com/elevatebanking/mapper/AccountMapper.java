@@ -8,9 +8,11 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.mapstruct.factory.Mappers;
+import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
+@Configuration
 @Mapper(componentModel = "spring")
 public interface AccountMapper {
 

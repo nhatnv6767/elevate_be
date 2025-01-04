@@ -38,6 +38,8 @@ public class AccountController {
         return ResponseEntity.ok(accountMapper.accountsToSummaryResponses(accounts));
     }
 
+    // TODO: Cải tiến là lúc tạo tài khoản thì thêm được cả balance cho tài khoản luôn, và nếu có lỗi trả về thì phải hiển thị rõ
+    // TODO: ví dụ như lỗi khi user đó có max tài khoản rồi thì trả về nội dung tương ứng
     @Operation(summary = "Create new account for user")
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
     @PostMapping

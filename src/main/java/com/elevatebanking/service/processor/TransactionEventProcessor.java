@@ -35,13 +35,13 @@ public class TransactionEventProcessor {
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final String MAIN_TOPIC = "elevate.transactions";
+    private static final String MAIN_TOPIC = "${spring.kafka.topics.transaction}";
     private static final String RETRY_TOPIC = "elevate.transactions.retry";
     private static final String DLQ_TOPIC = "elevate.transactions.dlq";
 
     @KafkaListener(
             topics = MAIN_TOPIC,
-            groupId = "transaction-processor",
+            groupId = "${spring.kafka.consumer.groups.transaction}",
             containerFactory = "transactionKafkaListenerContainerFactory"
     )
     public void processTransactionEvent(TransactionEvent event, Acknowledgment ack) {
@@ -70,8 +70,8 @@ public class TransactionEventProcessor {
     }
 
     @KafkaListener(
-            topics = "elevate.transaction.retry",
-            groupId = "transaction-processor-retry",
+            topics = RETRY_TOPIC,
+            groupId = "${spring.kafka.consumer.groups.transaction-retry}",
             containerFactory = "transactionKafkaListenerContainerFactory"
     )
     public void processRetryEvent(TransactionEvent event, Acknowledgment ack) {
@@ -191,7 +191,7 @@ public class TransactionEventProcessor {
         event.updateBalances(newFromBalance, newToBalance);
 
         // send completion event
-        kafkaTemplate.send("elevate.transactions", "transaction.completed", event);
+        kafkaTemplate.send(MAIN_TOPIC, "transaction.completed", event);
     }
 
     private void processDepositTransaction(Transaction transaction, TransactionEvent event) {
@@ -203,7 +203,7 @@ public class TransactionEventProcessor {
         event.setStatus(TransactionStatus.COMPLETED);
         event.updateBalances(null, newBalance);
 
-        kafkaTemplate.send("elevate.transactions", "transaction.completed", event);
+        kafkaTemplate.send(MAIN_TOPIC, "transaction.completed", event);
     }
 
     private void processWithdrawalTransaction(Transaction transaction, TransactionEvent event) {
@@ -215,7 +215,7 @@ public class TransactionEventProcessor {
         event.setStatus(TransactionStatus.COMPLETED);
         event.updateBalances(newBalance, null);
 
-        kafkaTemplate.send("elevate.transactions", "transaction.completed", event);
+        kafkaTemplate.send(MAIN_TOPIC, "transaction.completed", event);
     }
 
     private boolean needsRollback(Transaction transaction) {

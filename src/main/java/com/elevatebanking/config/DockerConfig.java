@@ -67,6 +67,11 @@ public class DockerConfig {
     private static final String SERVER_HOST = "192.168.1.128";
 
     private static final String NETWORK_NAME = "elevate-banking-network";
+    private static final List<String> PROTECTED_VOLUMES = Arrays.asList(
+            "portainer_data",
+            "portainer-data"
+    );
+
     @Value("${docker.host:tcp://192.168.1.128:2375}")
     private String dockerHost;
     private DockerClient dockerClient;
@@ -488,7 +493,7 @@ public class DockerConfig {
                 return Arrays.asList(
                         "ZOOKEEPER_CLIENT_PORT=2181",
                         "ZOOKEEPER_TICK_TIME=2000"
-                // "ALLOW_ANONYMOUS_LOGIN=yes"
+                        // "ALLOW_ANONYMOUS_LOGIN=yes"
                 );
             case "kafkaBACK":
                 return Arrays.asList(
@@ -828,12 +833,14 @@ public class DockerConfig {
             for (InspectVolumeResponse volume : volumes) {
                 String volumeName = volume.getName();
                 if (!volumeName.startsWith("elevate-banking-") &&
-                        !usedVolumes.contains(volumeName)) {
+                        !usedVolumes.contains(volumeName) &&
+                        !PROTECTED_VOLUMES.contains(volumeName)
+                ) {
                     try {
                         dockerClient.removeVolumeCmd(volumeName).exec();
-                        log.info("Removed orphaned volume: {}", volumeName);
+                        log.info("Removed orphaned volume : {}", volumeName);
                     } catch (Exception e) {
-                        log.warn("Could not remove volume {}: {}", volumeName, e.getMessage());
+                        log.warn("Couldn't remove volume {} : {}", volumeName, e.getMessage());
                     }
                 }
             }

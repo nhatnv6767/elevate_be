@@ -14,7 +14,7 @@ public interface IAuthApi {
     @Operation(summary = "Login", description = "Authenticate user and generate access token")
     @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = AuthDTOs.AuthResponse.class)))
     @ApiResponse(responseCode = "401", description = "Invalid username or password")
-    ResponseEntity<AuthDTOs.AuthResponse> login(AuthDTOs.AuthRequest request);
+    ResponseEntity<AuthDTOs.AuthResponse> login(AuthDTOs.LoginRequest request);
 
     @Operation(summary = "Request password reset", description = "Request password reset")
     @ApiResponse(responseCode = "200", description = "Password reset request sent successfully")

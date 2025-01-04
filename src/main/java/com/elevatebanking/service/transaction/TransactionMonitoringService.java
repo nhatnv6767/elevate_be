@@ -1,4 +1,4 @@
-package com.elevatebanking.service.nonImp;
+package com.elevatebanking.service.transaction;
 
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.transaction.Transaction;
@@ -7,7 +7,9 @@ import com.elevatebanking.repository.TransactionRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,10 @@ import java.util.UUID;
 public class TransactionMonitoringService {
     TransactionRepository transactionRepository;
     KafkaTemplate<String, NotificationEvent> notificationTemplate;
+
+    @Value("${spring.kafka.topics.notification}")
+    @NonFinal
+    private String notificationTopic;
 
     @Scheduled(fixedRate = 60000) // 1 minute
     public void monitorTransactionMetrics() {
@@ -78,6 +84,6 @@ public class TransactionMonitoringService {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        notificationTemplate.send("elevate.notifications", alert.getEventId(), alert);
+        notificationTemplate.send(notificationTopic, alert.getEventId(), alert);
     }
 }

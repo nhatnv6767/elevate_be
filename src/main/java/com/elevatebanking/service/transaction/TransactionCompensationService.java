@@ -1,4 +1,4 @@
-package com.elevatebanking.service.nonImp;
+package com.elevatebanking.service.transaction;
 
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.TransactionStatus;
@@ -9,7 +9,9 @@ import com.elevatebanking.repository.TransactionRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,10 @@ public class TransactionCompensationService {
     TransactionRepository transactionRepository;
     AccountRepository accountRepository;
     KafkaTemplate<String, TransactionEvent> kafkaTemplate;
+
+    @Value("${spring.kafka.topics.transaction}")
+    @NonFinal
+    private String transactionTopic;
 
     @Transactional
     public void compensateTransaction(Transaction transaction, String reason) {
@@ -82,6 +88,6 @@ public class TransactionCompensationService {
     void publishCompensationEvent(Transaction transaction, String reason) {
         TransactionEvent event = new TransactionEvent(transaction, "transaction.compensated");
         event.addProcessStep("COMPENSATED: " + reason);
-        kafkaTemplate.send("elevate.transactions", event.getTransactionId(), event);
+        kafkaTemplate.send(String.valueOf(transactionTopic), event.getTransactionId(), event);
     }
 }

@@ -6,6 +6,7 @@ import com.elevatebanking.entity.base.AuditableEntity;
 import com.elevatebanking.entity.base.EntityConstants;
 import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.UserStatus;
+import com.elevatebanking.entity.enums.UserTier;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import jakarta.persistence.*;
@@ -85,6 +86,11 @@ public class User extends AuditableEntity implements Statusable {
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private LoyaltyPoints loyaltyPoints;
+
+    @NotNull(message = EntityConstants.REQUIRED_FIELD)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tier", nullable = false)
+    private UserTier tier = UserTier.BASIC;
 
     @Override
     public void setStatus(Status status) {

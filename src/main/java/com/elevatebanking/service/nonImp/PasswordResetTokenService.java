@@ -1,13 +1,18 @@
 package com.elevatebanking.service.nonImp;
 
 import com.elevatebanking.entity.user.User;
+import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.exception.TooManyAttemptsException;
 import com.elevatebanking.repository.UserRepository;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -19,6 +24,7 @@ public class PasswordResetTokenService {
     private final RedisTemplate<String, String> redisTemplate;
     private final EmailService emailService;
     private final UserRepository userRepository;
+    private final KafkaTemplate<String, EmailEvent> kafkaTemplate;
 
     private static final String TOKEN_PREFIX = "pwd_reset:";
     private static final String ATTEMPT_PREFIX = "reset_attempt:";
@@ -30,7 +36,17 @@ public class PasswordResetTokenService {
         validateResetAttempts(email);
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         String token = createResetToken(email);
-        emailService.sendResetPasswordEmail(email, token, user.getUsername());
+//        emailService.sendResetPasswordEmail(email, token, user.getUsername());
+        EmailEvent emailEvent = EmailEvent.passwordResetEvent(email, user.getUsername(), token).build();
+
+        kafkaTemplate.send("elevate.emails", emailEvent)
+                .whenComplete((result, ex) -> {
+                            if (ex != null) {
+                                throw new RuntimeException("Failed to send email", ex);
+                            }
+                        }
+
+                );
     }
 
     private void validateResetAttempts(String email) {
@@ -67,4 +83,5 @@ public class PasswordResetTokenService {
         String key = TOKEN_PREFIX + token;
         redisTemplate.delete(key);
     }
+
 }
