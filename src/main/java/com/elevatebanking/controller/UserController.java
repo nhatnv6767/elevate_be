@@ -1,7 +1,7 @@
 package com.elevatebanking.controller;
 
+import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.UserUpdateRequest;
-import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
@@ -34,7 +34,7 @@ public class UserController {
     // @PreAuthorize("hasRole('ROLE_ADMIN')")
     // @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<AuthResponse> createUser(@Valid @RequestBody AuthRequest authRequest,
+    public ResponseEntity<AuthResponse> createUser(@Valid @RequestBody AuthDTOs.RegisterRequest authRequest,
                                                    HttpServletRequest request) {
 
         try {

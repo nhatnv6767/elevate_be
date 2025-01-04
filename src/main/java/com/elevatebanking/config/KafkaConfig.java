@@ -1,7 +1,7 @@
 
 package com.elevatebanking.config;
 
-import com.elevatebanking.dto.email.EmailEvent;
+import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.event.NotificationEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -57,6 +57,12 @@ public class KafkaConfig {
 
     @Value("${spring.kafka.topics.notification-retry}")
     private String notificationRetryTopic;
+
+    @Value("${spring.kafka.topics.email}")
+    private String emailTopic;
+
+    @Value("${spring.kafka.topics.email-retry}")
+    private String emailRetryTopic;
 
 
     // common producer config
@@ -222,13 +228,24 @@ public class KafkaConfig {
     }
 
     @Bean
+    public NewTopic emailRetryTopic() {
+        return buildTopic(emailRetryTopic, 4, 1, Collections.emptyMap());
+    }
+
+    @Bean
+    public NewTopic emailDLQTopic() {
+        return buildTopic("elevate.emails.dlq", 1, 1, Collections.emptyMap());
+    }
+
+
+    @Bean
     public NewTopic deadLetterTopic() {
         return buildTopic("elevate.transactions.dlq", 1, 1, Collections.emptyMap());
     }
 
     @Bean
     public NewTopic emailTopic() {
-        return buildTopic("elevate.emails", 4, 1, Collections.emptyMap());
+        return buildTopic(emailTopic, 4, 1, Collections.emptyMap());
     }
 
     @Bean

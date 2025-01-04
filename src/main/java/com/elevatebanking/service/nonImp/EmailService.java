@@ -1,6 +1,6 @@
 package com.elevatebanking.service.nonImp;
 
-import com.elevatebanking.dto.email.EmailEvent;
+import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.exception.EmailSendException;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -29,76 +29,81 @@ public class EmailService {
     @Value("${MAIL_USERNAME}")
     private String fromEmail;
 
-//    @Retryable(
-//            exceptionExpression = "#{@emailSendException}",
-//            maxAttempts = 3,
-//            backoff = @Backoff(delay = 1000)
-//    )
-//    public void sendResetPasswordEmail(String toEmail, String token, String username) {
-//        try {
-//            MimeMessage message = mailSender.createMimeMessage();
-//            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-//
-//            Context context = new Context();
-//            context.setVariable("username", username);
-//            context.setVariable("resetLink", "http://localhost:8080/api/v1/auth/reset-password?token=" + token);
-//
-//            String htmlContent = templateEngine.process("email/reset-password", context);
-//
-//            helper.setFrom(fromEmail);
-//            helper.setTo(toEmail);
-//            helper.setSubject("Reset Your Password - Elevate Banking");
-//            helper.setText(htmlContent, true);
-//
-//            mailSender.send(message);
-//
-//        } catch (Exception e) {
-//            log.error("Failed to send reset password email", e);
-//            throw new EmailSendException("Failed to send reset password email", e);
-//        }
-//    }
+    // @Retryable(
+    // exceptionExpression = "#{@emailSendException}",
+    // maxAttempts = 3,
+    // backoff = @Backoff(delay = 1000)
+    // )
+    // public void sendResetPasswordEmail(String toEmail, String token, String
+    // username) {
+    // try {
+    // MimeMessage message = mailSender.createMimeMessage();
+    // MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+    //
+    // Context context = new Context();
+    // context.setVariable("username", username);
+    // context.setVariable("resetLink",
+    // "http://localhost:8080/api/v1/auth/reset-password?token=" + token);
+    //
+    // String htmlContent = templateEngine.process("email/reset-password", context);
+    //
+    // helper.setFrom(fromEmail);
+    // helper.setTo(toEmail);
+    // helper.setSubject("Reset Your Password - Elevate Banking");
+    // helper.setText(htmlContent, true);
+    //
+    // mailSender.send(message);
+    //
+    // } catch (Exception e) {
+    // log.error("Failed to send reset password email", e);
+    // throw new EmailSendException("Failed to send reset password email", e);
+    // }
+    // }
 
-//    @Retryable(
-//            exceptionExpression = "#{@emailSendException}",
-//            maxAttempts = 3,
-//            backoff = @Backoff(delay = 1000)
-//    )
-//    public void sendTransactionEmail(String toEmail, String subject, String content) {
-//        try {
-//            log.info("Sending transaction email to {}", toEmail);
-//
-//            MimeMessage message = mailSender.createMimeMessage();
-//            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-//
-//            Context context = new Context();
-//            context.setVariable("title", subject);
-//            context.setVariable("message", content);
-//            context.setVariable("bankName", "Elevate Banking");
-//            context.setVariable("supportEmail", fromEmail);
-//
-//            // Process the email template
-//            String emailContent = templateEngine.process("email/transaction-notification", context);
-//
-//            // set email properties
-//            helper.setFrom(fromEmail);
-//            helper.setTo(toEmail);
-//            helper.setSubject(subject);
-//            helper.setText(emailContent, true);// true indicates html
-//
-//            // send email
-//            mailSender.send(message);
-//            log.info("Transaction email sent to {}", toEmail);
-//            EmailEvent event = EmailEvent.builder()
-//                    .to(toEmail)
-//                    .subject(subject)
-//                    .content(content)
-//                    .build();
-//            kafkaTemplate.send("elevate.emails", event);
-//        } catch (Exception e) {
-//            log.error("Failed to send transaction email {} - {}", toEmail, e.getMessage());
-//            throw new EmailSendException("Failed to send transaction email", e);
-//        }
-//    }
+    // @Retryable(
+    // exceptionExpression = "#{@emailSendException}",
+    // maxAttempts = 3,
+    // backoff = @Backoff(delay = 1000)
+    // )
+    // public void sendTransactionEmail(String toEmail, String subject, String
+    // content) {
+    // try {
+    // log.info("Sending transaction email to {}", toEmail);
+    //
+    // MimeMessage message = mailSender.createMimeMessage();
+    // MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+    //
+    // Context context = new Context();
+    // context.setVariable("title", subject);
+    // context.setVariable("message", content);
+    // context.setVariable("bankName", "Elevate Banking");
+    // context.setVariable("supportEmail", fromEmail);
+    //
+    // // Process the email template
+    // String emailContent =
+    // templateEngine.process("email/transaction-notification", context);
+    //
+    // // set email properties
+    // helper.setFrom(fromEmail);
+    // helper.setTo(toEmail);
+    // helper.setSubject(subject);
+    // helper.setText(emailContent, true);// true indicates html
+    //
+    // // send email
+    // mailSender.send(message);
+    // log.info("Transaction email sent to {}", toEmail);
+    // EmailEvent event = EmailEvent.builder()
+    // .to(toEmail)
+    // .subject(subject)
+    // .content(content)
+    // .build();
+    // kafkaTemplate.send("elevate.emails", event);
+    // } catch (Exception e) {
+    // log.error("Failed to send transaction email {} - {}", toEmail,
+    // e.getMessage());
+    // throw new EmailSendException("Failed to send transaction email", e);
+    // }
+    // }
 
     // ----------------------------------------------------------------
 
@@ -119,14 +124,30 @@ public class EmailService {
 
     private String prepareEmailContent(String subject, String content, String templateName) {
         Context context = new Context();
+        if (templateName.equals("email/reset-password")) {
+            log.debug("Preparing reset password email content. Username: {}", context.getVariable("username"));
+
+            String[] parts = content.split("\\|");
+            if (parts.length >= 2) {
+                String username = parts[0];
+                String resetLink = "http://localhost:8080/api/v1/auth/reset-password?token=" + parts[1];
+                context.setVariable("username", username);
+                context.setVariable("resetLink", resetLink);
+
+                log.debug("Reset link: {}", context.getVariable("resetLink"));
+            }
+        }
         context.setVariable("title", subject);
         context.setVariable("message", content);
         context.setVariable("bankName", "Elevate Banking");
         context.setVariable("supportEmail", fromEmail);
-        return templateEngine.process(templateName, context);
+        String processedContent = templateEngine.process(templateName, context);
+        log.debug("Processed email content: {}", processedContent);
+        return processedContent;
     }
 
-    private void configureAndSendEmail(MimeMessageHelper helper, String toEmail, String subject, String content) throws MessagingException {
+    private void configureAndSendEmail(MimeMessageHelper helper, String toEmail, String subject, String content)
+            throws MessagingException {
         helper.setFrom(fromEmail);
         helper.setTo(toEmail);
         helper.setSubject(subject);
@@ -150,12 +171,8 @@ public class EmailService {
 
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public void sendResetPasswordEmail(String toEmail, String token, String username) {
-        Context context = new Context();
-        context.setVariable("username", username);
-        context.setVariable("resetLink", "http://localhost:8080/api/v1/auth/reset-password?token=" + token);
-        String content = templateEngine.process("email/reset-password", context);
+        String content = username + "|" + token;
         processAndSendEmail(toEmail, "Reset Your Password - Elevate Banking", content, "email/reset-password");
     }
-
 
 }

@@ -1,6 +1,5 @@
 package com.elevatebanking.service.nonImp;
 
-import com.elevatebanking.dto.auth.AuthDTOs.AuthRequest;
 import com.elevatebanking.dto.GoogleUserInfo;
 import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
@@ -56,7 +55,7 @@ public class AuthService implements IAuthService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
-    public AuthResponse login(AuthRequest request) {
+    public AuthResponse login(AuthDTOs.LoginRequest request) {
         try {
 
             Optional<User> optionalUser = userRepository.findByUsername(request.getUsername());
@@ -81,9 +80,11 @@ public class AuthService implements IAuthService {
                             request.getPassword()));
 
             // gen token
-            String accessToken = tokenProvider.generateToken(user.getUsername());
+            JwtTokenProvider.TokenPair tokenPair = tokenProvider.generateTokenPair(request.getUsername());
+
             AuthResponse response = userMapper.userToAuthResponse(user);
-            response.setAccessToken(accessToken);
+            response.setAccessToken(tokenPair.getAccessToken());
+            response.setRefreshToken(tokenPair.getRefreshToken());
             response.setExpiresIn(tokenProvider.getExpirationTime());
             return response;
         } catch (BadCredentialsException e) {
@@ -117,19 +118,24 @@ public class AuthService implements IAuthService {
         tokenProvider.blacklistToken(token);
     }
 
-    private AuthResponse createAuthResponse(Authentication authentication) {
-        String username = authentication.getName();
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        return AuthResponse.builder()
-                .userId(user.getId())
-                .username(username)
-                .accessToken(tokenProvider.generateToken(username))
-                .expiresIn(tokenProvider.getExpirationTime())
-                .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new))
-                .build();
-
+    @Override
+    public boolean validateToken(String token) {
+        return tokenProvider.validateToken(token);
     }
+
+//    private AuthResponse createAuthResponse(Authentication authentication) {
+//        String username = authentication.getName();
+//        User user = userRepository.findByUsername(username)
+//                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+//        return AuthResponse.builder()
+//                .userId(user.getId())
+//                .username(username)
+//                .accessToken(tokenProvider.generateToken(username))
+//                .expiresIn(tokenProvider.getExpirationTime())
+//                .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new))
+//                .build();
+//
+//    }
 
     @Override
     public String createGoogleAuthorizationUrl() {
@@ -163,6 +169,7 @@ public class AuthService implements IAuthService {
                 .toUriString();
     }
 
+
     @Override
     public AuthResponse processGoogleCallback(String code) {
         // TODO Auto-generated method stub
@@ -173,10 +180,13 @@ public class AuthService implements IAuthService {
 
             User user = userRepository.findByEmail(userInfo.getEmail()).orElseGet(() -> createNewGoogleUser(userInfo));
 
+            JwtTokenProvider.TokenPair tokenPair = tokenProvider.generateTokenPair(user.getUsername());
+            String accessToken = tokenPair.getAccessToken();
             return AuthResponse.builder()
                     .userId(user.getId())
                     .username(user.getUsername())
-                    .accessToken(tokenProvider.generateToken(user.getUsername()))
+                    .accessToken(accessToken)
+//                    .accessToken(tokenProvider.generateToken(user.getUsername()))
                     .expiresIn(tokenProvider.getExpirationTime())
                     .roles(user.getRoles().stream().map(Role::getName).toArray(String[]::new))
                     .build();
@@ -215,5 +225,17 @@ public class AuthService implements IAuthService {
         user.setUsername(userInfo.getEmail());
         user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
         return userRepository.save(user);
+    }
+
+    @Override
+    public AuthDTOs.TokenRefreshResponse refreshToken(String refreshToken) {
+        String newAccessToken = tokenProvider.refreshAccessToken(refreshToken);
+
+        AuthDTOs.TokenRefreshResponse response = new AuthDTOs.TokenRefreshResponse();
+        response.setAccessToken(newAccessToken);
+        response.setExpiresIn(tokenProvider.getExpirationTime());
+        response.setRefreshToken(refreshToken);
+
+        return response;
     }
 }

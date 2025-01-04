@@ -4,7 +4,9 @@ import com.elevatebanking.dto.auth.AuthDTOs;
 import com.elevatebanking.dto.auth.AuthDTOs.AuthResponse;
 
 public interface IAuthService {
-    AuthDTOs.AuthResponse login(AuthDTOs.AuthRequest request);
+    AuthDTOs.AuthResponse login(AuthDTOs.LoginRequest request);
+
+    AuthDTOs.TokenRefreshResponse refreshToken(String refreshToken);
 
     // OAuth2
     String createGoogleAuthorizationUrl();
@@ -16,4 +18,6 @@ public interface IAuthService {
     void resetPassword(AuthDTOs.NewPasswordRequest request);
 
     void logout(String token);
+
+    boolean validateToken(String token);
 }

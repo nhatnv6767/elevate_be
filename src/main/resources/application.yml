@@ -115,6 +115,9 @@ spring:
       notification: elevate.notifications
       notification-retry: elevate.notifications.retry
       notification-dlq: elevate.notifications.dlq
+      email: elevate.emails
+      email-retry: elevate.emails.retry
+      email-dlq: elevate.emails.dlq
     consumer:
       groups:
         transaction: elevate-transaction-group
@@ -122,6 +125,7 @@ spring:
         notification: elevate-notification-group
         notification-retry: elevate-notification-retry-group
         email: elevate-email-group
+        email-retry: elevate-email-retry-group
       #      group-id: elevate-banking-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -196,7 +200,7 @@ springdoc:
 # JWT Configuration
 jwt:
   #  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
-  secret: d0a8c264294f82a0225df5de62105e55a9256889c0ca637b6ae3d737dc06ddec031d4c59c08f8f07571102e5ac317381df36376e7ce32f329e01d025eeab1ad6
+  secret: Zc8xS9lJIZBYUwyi8MiGi6dj1XBVp2rhA8SSNPhkPG8=
   expiration: 2592000000
   refresh-expiration: 86400000000
 

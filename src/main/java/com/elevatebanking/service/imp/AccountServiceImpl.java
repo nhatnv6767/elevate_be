@@ -19,6 +19,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.elevatebanking.exception.InsufficientBalanceException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
