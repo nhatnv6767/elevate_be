@@ -1,21 +1,4 @@
-//package com.elevatebanking.config;
-//
-//import com.elevatebanking.event.TransactionEvent;
-//import org.apache.kafka.clients.admin.NewTopic;
-//import org.apache.kafka.clients.producer.ProducerConfig;
-//import org.apache.kafka.common.serialization.StringSerializer;
-//import org.springframework.beans.factory.annotation.Value;
-//import org.springframework.context.annotation.Bean;
-//import org.springframework.context.annotation.Configuration;
-//import org.springframework.kafka.config.TopicBuilder;
-//import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-//import org.springframework.kafka.core.KafkaTemplate;
-//import org.springframework.kafka.core.ProducerFactory;
-//import org.springframework.kafka.support.serializer.JsonSerializer;
-//
-//import java.util.HashMap;
-//import java.util.Map;
-//
+
 //@Configuration
 //public class KafkaConfig {
 //
@@ -88,8 +71,14 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
-    @Value("${spring.kafka.consumer.group-id}")
-    private String groupId;
+    @Value("${spring.kafka.consumer.groups.transaction}")
+    private String transactionGroupId;
+
+    @Value("${spring.kafka.consumer.groups.email}")
+    private String emailGroupId;
+
+    @Value("${spring.kafka.consumer.groups.notification}")
+    private String notificationGroupId;
 
 
     // common producer config
@@ -115,7 +104,7 @@ public class KafkaConfig {
 
     // common consumer config
 
-    private <T> Map<String, Object> getConsumerConfigs(Class<T> valueType) {
+    private <T> Map<String, Object> getConsumerConfigs(Class<T> valueType, String groupId) {
         Map<String, Object> config = new HashMap<>();
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         config.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
@@ -137,8 +126,8 @@ public class KafkaConfig {
     }
 
     // generic consumer factory builder
-    private <T> ConsumerFactory<String, T> buildConsumerFactory(Class<T> valueType) {
-        return new DefaultKafkaConsumerFactory<>(getConsumerConfigs(valueType),
+    private <T> ConsumerFactory<String, T> buildConsumerFactory(Class<T> valueType, String groupId) {
+        return new DefaultKafkaConsumerFactory<>(getConsumerConfigs(valueType, groupId),
                 new StringDeserializer(),
                 new JsonDeserializer<>(valueType, false));
     }
@@ -150,14 +139,10 @@ public class KafkaConfig {
         factory.setConsumerFactory(consumerFactory);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
 
-        DefaultErrorHandler errorHandler = new DefaultErrorHandler(((record, e) -> {
-            log.error("Error processing message: topic = {}, offset = {}, key = {}, value = {}",
-                    record.topic(),
-                    record.offset(),
-                    record.key(),
-                    record.value(),
-                    e);
-        }));
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler((record, ex) -> {
+            log.error("Error processing message: topic={}, offset={}, key={}, value={}",
+                    record.topic(), record.offset(), record.key(), record.value(), ex);
+        });
 
         errorHandler.setRetryListeners((record, ex, deliveryAttempt) -> {
             log.warn("Failed to process message, attempt {} of 3. Error: {}",
@@ -214,12 +199,17 @@ public class KafkaConfig {
 
     @Bean
     public ConsumerFactory<String, TransactionEvent> transactionConsumerFactory() {
-        return buildConsumerFactory(TransactionEvent.class);
+        return buildConsumerFactory(TransactionEvent.class, transactionGroupId);
     }
 
     @Bean
     public ConsumerFactory<String, EmailEvent> emailConsumerFactory() {
-        return buildConsumerFactory(EmailEvent.class);
+        return buildConsumerFactory(EmailEvent.class, emailGroupId);
+    }
+
+    @Bean
+    public ConsumerFactory<String, NotificationEvent> notificationConsumerFactory() {
+        return buildConsumerFactory(NotificationEvent.class, notificationGroupId);
     }
 
     // Listener container factory beans
@@ -234,6 +224,11 @@ public class KafkaConfig {
         return buildListenerContainerFactory(emailConsumerFactory());
     }
 
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, NotificationEvent> notificationKafkaListenerContainerFactory() {
+        return buildListenerContainerFactory(notificationConsumerFactory());
+    }
+
     // Topic beans
     @Bean
     public NewTopic transactionTopic() {
@@ -241,11 +236,6 @@ public class KafkaConfig {
                 "cleanup.policy", "delete",
                 "retention.ms", "604800000" // 7 days
         ));
-    }
-
-    @Bean
-    public NewTopic emailTopic() {
-        return buildTopic("elevate.emails", 4, 1, Collections.emptyMap());
     }
 
     @Bean
@@ -257,6 +247,30 @@ public class KafkaConfig {
     public NewTopic deadLetterTopic() {
         return buildTopic("elevate.transactions.dlq", 1, 1, Collections.emptyMap());
     }
+
+    @Bean
+    public NewTopic emailTopic() {
+        return buildTopic("elevate.emails", 4, 1, Collections.emptyMap());
+    }
+
+    @Bean
+    public NewTopic notificationTopic() {
+        return buildTopic("elevate.notifications", 4, 1, Map.of(
+                "cleanup.policy", "delete",
+                "retention.ms", "604800000" // 7 days
+        ));
+    }
+
+    @Bean
+    public NewTopic notificationRetryTopic() {
+        return buildTopic("elevate.notifications.retry", 4, 1, Collections.emptyMap());
+    }
+
+    @Bean
+    public NewTopic notificationDLQTopic() {
+        return buildTopic("elevate.notifications.dlq", 1, 1, Collections.emptyMap());
+    }
+
 
 }
 

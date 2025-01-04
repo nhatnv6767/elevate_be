@@ -105,7 +105,13 @@ spring:
         retry.backoff.ms: 1000
         retries: 3
     consumer:
-      group-id: elevate-banking-group
+      groups:
+        transaction: elevate-transaction-group
+        transaction-retry: elevate-transaction-retry-group
+        notification: elevate-notification-group
+        notification-retry: elevate-notification-retry-group
+        email: elevate-email-group
+      #      group-id: elevate-banking-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
