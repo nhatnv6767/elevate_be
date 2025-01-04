@@ -120,6 +120,7 @@ public class TransactionServiceImpl implements ITransactionService {
         Account account = validateAndGetAccount(accountId, "Account not found");
         // validateTransactionAmount(amount);
         validationService.validateDepositTransaction(account, amount);
+
         Transaction transaction = buildTransaction(null, account, amount, "Deposit", TransactionType.DEPOSIT);
         transaction = initializeAndSaveTransaction(transaction);
         try {

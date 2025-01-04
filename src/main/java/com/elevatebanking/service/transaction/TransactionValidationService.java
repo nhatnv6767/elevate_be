@@ -34,12 +34,23 @@ public class TransactionValidationService {
     private static final BigDecimal MIN_TRANSFER_AMOUNT = new BigDecimal("0.1"); // 0.1$
     private static final BigDecimal DAILY_TRANSFER_LIMIT = new BigDecimal(5000000); // 5,000,000$
     private static final BigDecimal SINGLE_TRANSFER_LIMIT = new BigDecimal(1000000); // 1,000,000$
-    
+
 
     public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount) {
         validateBasicRules(fromAccount, toAccount, amount);
         validateLimits(fromAccount, amount);
     }
+
+    public void validateWithdrawalTransaction(Account account, BigDecimal amount) {
+        validateBasicRules(account, account, amount);
+        validateLimits(account, amount);
+    }
+
+    public void validateDepositTransaction(Account account, BigDecimal amount) {
+        validateBasicRules(account, account, amount);
+        validateLimits(account, amount);
+    }
+
 
     private void validateBasicRules(Account fromAccount, Account toAccount, BigDecimal amount) {
         validateAccountStatus(fromAccount);
