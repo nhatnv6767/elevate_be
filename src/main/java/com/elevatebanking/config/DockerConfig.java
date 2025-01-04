@@ -68,7 +68,8 @@ public class DockerConfig {
 
     private static final String NETWORK_NAME = "elevate-banking-network";
     private static final List<String> PROTECTED_VOLUMES = Arrays.asList(
-            "portainer_data"
+            "portainer_data",
+            "portainer-data"
     );
 
     @Value("${docker.host:tcp://192.168.1.128:2375}")

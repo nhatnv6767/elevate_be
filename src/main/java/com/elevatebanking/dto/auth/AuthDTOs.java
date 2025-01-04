@@ -73,7 +73,7 @@ public class AuthDTOs {
     public static class AuthResponse {
         private String userId;
         private String username;
-        private String password;
+        //        private String password;
         private String phone;
         private String identityNumber;
         private String fullName;
