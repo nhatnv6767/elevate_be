@@ -50,7 +50,7 @@ public class AccountServiceImpl implements IAccountService {
     @Override
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
     @Transactional
-    public Account createAccount(String userId) {
+    public Account createAccount(String userId, BigDecimal initialBalance) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (user.getStatus() != UserStatus.ACTIVE) {
@@ -69,7 +69,7 @@ public class AccountServiceImpl implements IAccountService {
         Account account = new Account();
         account.setUser(user);
         account.setAccountNumber(accountNumberGenerator.generate());
-        account.setBalance(BigDecimal.ZERO);
+        account.setBalance(initialBalance != null ? initialBalance : BigDecimal.ZERO);
         account.setStatus(AccountStatus.ACTIVE);
 
         Account savedAccount = accountRepository.save(account);

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface IAccountService {
-    Account createAccount(String userId);
+    Account createAccount(String userId, BigDecimal initialBalance);
 
     Optional<Account> getAccountById(String id);
 

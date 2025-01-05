@@ -3,6 +3,7 @@ package com.elevatebanking.controller;
 import com.elevatebanking.dto.accounts.AccountDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.mapper.AccountMapper;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.util.SecurityUtils;
@@ -39,29 +40,23 @@ public class AccountController {
         return ResponseEntity.ok(accountMapper.accountsToSummaryResponses(accounts));
     }
 
-    // TODO: 1. Cải tiến là lúc tạo tài khoản phương thức Post (/api/v1/accounts) thì thêm được cả balance cho tài khoản luôn, và nếu có lỗi trả về thì phải hiển thị rõ
-    // TODO: ví dụ như lỗi khi user đó có max tài khoản rồi thì trả về nội dung tương ứng
-    // TODO: 2. Vấn đề nữa là khi gửi yêu cầu reset mật khẩu bằng api  api/v1/auth/forgot-password thì dữ liệu lưu vào redis, vậy người dùng cứ spam api này thì có phải dữ liệu bị lưu liên tục vào redis
-    // TODO: cho đến 1 lúc nào đó die server không, có cơ chế để xoá dữ liệu cũ rồi mới lưu dữ liệu cũ không nhỉ, hay có cách gì khác để tối ưu
     @Operation(summary = "Create new account for user")
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
     @PostMapping
-    public ResponseEntity<?> createAccount(@RequestParam String userId) {
-        if (userId == null || userId.isEmpty()) {
+    public ResponseEntity<?> createAccount(@Valid @RequestBody CreateAccountRequest request) {
+        if (request == null || request.getUserId() == null) {
             return ResponseEntity.badRequest().body(
-                    Map.of("message", "User ID is required"));
+                    Map.of("message", "Missing required fields body"));
         }
 
         try {
-            Account newAccount = accountService.createAccount(userId);
-
+            Account newAccount = accountService.createAccount(request.getUserId(), request.getInitialBalance());
             AccountResponse response = accountMapper.accountToAccountResponse(newAccount);
 
             return ResponseEntity.ok(Map.of("message", "Account created successfully", "account", response));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                    Map.of(
-                            "message", "Error creating account"));
+                    Map.of("message", "Error creating account", "error", e.getMessage()));
         }
     }
 
