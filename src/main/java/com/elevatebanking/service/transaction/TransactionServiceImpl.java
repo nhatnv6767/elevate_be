@@ -6,8 +6,7 @@ import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.event.TransactionEvent;
-import com.elevatebanking.exception.InvalidOperationException;
-import com.elevatebanking.exception.TransactionProcessingException;
+import com.elevatebanking.exception.*;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
@@ -92,32 +91,20 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
+    // TODO: who calls this method?
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
                                        String description) {
-        Transaction transaction = createInitialTransaction(
-                fromAccountId, toAccountId, amount, description, TransactionType.TRANSFER
-        );
-
+        Transaction transaction = null;
         try {
-            Account fromAccount = validateAndGetAccount(fromAccountId, "Source account not found");
-            Account toAccount = validateAndGetAccount(toAccountId, "Destination account not found");
+            Account fromAccount = accountService.getAccountById(fromAccountId).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
+            Account toAccount = accountService.getAccountById(toAccountId).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
             validationService.validateTransferTransaction(fromAccount, toAccount, amount);
+            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description, TransactionType.TRANSFER);
             executeTransfer(fromAccountId, toAccountId, amount);
-
             return completeTransaction(transaction);
         } catch (Exception e) {
-            log.error("Transfer failed to transaction {}: {}", transaction.getId(), e.getMessage());
-
-            compensationService.compensateTransaction(
-                    transaction, "Error executing transfer: " + e.getMessage());
-
-            transaction.setStatus(TransactionStatus.FAILED);
-            transactionRepository.save(transaction);
-
-            publishTransactionEvent(transaction, "transaction.failed");
-            throw new TransactionProcessingException(
-                    "Error processing transfer: " + e.getMessage(), transaction.getId(), true
-            );
+            handleTransactionError(transaction, e);
+            throw new RuntimeException("Error processing transfer");
         }
 
     }
