@@ -7,6 +7,7 @@ import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.event.TransactionEvent;
 import com.elevatebanking.exception.InvalidOperationException;
+import com.elevatebanking.exception.TransactionProcessingException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,12 +37,11 @@ public class TransactionServiceImpl implements ITransactionService {
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
     private final TransactionValidationService validationService;
     private final TransactionCompensationService compensationService;
+    private final TransactionMonitoringService monitoringService;
+    private final TransactionRecoveryService recoveryService;
 
     @Override
     public Transaction createTransaction(Transaction transaction) {
-        // validateTransactionAmount(transaction.getAmount());
-        // validateDailyLimit(transaction.getFromAccount().getId(),
-        // transaction.getAmount());
         validationService.validateTransferTransaction(transaction.getFromAccount(), transaction.getToAccount(),
                 transaction.getAmount());
         return initializeAndSaveTransaction(transaction);
@@ -93,37 +94,59 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
                                        String description) {
-        Transaction transaction = null;
+        Transaction transaction = createInitialTransaction(
+                fromAccountId, toAccountId, amount, description, TransactionType.TRANSFER
+        );
+
         try {
-            transaction = processTransferInternal(fromAccountId, toAccountId, amount, description);
-            return transaction;
+            Account fromAccount = validateAndGetAccount(fromAccountId, "Source account not found");
+            Account toAccount = validateAndGetAccount(toAccountId, "Destination account not found");
+            validationService.validateTransferTransaction(fromAccount, toAccount, amount);
+            executeTransfer(fromAccountId, toAccountId, amount);
+
+            return completeTransaction(transaction);
         } catch (Exception e) {
-            if (transaction != null) {
-                compensationService.compensateTransaction(
-                        transaction,
-                        "Error during transfer: " + e.getMessage()
-                );
-            }
-            throw new RuntimeException("Error processing transfer", e);
+            log.error("Transfer failed to transaction {}: {}", transaction.getId(), e.getMessage());
+
+            compensationService.compensateTransaction(
+                    transaction, "Error executing transfer: " + e.getMessage());
+
+            transaction.setStatus(TransactionStatus.FAILED);
+            transactionRepository.save(transaction);
+
+            publishTransactionEvent(transaction, "transaction.failed");
+            throw new TransactionProcessingException(
+                    "Error processing transfer: " + e.getMessage(), transaction.getId(), true
+            );
         }
 
     }
 
-    private Transaction processTransferInternal(String fromAccountId, String toAccountId, BigDecimal amount, String description) {
+    private Transaction createInitialTransaction(String fromAccountId, String toAccountId, BigDecimal amount, String description, TransactionType type) {
         // Validate accounts and balance before creating transaction
-        Account fromAccount = validateAndGetAccount(fromAccountId, "Source account not found");
-        Account toAccount = validateAndGetAccount(toAccountId, "Destination account not found");
-        validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-        Transaction transaction = buildTransaction(fromAccount, toAccount, amount, description,
-                TransactionType.TRANSFER);
-        transaction = initializeAndSaveTransaction(transaction);
-        try {
-            executeTransfer(fromAccountId, toAccountId, amount);
-            return completeTransaction(transaction);
-        } catch (Exception e) {
-            handleTransactionError(transaction, "Error executing transfer", e);
-            throw new RuntimeException("Error executing transfer", e);
-        }
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(validateAndGetAccount(fromAccountId, "Source account not found"));
+        transaction.setToAccount(validateAndGetAccount(toAccountId, "Destination account not found"));
+        transaction.setAmount(amount);
+        transaction.setType(type);
+        transaction.setDescription(description);
+        transaction.setStatus(TransactionStatus.PENDING);
+
+        transaction = transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.initiated");
+        return transaction;
+
+//        validationService.validateTransferTransaction(fromAccount, toAccount, amount);
+//        Transaction transaction = buildTransaction(fromAccount, toAccount, amount, description,
+//                TransactionType.TRANSFER);
+//        transaction = initializeAndSaveTransaction(transaction);
+//        try {
+//            executeTransfer(fromAccountId, toAccountId, amount);
+//            return completeTransaction(transaction);
+//        } catch (Exception e) {
+//            handleTransactionError(transaction, "Error executing transfer", e);
+//            throw new RuntimeException("Error executing transfer", e);
+//        }
     }
 
     @Override
@@ -314,13 +337,15 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.completed");
+
+            monitoringService.monitorTransactionMetrics();
         } catch (Exception e) {
             log.error("Error processing transfer: {}", e.getMessage());
-            if (transaction != null) {
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.failed");
-            }
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction = transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.failed");
+
+            monitoringService.sendAlertNotification("Transaction failed: " + e.getMessage());
             throw new RuntimeException("Error processing transfer");
         }
 
@@ -468,6 +493,18 @@ public class TransactionServiceImpl implements ITransactionService {
                 .from(fromParty)
                 .to(toParty)
                 .build();
+    }
+
+    @Scheduled(fixedRate = 300000) // 5 minutes
+    public void checkAndRecoverTransactions() {
+        List<Transaction> stuckTransactions = recoveryService.findStuckTransactions();
+        for (Transaction transaction : stuckTransactions) {
+            try {
+                recoveryService.recoverTransaction(transaction);
+            } catch (Exception e) {
+                log.error("Failed to recover transaction: {}", transaction.getId(), e);
+            }
+        }
     }
 
 }
