@@ -14,6 +14,7 @@ import java.util.Optional;
 
 @Repository
 public interface AccountRepository extends JpaRepository<Account, String> {
+    @Query("SELECT a FROM Account a WHERE a.user.id = :userId")
     List<Account> findByUserId(String userId);
 
     Optional<Account> findByAccountNumber(String accountNumber);

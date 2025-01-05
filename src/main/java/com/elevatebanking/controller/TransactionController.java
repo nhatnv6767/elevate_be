@@ -31,12 +31,14 @@ import java.util.List;
 public class TransactionController {
     private final ITransactionService transactionService;
     private final IAccountService accountService;
+    private final SecurityUtils securityUtils;
+
 
     @Operation(summary = "Process a new transfer between accounts")
     @PostMapping("/transfer")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
     public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransferRequest request) {
-        String userId = SecurityUtils.getCurrentUserId();
+        String userId = securityUtils.getCurrentUserId();
 
         if (!accountService.isAccountOwner(request.getFromAccountId(), userId)) {
             throw new UnauthorizedException("User is not authorized to perform this operation");
@@ -59,7 +61,7 @@ public class TransactionController {
     @PostMapping("/withdraw")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
     public ResponseEntity<TransactionResponse> withdraw(@Valid @RequestBody WithdrawRequest request) {
-        String userId = SecurityUtils.getCurrentUserId();
+        String userId = securityUtils.getCurrentUserId();
         if (!accountService.isAccountOwner(request.getAccountId(), userId)) {
             throw new UnauthorizedException("User is not authorized to perform this operation");
         }
@@ -84,7 +86,7 @@ public class TransactionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
 
-        String userId = SecurityUtils.getCurrentUserId();
+        String userId = securityUtils.getCurrentUserId();
         if (!accountService.isAccountOwner(accountId, userId)) {
             throw new UnauthorizedException("User is not authorized to perform this operation");
         }

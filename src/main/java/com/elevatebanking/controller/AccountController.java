@@ -3,8 +3,11 @@ package com.elevatebanking.controller;
 import com.elevatebanking.dto.accounts.AccountDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.entity.user.User;
+import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.mapper.AccountMapper;
+import com.elevatebanking.repository.UserRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.util.SecurityUtils;
 import com.github.dockerjava.api.exception.UnauthorizedException;
@@ -14,6 +17,8 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,14 +35,26 @@ import java.util.Map;
 @SecurityRequirement(name = "Bearer Authentication")
 public class AccountController {
 
+    private static final Logger log = LoggerFactory.getLogger(AccountController.class);
     private final IAccountService accountService;
     private final AccountMapper accountMapper;
+    private final UserRepository userRepository;
+    private final SecurityUtils securityUtils;
 
     @GetMapping("/my-accounts")
     public ResponseEntity<List<AccountSummaryResponse>> getMyAccounts() {
-        String userId = SecurityUtils.getCurrentUserId();
-        List<Account> accounts = accountService.getAccountsByUserId(userId);
-        return ResponseEntity.ok(accountMapper.accountsToSummaryResponses(accounts));
+        try {
+            String username = SecurityUtils.getCurrentUsername();
+            User user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+            List<Account> accounts = accountService.getAccountsByUserId(user.getId());
+            log.debug("Found {} accounts for user ID: {}", accounts.size(), user.getId());
+            return ResponseEntity.ok(accountMapper.accountsToSummaryResponses(accounts));
+        } catch (Exception e) {
+            log.error("Error retrieving user accounts: {}", e.getMessage());
+            throw new InvalidOperationException("Error retrieving user accounts");
+        }
     }
 
     @Operation(summary = "Create new account for user")
@@ -64,7 +81,7 @@ public class AccountController {
     @GetMapping("/{id}")
     public ResponseEntity<AccountResponse> getAccount(@PathVariable String id) {
 
-        String userId = SecurityUtils.getCurrentUserId();
+        String userId = securityUtils.getCurrentUserId();
 
         return accountService.getAccountById(id)
                 .filter(account -> accountService.isAccountOwner(id, userId))
@@ -92,7 +109,7 @@ public class AccountController {
     @Operation(summary = "Get account balance")
     @GetMapping("/{id}/balance")
     public ResponseEntity<AccountBalanceResponse> getBalance(@PathVariable String id) {
-        String userId = SecurityUtils.getCurrentUserId();
+        String userId = securityUtils.getCurrentUserId();
         if (!accountService.isAccountOwner(id, userId)) {
             throw new UnauthorizedException("Not authorized to view account balance");
         }

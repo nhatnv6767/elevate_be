@@ -37,6 +37,8 @@ public class TransactionLimitService {
     LimitExceptionRepository exceptionRepository;
     TransactionRepository transactionRepository;
     RedisTemplate<String, String> redisTemplate;
+    SecurityUtils securityUtils;
+
 
     @Transactional(readOnly = true)
     public TransactionLimit getUserLimit(String userId) {
@@ -249,7 +251,7 @@ public class TransactionLimitService {
         history.setChangedField(action);
         history.setOldValue(oldValue);
         history.setNewValue(newValue);
-        history.setChangedBy(SecurityUtils.getCurrentUserId());
+        history.setChangedBy(securityUtils.getCurrentUserId());
         history.setChangeReason("System update");
         historyRepository.save(history);
 

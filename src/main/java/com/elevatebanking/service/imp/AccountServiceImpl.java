@@ -92,7 +92,10 @@ public class AccountServiceImpl implements IAccountService {
     @Override
     @Transactional(readOnly = true)
     public List<Account> getAccountsByUserId(String userId) {
-        return accountRepository.findByUserId(userId);
+        log.debug("Fetching accounts for user ID: {}", userId);
+        List<Account> accounts = accountRepository.findByUserId(userId);
+        log.debug("Found {} accounts for user ID: {}", accounts.size(), userId);
+        return accounts;
     }
 
     @Override
