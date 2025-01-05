@@ -51,6 +51,7 @@ public class AuditLogService {
             String details = generateAuditDetails(previousState, currentState);
             auditLog.setDetails(details);
             auditLog.setStatus(AuditLog.AuditStatus.SUCCESS);
+            auditLog.setVersion(0L);
             auditLogRepository.save(auditLog);
             log.info("Audit log created for action: {} on entity: {}", action, entityId);
         } catch (Exception e) {
@@ -88,11 +89,37 @@ public class AuditLogService {
     }
 
     String getClientIpAddress() {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null) {
-            return xForwardedFor.split(",")[0].trim();
+
+        try {
+            String[] headers = {
+                    "X-Forwarded-For",
+                    "Proxy-Client-IP",
+                    "WL-Proxy-Client-IP",
+                    "HTTP_X_FORWARDED_FOR",
+                    "HTTP_X_FORWARDED",
+                    "HTTP_X_CLUSTER_CLIENT_IP",
+                    "HTTP_CLIENT_IP",
+                    "HTTP_FORWARDED_FOR",
+                    "HTTP_FORWARDED",
+                    "HTTP_VIA",
+                    "REMOTE_ADDR"
+            };
+            for (String header : headers) {
+                String ip = request.getHeader(header);
+                if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+                    // if have multiple ip addresses, return the first one
+                    if (ip.contains(",")) {
+                        ip = ip.split(",")[0].trim();
+                    }
+                    return ip;
+                }
+            }
+            // fallback to remote address
+            return request.getRemoteAddr();
+        } catch (Exception e) {
+            log.error("Failed to get client IP address: {}", e.getMessage());
+            return "0.0.0.0";
         }
-        return request.getRemoteUser();
     }
 
     @Data

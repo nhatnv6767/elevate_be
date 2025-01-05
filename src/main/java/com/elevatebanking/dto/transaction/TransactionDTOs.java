@@ -16,7 +16,7 @@ public class TransactionDTOs {
     public static class TransactionRequest {
         @NotNull(message = "Amount is required")
         @DecimalMin(value = "0.01", message = "Amount must be greater than 0")
-        @DecimalMax(value = "1000000.00", message = "Amount must be less than 1,000,000")
+        @DecimalMax(value = "10000000.00", message = "Amount must be less than 10,000,000")
         private BigDecimal amount;
 
         @Size(max = 500, message = "Description must be less than 500 characters")
@@ -30,11 +30,13 @@ public class TransactionDTOs {
     @AllArgsConstructor
     public static class TransferRequest extends TransactionRequest {
 
-        @NotBlank(message = "From account id is required")
-        private String fromAccountId;
+        @NotBlank(message = "From account number is required")
+        @Pattern(regexp = "^[0-9]{10,20}$", message = "Invalid account number (source) format")
+        private String fromAccountNumber;
 
-        @NotBlank(message = "To account id is required")
-        private String toAccountId;
+        @NotBlank(message = "To account number is required")
+        @Pattern(regexp = "^[0-9]{10,20}$", message = "Invalid account number (destination) format")
+        private String toAccountNumber;
 
         @NotNull(message = "Transfer type is required")
         private TransferType type;
@@ -45,22 +47,22 @@ public class TransactionDTOs {
     }
 
     @Data
-//    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class DepositRequest extends TransactionRequest {
-        @NotBlank(message = "Account id is required")
-        private String accountId;
+        @NotBlank(message = "Account number is required")
+        @Pattern(regexp = "^[0-9]{10,20}$", message = "Invalid account number format")
+        private String accountNumber;
     }
 
 
     @Data
-//    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class WithdrawRequest extends TransactionRequest {
-        @NotBlank(message = "Account id is required")
-        private String accountId;
+        @NotBlank(message = "Account number is required")
+        @Pattern(regexp = "^[0-9]{10,20}$", message = "Invalid account number format")
+        private String accountNumber;
     }
 
 

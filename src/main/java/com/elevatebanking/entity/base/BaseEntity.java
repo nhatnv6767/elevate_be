@@ -19,7 +19,7 @@ import lombok.Setter;
 @MappedSuperclass
 @Getter
 @Setter
-public class BaseEntity implements Identifiable<String>{
+public class BaseEntity implements Identifiable<String> {
 
     @Id
     @GeneratedValue(generator = "uuid2")
@@ -29,13 +29,14 @@ public class BaseEntity implements Identifiable<String>{
 
     @Version
     private Long version;
-    
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-    
+
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    
+
+
 }

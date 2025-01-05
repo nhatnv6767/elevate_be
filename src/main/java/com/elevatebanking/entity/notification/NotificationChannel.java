@@ -8,6 +8,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "notification_channels")
@@ -28,5 +30,6 @@ public class NotificationChannel extends BaseEntity {
     private boolean active = true;
 
     @Column(name = "configuration", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private String configuration;
 }

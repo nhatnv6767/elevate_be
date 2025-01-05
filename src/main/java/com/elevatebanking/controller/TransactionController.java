@@ -1,6 +1,7 @@
 package com.elevatebanking.controller;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
+import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.util.SecurityUtils;
@@ -40,12 +41,16 @@ public class TransactionController {
     public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransferRequest request) {
         String userId = securityUtils.getCurrentUserId();
 
-        if (!accountService.isAccountOwner(request.getFromAccountId(), userId)) {
+        // get the account by number instead of id
+        Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber()).orElseThrow(() -> new RuntimeException("Source account not found"));
+
+
+        if (!accountService.isAccountOwner(fromAccount.getId(), userId)) {
             throw new UnauthorizedException("User is not authorized to perform this operation");
         }
 
-        log.info("Processing transfer request from account: {} to account: {}, amount: {}", request.getFromAccountId(),
-                request.getToAccountId(), request.getAmount());
+        log.info("Processing transfer request from account: {} to account: {}, amount: {}", request.getFromAccountNumber(),
+                request.getToAccountNumber(), request.getAmount());
         return ResponseEntity.ok(transactionService.transfer(request));
     }
 
@@ -53,7 +58,7 @@ public class TransactionController {
     @PostMapping("/deposit")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
     public ResponseEntity<TransactionResponse> deposit(@Valid @RequestBody DepositRequest request) {
-        log.info("Processing deposit request to account: {}, amount: {}", request.getAccountId(), request.getAmount());
+        log.info("Processing deposit request to account: {}, amount: {}", request.getAccountNumber(), request.getAmount());
         return ResponseEntity.ok(transactionService.deposit(request));
     }
 
@@ -62,10 +67,14 @@ public class TransactionController {
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
     public ResponseEntity<TransactionResponse> withdraw(@Valid @RequestBody WithdrawRequest request) {
         String userId = securityUtils.getCurrentUserId();
-        if (!accountService.isAccountOwner(request.getAccountId(), userId)) {
+
+        // get the account by number instead of id
+        Account account = accountService.getAccountByNumber(request.getAccountNumber()).orElseThrow(() -> new RuntimeException("Account not found"));
+
+        if (!accountService.isAccountOwner(account.getId(), userId)) {
             throw new UnauthorizedException("User is not authorized to perform this operation");
         }
-        log.info("Processing withdrawal request from account: {}, amount: {}", request.getAccountId(),
+        log.info("Processing withdrawal request from account: {}, amount: {}", request.getAccountNumber(),
                 request.getAmount());
         return ResponseEntity.ok(transactionService.withdraw(request));
     }

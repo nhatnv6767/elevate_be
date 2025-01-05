@@ -203,6 +203,8 @@ springdoc:
       paths-to-match: /api/v1/accounts/**
     - group: transactions
       paths-to-match: /api/v1/transactions/**
+    - group: transfers
+      paths-to-match: /api/v1/transfers/**
 
 # JWT Configuration
 jwt:

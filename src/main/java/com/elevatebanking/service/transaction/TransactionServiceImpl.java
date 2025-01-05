@@ -312,11 +312,11 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public TransactionResponse transfer(TransferRequest request) {
-        log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountId(),
-                request.getToAccountId(), request.getAmount());
+        log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
+                request.getToAccountNumber(), request.getAmount());
 
-        Account fromAccount = validateAndGetAccount(request.getFromAccountId(), "Source account not found");
-        Account toAccount = validateAndGetAccount(request.getToAccountId(), "Destination account not found");
+        Account fromAccount = validateAndGetAccount(request.getFromAccountNumber(), "Source account not found");
+        Account toAccount = validateAndGetAccount(request.getToAccountNumber(), "Destination account not found");
 
         // validate account and balances
         validationService.validateTransferTransaction(fromAccount, toAccount, request.getAmount());
@@ -354,13 +354,13 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public TransactionResponse deposit(DepositRequest request) {
-        log.info("Processing deposit request: account {}, amount: {}", request.getAccountId(), request.getAmount());
+        log.info("Processing deposit request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
 
         // validateTransactionAmount(request.getAmount());
         // if(request.getAmount().compareTo(SINGLE_TRANSFER_LIMIT) > 0){
         // throw new InvalidOperationException("Amount exceeds single transfer limit");
         // }
-        Account account = accountService.getAccountById(request.getAccountId())
+        Account account = accountService.getAccountByNumber(request.getAccountNumber())
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         // accountService.validateAccount(account.getId(), null);
         validationService.validateDepositTransaction(account, request.getAmount());
@@ -396,11 +396,11 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     public TransactionResponse withdraw(WithdrawRequest request) {
-        log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountId(), request.getAmount());
 
+        log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
         // validateTransactionAmount(request.getAmount());
 
-        Account account = accountService.getAccountById(request.getAccountId())
+        Account account = accountService.getAccountByNumber(request.getAccountNumber())
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         // accountService.validateAccount(account.getId(), request.getAmount());
         validationService.validateWithdrawalTransaction(account, request.getAmount());

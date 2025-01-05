@@ -194,6 +194,10 @@ dependencies {
     // https://mvnrepository.com/artifact/io.micrometer/micrometer-registry-prometheus
     implementation 'io.micrometer:micrometer-registry-prometheus:1.14.1'
 
+    // https://mvnrepository.com/artifact/io.hypersistence/hypersistence-utils-hibernate-62
+    implementation 'io.hypersistence:hypersistence-utils-hibernate-62:3.8.3'
+    implementation 'com.vladmihalcea:hibernate-types-60:2.21.1'
+    implementation platform('org.springframework.boot:spring-boot-dependencies:3.2.3')
 
 }
 
