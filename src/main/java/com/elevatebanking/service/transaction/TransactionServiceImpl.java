@@ -66,11 +66,18 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private void executeTransfer(String fromAccountId, String toAccountId, BigDecimal amount) {
-        BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
-        BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
+        try {
+            BigDecimal fromBalance = accountService.getBalance(fromAccountId).subtract(amount);
+            BigDecimal toBalance = accountService.getBalance(toAccountId).add(amount);
 
-        accountService.updateBalance(fromAccountId, fromBalance);
-        accountService.updateBalance(toAccountId, toBalance);
+            accountService.updateBalance(fromAccountId, fromBalance);
+            accountService.updateBalance(toAccountId, toBalance);
+        } catch (Exception e) {
+            log.error("Error executing transfer: {}", e.getMessage());
+            throw new TransactionProcessingException("Error executing transfer", null, true);
+        }
+
+
     }
 
     private void executeWithdrawal(String accountId, BigDecimal amount) {
@@ -328,6 +335,7 @@ public class TransactionServiceImpl implements ITransactionService {
             validationService.validateTransferTransaction(fromAccountId, toAccountId, request.getAmount());
         }
 
+//        validationService.validateTransferTransaction(fromAccount, toAccount, request.getAmount());
         // create and save initial transaction
         Transaction transaction = createInitialTransaction(
                 fromAccount, toAccount, request.getAmount(),
@@ -335,12 +343,13 @@ public class TransactionServiceImpl implements ITransactionService {
 
         // TODO: lan 1
         try {
-            processTransfer(
-                    fromAccount.getId(),
-                    toAccount.getId(),
-                    request.getAmount(),
-                    request.getDescription());
+//            processTransfer(
+//                    fromAccount.getId(),
+//                    toAccount.getId(),
+//                    request.getAmount(),
+//                    request.getDescription());
 
+            executeTransfer(fromAccount.getId(), toAccount.getId(), request.getAmount());
             // update transaction status
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
@@ -357,7 +366,7 @@ public class TransactionServiceImpl implements ITransactionService {
             monitoringService.sendAlertNotification("Transaction failed: " + e.getMessage());
             throw new RuntimeException("Error processing transfer");
         }
-        
+
     }
 
     @Override

@@ -198,19 +198,29 @@ public class TransactionValidationService {
     }
 
     private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) {
-        String minuteKey = "tx_count_minute:" + userId;
-        String dayKey = "tx_count_day:" + userId;
-        Long txPerMinute = incrementAndGetCount(minuteKey, 1, TimeUnit.MINUTES);
-        if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
-            throw new TransactionLimitExceededException(
-                    String.format("Exceeded maximum transaction per minute of %d", limits.getMaxTransactionsPerMinute())
-            );
-        }
-        Long txPerDay = incrementAndGetCount(dayKey, 1, TimeUnit.DAYS);
-        if (txPerDay > limits.getMaxTransactionsPerDay()) {
-            throw new TransactionLimitExceededException(
-                    String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay())
-            );
+        try {
+            String minuteKey = String.format("tx_count_minute:%s", userId);
+            String dayKey = String.format("tx_count_day:%s", userId);
+//            String minuteKey = "tx_count_minute:" + userId;
+//            String dayKey = "tx_count_day:" + userId;
+            Long txPerMinute = incrementAndGetCount(minuteKey, 1, TimeUnit.MINUTES);
+            if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
+                throw new TransactionLimitExceededException(
+                        String.format("Exceeded maximum transaction per minute of %d", limits.getMaxTransactionsPerMinute())
+                );
+            }
+            Long txPerDay = incrementAndGetCount(dayKey, 1, TimeUnit.DAYS);
+            if (txPerDay > limits.getMaxTransactionsPerDay()) {
+                throw new TransactionLimitExceededException(
+                        String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay())
+                );
+            }
+        } catch (Exception e) {
+            if (e instanceof InvalidOperationException) {
+                throw e;
+            }
+            log.error("Error validating transaction frequency", e);
+            throw new InvalidOperationException("Failed to validate transaction frequency");
         }
     }
 
@@ -221,8 +231,10 @@ public class TransactionValidationService {
                 log.error("Failed to increment key: {}", key);
                 throw new InvalidOperationException("Failed to increment key");
             }
+
             // set the expiration if it's the first increment
             Boolean expireResult = redisTemplate.expire(key, duration, timeUnit);
+
             if (expireResult == null || !expireResult) {
                 log.warn("Failed to set expiration for key: {}", key);
                 // try to delete the key

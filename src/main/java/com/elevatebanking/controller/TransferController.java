@@ -2,6 +2,7 @@ package com.elevatebanking.controller;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
+import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.nonImp.AuditLogService;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.zookeeper.proto.ErrorResponse;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
