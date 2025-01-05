@@ -101,6 +101,7 @@ public class TransactionServiceImpl implements ITransactionService {
             validationService.validateTransferTransaction(fromAccount, toAccount, amount);
             transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description, TransactionType.TRANSFER);
             executeTransfer(fromAccountId, toAccountId, amount);
+            //
             return completeTransaction(transaction);
         } catch (Exception e) {
             handleTransactionError(transaction, e);
