@@ -17,8 +17,11 @@ import io.lettuce.core.RedisConnectionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -221,22 +224,35 @@ public class TransactionValidationService {
     }
 
     private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) throws InterruptedException {
+        String lockKey = "lock:" + userId;
+        boolean locked = false;
         try {
-            String minuteKey = String.format("tx_count_minute:%s", userId);
-            String dayKey = String.format("tx_count_day:%s", userId);
+            String minuteKey = new StringBuilder("tx_count_minute:")
+                    .append(userId)
+                    .toString();
+            String dayKey = new StringBuilder("tx_count_day:")
+                    .append(userId)
+                    .toString();
+            locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 10, TimeUnit.SECONDS));
+
+            if (!locked) {
+                throw new InvalidOperationException("Failed to acquire lock for transaction frequency validation");
+            }
 //            String minuteKey = "tx_count_minute:" + userId;
 //            String dayKey = "tx_count_day:" + userId;
-            Long txPerMinute = incrementAndGetCountWithRetry(minuteKey, 1, TimeUnit.MINUTES);
-            if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
-                throw new TransactionLimitExceededException(
-                        String.format("Exceeded maximum transaction per minute of %d", limits.getMaxTransactionsPerMinute())
-                );
-            }
-            Long txPerDay = incrementAndGetCountWithRetry(dayKey, 1, TimeUnit.DAYS);
-            if (txPerDay > limits.getMaxTransactionsPerDay()) {
-                throw new TransactionLimitExceededException(
-                        String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay())
-                );
+            try {
+                Long txPerMinute = incrementAndGetCountWithRetry(minuteKey, 1, TimeUnit.MINUTES);
+                validateLimit(txPerMinute, (long) limits.getMaxTransactionsPerMinute(), "minute");
+
+                Long txPerDay = incrementAndGetCountWithRetry(dayKey, 1, TimeUnit.DAYS);
+                validateLimit(txPerDay, (long) limits.getMaxTransactionsPerDay(), "day");
+            } catch (Exception e) {
+                log.error("Error validating transaction frequency", e);
+                throw new InvalidOperationException("Failed to validate transaction frequency");
+            } finally {
+                if (locked) {
+                    redisTemplate.delete(lockKey);
+                }
             }
 
         } catch (Exception e) {
@@ -245,6 +261,14 @@ public class TransactionValidationService {
             }
             log.error("Error validating transaction frequency", e);
             throw new InvalidOperationException("Failed to validate transaction frequency");
+        }
+    }
+
+    private void validateLimit(Long current, Long max, String period) {
+        if (current > max) {
+            throw new TransactionLimitExceededException(
+                    String.format("Exceeded maximum transaction per %s of %d", period, max)
+            );
         }
     }
 
@@ -276,32 +300,26 @@ public class TransactionValidationService {
 
     private Long incrementAndGetCount(String key, long duration, TimeUnit timeUnit) {
         try {
-            Long count = redisTemplate.opsForValue().increment(key);
-            if (count == null) {
-                log.error("Failed to increment key: {}", key);
-                throw new InvalidOperationException("Failed to increment key");
-            }
+            // Thực hiện increment và set expire trong một transaction
+            return redisTemplate.execute(new SessionCallback<Long>() {
+                @Override
+                public Long execute(RedisOperations operations) throws DataAccessException {
+                    operations.multi();
 
-            // set the expiration if it's the first increment
-            Boolean expireResult = redisTemplate.expire(key, duration, timeUnit);
+                    Long count = operations.opsForValue().increment(key);
+                    operations.expire(key, duration, timeUnit);
 
-            if (expireResult == null || !expireResult) {
-                log.warn("Failed to set expiration for key: {}", key);
-                // try to delete the key
-                redisTemplate.delete(key);
-                throw new InvalidOperationException("Failed to validate transaction frequency");
-            }
-            return count;
+                    List<Object> results = operations.exec();
+                    if (results == null || results.isEmpty()) {
+                        throw new InvalidOperationException("Error processing Redis transaction");
+                    }
 
+                    return (Long) results.get(0);
+                }
+            });
         } catch (Exception e) {
-            log.error("Error while validating transaction frequency: {}", e.getMessage());
-            // clean up the key in case of an error
-            try {
-                redisTemplate.delete(key);
-            } catch (Exception cleanupEx) {
-                log.error("Failed to cleanup key after error: {}", cleanupEx.getMessage());
-            }
-            throw new InvalidOperationException("Failed to validate transaction frequency");
+            log.error("Error incrementing count: key={}, error={}", key, e.getMessage());
+            throw new TransactionProcessingException("Failed to process transaction", null, false);
         }
     }
 

@@ -75,7 +75,7 @@ public class AuditLogService {
                 auditLog.setCurrentState(objectMapper.writeValueAsString(currentState));
             }
         } catch (Exception e) {
-            log.error("Lỗi serialize state: {}", e.getMessage());
+            log.error("Error serialize state: {}", e.getMessage());
         }
     }
 
