@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+
 @Service
 @Transactional
 @Slf4j
@@ -33,6 +34,7 @@ public class TransactionServiceImpl implements ITransactionService {
     private final IAccountService accountService;
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
     private final TransactionValidationService validationService;
+    private final TransactionCompensationService compensationService;
 
     @Override
     public Transaction createTransaction(Transaction transaction) {
@@ -91,27 +93,37 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
                                        String description) {
-        // Validate accounts and balance before creating transaction
+        Transaction transaction = null;
+        try {
+            transaction = processTransferInternal(fromAccountId, toAccountId, amount, description);
+            return transaction;
+        } catch (Exception e) {
+            if (transaction != null) {
+                compensationService.compensateTransaction(
+                        transaction,
+                        "Error during transfer: " + e.getMessage()
+                );
+            }
+            throw new RuntimeException("Error processing transfer", e);
+        }
 
+    }
+
+    private Transaction processTransferInternal(String fromAccountId, String toAccountId, BigDecimal amount, String description) {
+        // Validate accounts and balance before creating transaction
         Account fromAccount = validateAndGetAccount(fromAccountId, "Source account not found");
         Account toAccount = validateAndGetAccount(toAccountId, "Destination account not found");
         validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-
         Transaction transaction = buildTransaction(fromAccount, toAccount, amount, description,
                 TransactionType.TRANSFER);
         transaction = initializeAndSaveTransaction(transaction);
-
         try {
-            // Execute money transfer
             executeTransfer(fromAccountId, toAccountId, amount);
-            // Update successful status
             return completeTransaction(transaction);
         } catch (Exception e) {
-            // Handle error during transaction execution
             handleTransactionError(transaction, "Error executing transfer", e);
             throw new RuntimeException("Error executing transfer", e);
         }
-
     }
 
     @Override
