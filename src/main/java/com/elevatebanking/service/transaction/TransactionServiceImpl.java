@@ -326,6 +326,7 @@ public class TransactionServiceImpl implements ITransactionService {
                 fromAccount, toAccount, request.getAmount(),
                 TransactionType.TRANSFER, request.getDescription());
 
+        // TODO: lan 1
         try {
             processTransfer(
                     fromAccount.getId(),
