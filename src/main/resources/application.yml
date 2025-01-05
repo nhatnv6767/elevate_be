@@ -67,14 +67,20 @@ spring:
       host: 192.168.1.128
       port: 6379
       database: 0
-      timeout: 60000
+      #      timeout: 60000
+      timeout: 5000ms
       connect-timeout: 60000
+      retry:
+        max-attempts: 3
+        initial-interval: 1000
+        multiplier: 2
       lettuce:
         pool:
           max-active: 8
           max-idle: 8
           min-idle: 2
-          max-wait: -1ms
+          max-wait: 1000ms
+    #          max-wait: -1ms
     jpa:
       repositories:
         bootstrap-mode: deferred

@@ -40,7 +40,7 @@ public class TransactionServiceImpl implements ITransactionService {
     private final TransactionRecoveryService recoveryService;
 
     @Override
-    public Transaction createTransaction(Transaction transaction) {
+    public Transaction createTransaction(Transaction transaction) throws InterruptedException {
         validationService.validateTransferTransaction(transaction.getFromAccount(), transaction.getToAccount(),
                 transaction.getAmount());
         return initializeAndSaveTransaction(transaction);
@@ -160,7 +160,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
-    public Transaction processDeposit(String accountId, BigDecimal amount) {
+    public Transaction processDeposit(String accountId, BigDecimal amount) throws InterruptedException {
 
         Account account = validateAndGetAccount(accountId, "Account not found");
         // validateTransactionAmount(amount);
@@ -178,7 +178,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
-    public Transaction processWithdrawal(String accountId, BigDecimal amount) {
+    public Transaction processWithdrawal(String accountId, BigDecimal amount) throws InterruptedException {
 
         Account account = validateAndGetAccount(accountId, "Account not found");
         validationService.validateWithdrawalTransaction(account, amount);
@@ -321,7 +321,7 @@ public class TransactionServiceImpl implements ITransactionService {
     //// NEW SERVICE
 
     @Override
-    public TransactionResponse transfer(TransferRequest request) {
+    public TransactionResponse transfer(TransferRequest request) throws InterruptedException {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
                 request.getToAccountNumber(), request.getAmount());
 
@@ -370,7 +370,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
-    public TransactionResponse deposit(DepositRequest request) {
+    public TransactionResponse deposit(DepositRequest request) throws InterruptedException {
         log.info("Processing deposit request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
 
         // validateTransactionAmount(request.getAmount());
@@ -412,7 +412,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
-    public TransactionResponse withdraw(WithdrawRequest request) {
+    public TransactionResponse withdraw(WithdrawRequest request) throws InterruptedException {
 
         log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
         // validateTransactionAmount(request.getAmount());

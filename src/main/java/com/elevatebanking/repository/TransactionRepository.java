@@ -71,4 +71,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("endDate") LocalDateTime endDate
     );
 
+    @Query("SELECT count(t) FROM Transaction t WHERE (t.fromAccount.user.id = :userId or t.toAccount.user.id = :userId) AND t.createdAt BETWEEN :startDate AND :endDate and t.status = 'COMPLETED'")
+    Long countTransactionsByUserInTimeRange(String userId, LocalDateTime startTime, LocalDateTime now);
 }

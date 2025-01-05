@@ -6,18 +6,29 @@ import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.UserTier;
 import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.entity.user.User;
+import com.elevatebanking.event.NotificationEvent;
 import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.exception.TransactionLimitExceededException;
+import com.elevatebanking.exception.TransactionProcessingException;
 import com.elevatebanking.repository.TransactionRepository;
+import com.elevatebanking.service.notification.NotificationService;
 import com.elevatebanking.service.transaction.config.TransactionLimitConfig;
+import io.lettuce.core.RedisConnectionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -28,6 +39,18 @@ public class TransactionValidationService {
     private final TransactionRepository transactionRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final TransactionLimitConfig limitConfig;
+    private final NotificationService notificationService;
+    private final KafkaTemplate<String, NotificationEvent> kafkaTemplate;
+
+    @Value("${spring.data.redis.retry.initial-interval}")
+    private long initialInterval;
+    @Value("${spring.data.redis.retry.max-attempts}")
+    private int maxRetries;
+    @Value("${spring.data.redis.retry.multiplier}")
+    private double multiplier;
+
+    private static final String KEY_PREFIX = "tx_count:";
+
 
     private static final int MAX_TRANSACTIONS_PER_DAY = 20;
     private static final int MAX_TRANSACTIONS_PER_MINUTE = 3;
@@ -36,17 +59,17 @@ public class TransactionValidationService {
     private static final BigDecimal SINGLE_TRANSFER_LIMIT = new BigDecimal(1000000); // 1,000,000$
 
 
-    public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount) {
+    public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount) throws InterruptedException {
         validateBasicRules(fromAccount, toAccount, amount);
         validateLimits(fromAccount, amount);
     }
 
-    public void validateWithdrawalTransaction(Account account, BigDecimal amount) {
+    public void validateWithdrawalTransaction(Account account, BigDecimal amount) throws InterruptedException {
         validateBasicRules(account, account, amount);
         validateLimits(account, amount);
     }
 
-    public void validateDepositTransaction(Account account, BigDecimal amount) {
+    public void validateDepositTransaction(Account account, BigDecimal amount) throws InterruptedException {
         validateBasicRules(account, account, amount);
         validateLimits(account, amount);
     }
@@ -60,7 +83,7 @@ public class TransactionValidationService {
         validateSameAccount(fromAccount, toAccount);
     }
 
-    private void validateLimits(Account account, BigDecimal amount) {
+    private void validateLimits(Account account, BigDecimal amount) throws InterruptedException {
         String userId = account.getUser().getId();
         TransactionLimitConfig.TierLimit limits = getLimitsForUser(account.getUser());
 
@@ -197,24 +220,25 @@ public class TransactionValidationService {
         return calculated;
     }
 
-    private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) {
+    private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) throws InterruptedException {
         try {
             String minuteKey = String.format("tx_count_minute:%s", userId);
             String dayKey = String.format("tx_count_day:%s", userId);
 //            String minuteKey = "tx_count_minute:" + userId;
 //            String dayKey = "tx_count_day:" + userId;
-            Long txPerMinute = incrementAndGetCount(minuteKey, 1, TimeUnit.MINUTES);
+            Long txPerMinute = incrementAndGetCountWithRetry(minuteKey, 1, TimeUnit.MINUTES);
             if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
                 throw new TransactionLimitExceededException(
                         String.format("Exceeded maximum transaction per minute of %d", limits.getMaxTransactionsPerMinute())
                 );
             }
-            Long txPerDay = incrementAndGetCount(dayKey, 1, TimeUnit.DAYS);
+            Long txPerDay = incrementAndGetCountWithRetry(dayKey, 1, TimeUnit.DAYS);
             if (txPerDay > limits.getMaxTransactionsPerDay()) {
                 throw new TransactionLimitExceededException(
                         String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay())
                 );
             }
+
         } catch (Exception e) {
             if (e instanceof InvalidOperationException) {
                 throw e;
@@ -222,6 +246,32 @@ public class TransactionValidationService {
             log.error("Error validating transaction frequency", e);
             throw new InvalidOperationException("Failed to validate transaction frequency");
         }
+    }
+
+    private Long incrementAndGetCountWithRetry(String key, long duration, TimeUnit timeUnit) throws InterruptedException {
+        long retryDelay = 1000; // 1 second initial delay
+
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                if (!isRedisAvailable()) {
+                    throw new RedisConnectionException("Redis is not available");
+                }
+
+                return incrementAndGetCount(key, duration, timeUnit);
+
+            } catch (RedisConnectionException e) {
+                log.warn("Redis connection failed on attempt {}/{}", attempt + 1, maxRetries);
+                // Exponential backoff
+                Thread.sleep(retryDelay * (long) Math.pow(2, attempt));
+
+            } catch (Exception e) {
+                log.error("Unexpected error during increment: {}", e.getMessage());
+                throw new TransactionProcessingException("Failed to process transaction", null, false);
+            }
+        }
+
+        // Fallback to database
+        return handleWithDatabaseFallback(key);
     }
 
     private Long incrementAndGetCount(String key, long duration, TimeUnit timeUnit) {
@@ -272,5 +322,104 @@ public class TransactionValidationService {
                 .maxTransactionsPerMinute(3)
                 .maxTransactionsPerDay(20)
                 .build();
+    }
+
+    // REDIS HEALTH MONITORING
+
+    private String extractUserIdFromKey(String key) {
+        // Key format: "tx_count:userId"
+        if (key != null && key.startsWith(KEY_PREFIX)) {
+            return key.substring(KEY_PREFIX.length());
+        }
+        throw new IllegalArgumentException("Invalid key format");
+    }
+
+
+    private Long handleWithDatabaseFallback(String key) {
+        try {
+            String userId = extractUserIdFromKey(key);
+            LocalDateTime startTime = LocalDateTime.now().minusMinutes(1);
+
+            // Sử dụng native query trong repository
+            return transactionRepository.countTransactionsByUserInTimeRange(
+                    userId,
+                    startTime,
+                    LocalDateTime.now()
+            ) + 1L;
+        } catch (Exception e) {
+            log.error("Database fallback failed for key: {}", key, e);
+            throw new TransactionProcessingException("Failed to validate transaction frequency", null, false);
+        }
+    }
+
+    private void logTransactionValidationAttempt(String userId, BigDecimal amount, int attempt) {
+        log.info(
+                "Validating transaction - UserId: {}, Amount: {}, Attempt: {}/{}",
+                userId, amount, attempt, maxRetries
+        );
+    }
+
+    private boolean isRedisAvailable() {
+        long startTime = System.currentTimeMillis();
+        try {
+            // Create a RedisCallback that will execute our Redis command
+            RedisCallback<String> pingCallback = connection -> {
+                try {
+                    // Get the raw Redis connection and execute PING command
+                    // Converting the returned byte[] to String
+                    return new String(connection.ping().getBytes(), StandardCharsets.UTF_8);
+                } catch (Exception e) {
+                    log.error("Error executing Redis PING command: {}", e.getMessage());
+                    return null;
+                }
+            };
+
+            // Execute the callback using RedisTemplate
+            String result = redisTemplate.execute(pingCallback);
+            long responseTime = System.currentTimeMillis() - startTime;
+            log.debug("Redis health check completed in {}ms", responseTime);
+
+            // Redis responds with "PONG" if the connection is alive
+            return "PONG".equals(result);
+
+        } catch (Exception e) {
+            long failureTime = System.currentTimeMillis() - startTime;
+            log.error("Redis health check failed after {}ms: {}", failureTime, e.getMessage());
+            return false;
+        }
+    }
+
+    @Scheduled(fixedRate = 60000)
+    public void monitorRedisHealth() {
+        boolean isAvailable = isRedisAvailable();
+        if (!isAvailable) {
+            String message = "Redis connection is not available - Transaction validation may be affected";
+            log.error(message);
+
+            // Tạo notification event cho system alert
+            NotificationEvent systemAlert = NotificationEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .type(NotificationEvent.NotificationType.SYSTEM_NOTIFICATION.name())
+                    .priority(NotificationEvent.Priority.HIGH.name())
+                    .title("System Alert: Redis Health Check Failed")
+                    .message(message)
+                    .timestamp(LocalDateTime.now())
+                    .metadata(Map.of(
+                            "component", "Redis",
+                            "status", "DOWN",
+                            "impact", "Transaction Validation"
+                    ))
+                    .build();
+
+            // Gửi notification qua Kafka
+            kafkaTemplate.send("elevate.notifications", systemAlert.getEventId(), systemAlert)
+                    .whenComplete((result, ex) -> {
+                        if (ex != null) {
+                            log.error("Failed to send Redis health alert: {}", ex.getMessage());
+                        } else {
+                            log.info("Redis health alert sent successfully");
+                        }
+                    });
+        }
     }
 }

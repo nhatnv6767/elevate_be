@@ -38,7 +38,7 @@ public class TransactionController {
     @Operation(summary = "Process a new transfer between accounts")
     @PostMapping("/transfer")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
-    public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransferRequest request) {
+    public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransferRequest request) throws InterruptedException {
         String userId = securityUtils.getCurrentUserId();
 
         // get the account by number instead of id
@@ -57,7 +57,7 @@ public class TransactionController {
     @Operation(summary = "Process a new deposit to an account")
     @PostMapping("/deposit")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
-    public ResponseEntity<TransactionResponse> deposit(@Valid @RequestBody DepositRequest request) {
+    public ResponseEntity<TransactionResponse> deposit(@Valid @RequestBody DepositRequest request) throws InterruptedException {
         log.info("Processing deposit request to account: {}, amount: {}", request.getAccountNumber(), request.getAmount());
         return ResponseEntity.ok(transactionService.deposit(request));
     }
@@ -65,7 +65,7 @@ public class TransactionController {
     @Operation(summary = "Process a new withdrawal from an account")
     @PostMapping("/withdraw")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
-    public ResponseEntity<TransactionResponse> withdraw(@Valid @RequestBody WithdrawRequest request) {
+    public ResponseEntity<TransactionResponse> withdraw(@Valid @RequestBody WithdrawRequest request) throws InterruptedException {
         String userId = securityUtils.getCurrentUserId();
 
         // get the account by number instead of id

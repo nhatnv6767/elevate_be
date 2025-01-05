@@ -10,13 +10,13 @@ import java.util.Optional;
 
 public interface ITransactionService {
 
-    Transaction createTransaction(Transaction transaction);
+    Transaction createTransaction(Transaction transaction) throws InterruptedException;
 
     Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount, String description);
 
-    Transaction processDeposit(String accountId, BigDecimal amount);
+    Transaction processDeposit(String accountId, BigDecimal amount) throws InterruptedException;
 
-    Transaction processWithdrawal(String accountId, BigDecimal amount);
+    Transaction processWithdrawal(String accountId, BigDecimal amount) throws InterruptedException;
 
     Optional<Transaction> getTransactionById(String id);
 
@@ -29,11 +29,11 @@ public interface ITransactionService {
 
     // new service
 
-    TransactionResponse transfer(TransferRequest request);
+    TransactionResponse transfer(TransferRequest request) throws InterruptedException;
 
-    TransactionResponse deposit(DepositRequest request);
+    TransactionResponse deposit(DepositRequest request) throws InterruptedException;
 
-    TransactionResponse withdraw(WithdrawRequest request);
+    TransactionResponse withdraw(WithdrawRequest request) throws InterruptedException;
 
     TransactionResponse getTransaction(String id);
 
