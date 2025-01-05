@@ -181,9 +181,7 @@ public class PasswordResetTokenService {
         redisTemplate.opsForValue().set(cooldownKey, "1", EMAIL_COOLDOWN, TimeUnit.MINUTES);
     }
 
-    // Tạo token reset password mới
     private String createResetToken(String email) {
-        // Tạo token mới bằng UUID để đảm bảo tính duy nhất
         String token = UUID.randomUUID().toString();
 
         // Tạo các key để lưu trong Redis:
