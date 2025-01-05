@@ -1,6 +1,7 @@
 package com.elevatebanking.service.nonImp;
 
 import com.elevatebanking.entity.log.AuditLog;
+import com.elevatebanking.entity.user.User;
 import com.elevatebanking.repository.AuditLogRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,10 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,24 +27,26 @@ public class AuditLogService {
     ObjectMapper objectMapper;
     HttpServletRequest request;
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void logEvent(String userId, String action, String entityType, String entityId, Object previousState, Object currentState) {
         try {
+            if (userId == null) {
+                log.warn("Cannot create audit log without user ID");
+                return;
+            }
+
+
             AuditLog auditLog = new AuditLog();
-            auditLog.setId(userId);
+            auditLog.setId(UUID.randomUUID().toString());
+            auditLog.setUser(createUserRef(userId));
             auditLog.setAction(action);
             auditLog.setEntityType(entityType);
             auditLog.setEntityId(entityId);
 
-            if (previousState != null) {
-                auditLog.setPreviousState(objectMapper.writeValueAsString(previousState));
-            }
-            if (currentState != null) {
-                auditLog.setCurrentState(objectMapper.writeValueAsString(currentState));
-            }
             // capture context information
             auditLog.setIpAddress(getClientIpAddress());
             auditLog.setUserAgent(request.getHeader("User-Agent"));
+            setAuditStates(auditLog, previousState, currentState);
 
             String details = generateAuditDetails(previousState, currentState);
             auditLog.setDetails(details);
@@ -57,6 +57,25 @@ public class AuditLogService {
         } catch (Exception e) {
             log.error("Failed to create audit log for action: {} on entity: {}", action, entityId, e);
             throw new RuntimeException("Failed to create audit log", e);
+        }
+    }
+
+    private User createUserRef(String userId) {
+        User user = new User();
+        user.setId(userId);
+        return user;
+    }
+
+    private void setAuditStates(AuditLog auditLog, Object previousState, Object currentState) {
+        try {
+            if (previousState != null) {
+                auditLog.setPreviousState(objectMapper.writeValueAsString(previousState));
+            }
+            if (currentState != null) {
+                auditLog.setCurrentState(objectMapper.writeValueAsString(currentState));
+            }
+        } catch (Exception e) {
+            log.error("Lỗi serialize state: {}", e.getMessage());
         }
     }
 

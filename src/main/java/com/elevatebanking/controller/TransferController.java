@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.zookeeper.proto.ErrorResponse;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -39,56 +40,26 @@ public class TransferController {
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Initiate a new transfer")
     @PostMapping
-    public ResponseEntity<TransactionResponse> initiateTransfer(
+    public ResponseEntity<?> initiateTransfer(
             @Valid @RequestBody TransferRequest request
     ) {
         log.debug("Received transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(), request.getToAccountNumber(), request.getAmount());
-
-        // verify the user owns the source account
         String userId = securityUtils.getCurrentUserId();
         try {
-            Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber()).orElseThrow(() -> new RuntimeException("Source account not found"));
-            Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber()).orElseThrow(() -> new RuntimeException("Destination account not found"));
-            // check if fromAccount or toAccount is null
-            if (fromAccount == null || toAccount == null) {
-                throw new RuntimeException("Account not found");
-            }
-            if (!accountService.isAccountOwner(fromAccount.getId(), userId)) {
-                auditLogService.logEvent(
-                        userId,
-                        "UNAUTHORIZED_TRANSFER_ATTEMPT",
-                        "ACCOUNT",
-                        fromAccount.getId(),
-                        null,
-                        Map.of("requestedAmount", request.getAmount())
-                );
-                throw new UnauthorizedException("User is not authorized to perform this operation");
-            }
-
-            // process the transfer
             TransactionResponse response = transactionService.transfer(request);
-
             auditLogService.logEvent(
                     userId,
                     "TRANSFER_COMPLETED",
                     "TRANSACTION",
                     response.getTransactionId(),
-                    Map.of(
-                            "fromAccount", fromAccount,
-                            "toAccount", toAccount,
-                            "initialBalance", fromAccount.getBalance()
-                    ),
-                    Map.of(
-                            "amount", request.getAmount(),
-                            "finalBalance", fromAccount.getBalance().subtract(request.getAmount()),
-                            "status", "COMPLETED"
-                    )
+                    request,
+                    Map.of("status", "SUCCESS")
             );
-
-            log.info("Transfer processed successfully: {}", response.getTransactionId());
+            log.info("Chuyển khoản thành công: {}", response.getTransactionId());
             return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Failed to create transfer", e);
+
+        } catch (InvalidOperationException e) {
+            log.error("Lỗi xác thực giao dịch", e);
             auditLogService.logEvent(
                     userId,
                     "TRANSFER_FAILED",
@@ -97,8 +68,22 @@ public class TransferController {
                     request,
                     Map.of("error", e.getMessage())
             );
-            throw new RuntimeException("Failed to create transfer", e);
+            return ResponseEntity.badRequest().body("Error when processing transaction: " + e.getMessage());
+
+        } catch (Exception e) {
+            log.error("Lỗi hệ thống khi thực hiện giao dịch", e);
+            auditLogService.logEvent(
+                    userId,
+                    "TRANSFER_FAILED",
+                    "TRANSACTION",
+                    null,
+                    request,
+                    Map.of("error", e.getMessage())
+            );
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error when processing transaction: " + e.getMessage());
         }
+
     }
 
     @PreAuthorize("isAuthenticated()")

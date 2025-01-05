@@ -28,7 +28,7 @@ public class BaseEntity implements Identifiable<String> {
     private String id;
 
     @Version
-    private Long version;
+    private Long version = 0L;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

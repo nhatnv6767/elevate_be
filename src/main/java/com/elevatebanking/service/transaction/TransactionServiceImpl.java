@@ -291,6 +291,7 @@ public class TransactionServiceImpl implements ITransactionService {
         log.info("Performing rollback for transaction: {}", transaction.getId());
         // add rollback logic here
         try {
+            transaction = transactionRepository.findById(transaction.getId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
             switch (transaction.getType()) {
                 case TRANSFER:
                     executeTransfer(
@@ -315,6 +316,7 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction.setStatus(TransactionStatus.ROLLBACK_FAILED);
             transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.rollback_failed");
+            throw new TransactionRollbackException("Error performing rollback", transaction.getId());
         }
     }
 
