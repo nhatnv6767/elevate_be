@@ -104,8 +104,23 @@ public class TransactionServiceImpl implements ITransactionService {
             //
             return completeTransaction(transaction);
         } catch (Exception e) {
-            handleTransactionError(transaction, e);
-            throw new RuntimeException("Error processing transfer");
+            log.error("Transfer failed to transaction {}", e.getMessage());
+
+            if (transaction != null) {
+                compensationService.compensateTransaction(
+                        transaction, "Error executing transfer: " + e.getMessage());
+
+                transaction.setStatus(TransactionStatus.FAILED);
+                transactionRepository.save(transaction);
+
+                publishTransactionEvent(transaction, "transaction.failed");
+            }
+
+            throw new TransactionProcessingException(
+                    "Error processing transfer: " + e.getMessage(),
+                    transaction != null ? transaction.getId() : null,
+                    true
+            );
         }
 
     }
@@ -303,11 +318,15 @@ public class TransactionServiceImpl implements ITransactionService {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
                 request.getToAccountNumber(), request.getAmount());
 
-        Account fromAccount = validateAndGetAccount(request.getFromAccountNumber(), "Source account not found");
-        Account toAccount = validateAndGetAccount(request.getToAccountNumber(), "Destination account not found");
+        Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber()).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
+        Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber()).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
 
         // validate account and balances
-        validationService.validateTransferTransaction(fromAccount, toAccount, request.getAmount());
+        if (fromAccount != null && toAccount != null) {
+            Account fromAccountId = accountService.getAccountById(fromAccount.getId()).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
+            Account toAccountId = accountService.getAccountById(toAccount.getId()).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
+            validationService.validateTransferTransaction(fromAccountId, toAccountId, request.getAmount());
+        }
 
         // create and save initial transaction
         Transaction transaction = createInitialTransaction(
@@ -328,6 +347,7 @@ public class TransactionServiceImpl implements ITransactionService {
             publishTransactionEvent(transaction, "transaction.completed");
 
             monitoringService.monitorTransactionMetrics();
+            return mapToTransactionResponse(transaction);
         } catch (Exception e) {
             log.error("Error processing transfer: {}", e.getMessage());
             transaction.setStatus(TransactionStatus.FAILED);
@@ -337,8 +357,7 @@ public class TransactionServiceImpl implements ITransactionService {
             monitoringService.sendAlertNotification("Transaction failed: " + e.getMessage());
             throw new RuntimeException("Error processing transfer");
         }
-
-        return mapToTransactionResponse(transaction);
+        
     }
 
     @Override
