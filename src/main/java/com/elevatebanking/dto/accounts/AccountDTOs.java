@@ -1,6 +1,9 @@
 package com.elevatebanking.dto.accounts;
 
 import com.elevatebanking.entity.enums.AccountStatus;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,6 +14,17 @@ import java.time.LocalDateTime;
 
 
 public class AccountDTOs {
+
+    @Data
+    @Builder
+    public static class CreateAccountRequest {
+        @NotBlank(message = "User ID is required")
+        private String userId;
+
+        @DecimalMin(value = "0.0", message = "Initial balance cannot be negative")
+        @Digits(integer = 18, fraction = 2, message = "Invalid balance format")
+        private BigDecimal initialBalance;
+    }
 
     @Data
     @Builder

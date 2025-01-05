@@ -45,9 +45,14 @@ public class AuthController implements IAuthApi {
     }
 
     @PostMapping("/refresh-token")
-    public ResponseEntity<AuthDTOs.TokenRefreshResponse> refreshToken(@RequestParam String refreshToken) {
+    public ResponseEntity<AuthDTOs.TokenRefreshResponse> refreshToken(@RequestHeader("Authorization") String bearerToken) {
         log.info("Processing refresh token request");
         try {
+            if (!bearerToken.startsWith("Bearer ")) {
+                throw new Exception("Invalid token format - Bearer prefix missing");
+            }
+
+            String refreshToken = bearerToken.substring(7);
             AuthDTOs.TokenRefreshResponse response = authService.refreshToken(refreshToken);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
