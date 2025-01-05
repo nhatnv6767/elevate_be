@@ -36,8 +36,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
     @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :timeout")
     List<Transaction> findPendingTransactionsOlderThan(@Param("timeout") LocalDateTime timeout);
 
-    @Query("SELECT count (t) from Transaction t where t.fromAccount.id =:accountId and t.createdAt >=:since")
-    long countTransactionsInTimeframe(@Param("accountId") String accountId, @Param("since") LocalDateTime since);
 
     @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :threshold")
     List<Transaction> findStuckTransactions(LocalDateTime threshold);
@@ -71,6 +69,18 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("endDate") LocalDateTime endDate
     );
 
-    @Query("SELECT count(t) FROM Transaction t WHERE (t.fromAccount.user.id = :userId or t.toAccount.user.id = :userId) AND t.createdAt BETWEEN :startDate AND :endDate and t.status = 'COMPLETED'")
-    Long countTransactionsByUserInTimeRange(String userId, LocalDateTime startTime, LocalDateTime now);
+    @Query("SELECT count (t) from Transaction t where t.fromAccount.id =:accountId and t.createdAt >=:since")
+    long countTransactionsInTimeframe(@Param("accountId") String accountId, @Param("since") LocalDateTime since);
+
+    @Query("""
+                SELECT COUNT(t) FROM Transaction t 
+                WHERE (t.fromAccount.user.id = :userId OR t.toAccount.user.id = :userId) 
+                AND t.createdAt BETWEEN :startTime AND :endTime 
+                AND t.status = 'COMPLETED'
+            """)
+    Long countTransactionsByUserInTimeRange(
+            @Param("userId") String userId,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime
+    );
 }
