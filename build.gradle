@@ -191,6 +191,9 @@ dependencies {
     // https://mvnrepository.com/artifact/org.springframework.retry/spring-retry
     implementation group: 'org.springframework.retry', name: 'spring-retry', version: '2.0.10'
 
+    // https://mvnrepository.com/artifact/io.micrometer/micrometer-registry-prometheus
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.14.1'
+
 
 }
 

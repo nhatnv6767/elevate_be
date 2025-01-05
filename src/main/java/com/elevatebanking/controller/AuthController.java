@@ -12,6 +12,7 @@ import com.elevatebanking.exception.InvalidTokenException;
 import com.elevatebanking.service.IAuthService;
 import com.elevatebanking.service.IUserService;
 import com.elevatebanking.service.nonImp.PasswordResetTokenService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
+@Tag(name = "Authentication", description = "APIs for user authentication and authorization")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 @Slf4j
@@ -40,12 +42,14 @@ public class AuthController implements IAuthApi {
     @Override
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthDTOs.LoginRequest request) {
+        log.info("Processing login request for user: {}", request.getUsername());
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/refresh-token")
-    public ResponseEntity<AuthDTOs.TokenRefreshResponse> refreshToken(@RequestHeader("Authorization") String bearerToken) {
+    public ResponseEntity<AuthDTOs.TokenRefreshResponse> refreshToken(
+            @RequestHeader("Authorization") String bearerToken) {
         log.info("Processing refresh token request");
         try {
             if (!bearerToken.startsWith("Bearer ")) {
@@ -73,11 +77,12 @@ public class AuthController implements IAuthApi {
         return ResponseEntity.ok(response);
     }
 
-//    @Override
-//    public ResponseEntity<AuthResponse> requestPasswordReset(PasswordResetRequest request) {
-//        authService.requestPasswordReset(request);
-//        return ResponseEntity.ok().build();
-//    }
+    // @Override
+    // public ResponseEntity<AuthResponse> requestPasswordReset(PasswordResetRequest
+    // request) {
+    // authService.requestPasswordReset(request);
+    // return ResponseEntity.ok().build();
+    // }
 
     @Override
     public ResponseEntity<AuthResponse> resetPassword(NewPasswordRequest request) {
@@ -110,8 +115,7 @@ public class AuthController implements IAuthApi {
         response.put("message", "If the email exists, you will receive reset instructions");
         response.put("timestamp", LocalDateTime.now().toString());
         return ResponseEntity.ok(
-                response
-        );
+                response);
     }
 
     @PostMapping("/validate-reset-token")
@@ -124,19 +128,21 @@ public class AuthController implements IAuthApi {
         return ResponseEntity.ok(response);
     }
 
-//    @Override
-//    @PostMapping("/logout")
-//    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String token) {
-//        log.info("Processing logout request");
-//        if (token != null && token.startsWith("Bearer ")) {
-//            authService.logout(token.substring(7));
-//        }
-//        return ResponseEntity.ok().build();
-//    }
+    // @Override
+    // @PostMapping("/logout")
+    // public ResponseEntity<Void> logout(@RequestHeader("Authorization") String
+    // token) {
+    // log.info("Processing logout request");
+    // if (token != null && token.startsWith("Bearer ")) {
+    // authService.logout(token.substring(7));
+    // }
+    // return ResponseEntity.ok().build();
+    // }
 
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-        String email = tokenService.validateToken(request.getToken()).orElseThrow(() -> new InvalidTokenException("Invalid or expired token"));
+        String email = tokenService.validateToken(request.getToken())
+                .orElseThrow(() -> new InvalidTokenException("Invalid or expired token"));
 
         User user = userService.getUserByEmail(email).orElseThrow(() -> new InvalidTokenException("User not found"));
 
@@ -149,8 +155,7 @@ public class AuthController implements IAuthApi {
         response.put("timestamp", LocalDateTime.now().toString());
 
         return ResponseEntity.ok(
-                response
-        );
+                response);
     }
 
     @GetMapping("/check-auth")
@@ -162,12 +167,10 @@ public class AuthController implements IAuthApi {
             boolean isValid = authService.validateToken(token);
             return ResponseEntity.ok(Map.of(
                     "authenticated", isValid,
-                    "timestamp", LocalDateTime.now().toString()
-            ));
+                    "timestamp", LocalDateTime.now().toString()));
         }
         return ResponseEntity.ok(Map.of(
                 "authenticated", false,
-                "timestamp", LocalDateTime.now().toString()
-        ));
+                "timestamp", LocalDateTime.now().toString()));
     }
 }

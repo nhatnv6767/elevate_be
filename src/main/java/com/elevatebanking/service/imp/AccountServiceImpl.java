@@ -40,7 +40,8 @@ public class AccountServiceImpl implements IAccountService {
     private final RedisTemplate<String, String> redisTemplate;
 
     @Autowired
-    public AccountServiceImpl(AccountRepository accountRepository, UserRepository userRepository, AccountNumberGenerator accountNumberGenerator, RedisTemplate<String, String> redisTemplate) {
+    public AccountServiceImpl(AccountRepository accountRepository, UserRepository userRepository,
+                              AccountNumberGenerator accountNumberGenerator, RedisTemplate<String, String> redisTemplate) {
         this.accountRepository = accountRepository;
         this.userRepository = userRepository;
         this.accountNumberGenerator = accountNumberGenerator;
@@ -61,10 +62,8 @@ public class AccountServiceImpl implements IAccountService {
         List<Account> existingAccounts = accountRepository.findByUserId(userId);
         if (existingAccounts.size() >= MAX_ACCOUNTS_PER_USER) {
             throw new InvalidOperationException(
-                    String.format("User %s already has %d accounts", user.getUsername(), MAX_ACCOUNTS_PER_USER)
-            );
+                    String.format("User %s already has %d accounts", user.getUsername(), MAX_ACCOUNTS_PER_USER));
         }
-
 
         Account account = new Account();
         account.setUser(user);
@@ -104,7 +103,8 @@ public class AccountServiceImpl implements IAccountService {
     public Account updateAccountStatus(String id, AccountStatus status) {
         Account account = getAccountById(id).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
 
-        // Froze account that means when have trouble with transaction, and wanna refund the money
+        // Froze account that means when have trouble with transaction, and wanna refund
+        // the money
         if (account.getStatus() == AccountStatus.FROZEN && status != AccountStatus.ACTIVE) {
             throw new InvalidOperationException("Frozen account can only be activated");
         }
@@ -124,14 +124,14 @@ public class AccountServiceImpl implements IAccountService {
             return new BigDecimal(cachedBalance);
         }
 
-        Account account = getAccountById(accountId).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        Account account = getAccountById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         // cache the balance for 5 minutes
         redisTemplate.opsForValue().set(
                 "balance:" + accountId,
                 account.getBalance().toString(),
                 5,
-                TimeUnit.MINUTES
-        );
+                TimeUnit.MINUTES);
         return account.getBalance();
     }
 
@@ -147,11 +147,11 @@ public class AccountServiceImpl implements IAccountService {
                 .build();
     }
 
-
     @Override
     @Transactional(readOnly = true)
     public Account updateBalance(String accountId, BigDecimal newBalance) {
-        Account account = getAccountById(accountId).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        Account account = getAccountById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
             throw new InvalidOperationException("Balance cannot be negative");
         }
@@ -164,8 +164,7 @@ public class AccountServiceImpl implements IAccountService {
                 "balance:" + accountId,
                 newBalance.toString(),
                 5,
-                TimeUnit.MINUTES
-        );
+                TimeUnit.MINUTES);
         log.info("Updated account {} balance to {}", account.getAccountNumber(), newBalance);
         return updatedAccount;
     }
@@ -178,7 +177,8 @@ public class AccountServiceImpl implements IAccountService {
 
     @Override
     public void validateAccount(String accountId, BigDecimal amount) {
-        Account account = getAccountById(accountId).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+        Account account = getAccountById(accountId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         if (account.getStatus() != AccountStatus.ACTIVE) {
             throw new InvalidOperationException("Account is not active");
         }
@@ -188,11 +188,22 @@ public class AccountServiceImpl implements IAccountService {
         }
     }
 
-
     @Override
     public boolean isAccountOwner(String accountId, String userId) {
-        // check if account exists and the user is the owner
-        return accountRepository.findById(accountId).map(account -> account.getUser().getId().equals(userId)).orElse(false);
+        // 1. Tìm kiếm tài khoản theo accountId sử dụng accountRepository.findById()
+        // 2. Nếu tìm thấy tài khoản (Optional có giá trị):
+        // - Lấy ra đối tượng Account
+        // - Lấy User của Account đó
+        // - So sánh ID của User với userId được truyền vào
+        // - Trả về true nếu trùng khớp, false nếu không trùng
+        // 3. Nếu không tìm thấy tài khoản (Optional rỗng):
+        // - Trả về false
+        return accountRepository.findById(accountId)
+                .map(account -> {
+                    // Lấy user của account và so sánh ID
+                    return account.getUser().getId().equals(userId);
+                })
+                .orElse(false); // Trả về false nếu không tìm thấy account
     }
 
     @Override
