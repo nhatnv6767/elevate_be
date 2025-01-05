@@ -1,7 +1,8 @@
 spring:
   redis:
-    key-prefix: "email_dedup:"
+    key-prefix: "email_dedupe:"
     key-ttl: 300 # 5 minutes TTL
+
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
