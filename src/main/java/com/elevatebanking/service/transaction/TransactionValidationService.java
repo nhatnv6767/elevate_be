@@ -61,6 +61,10 @@ public class TransactionValidationService {
     private static final BigDecimal DAILY_TRANSFER_LIMIT = new BigDecimal(5000000); // 5,000,000$
     private static final BigDecimal SINGLE_TRANSFER_LIMIT = new BigDecimal(1000000); // 1,000,000$
 
+    private static final int MAX_RETRIES = 5;
+    private static final long LOCK_TIMEOUT = 30;
+    private static final long RETRY_DELAY = 1000;
+
 
     public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount) throws InterruptedException {
         validateBasicRules(fromAccount, toAccount, amount);
@@ -224,20 +228,20 @@ public class TransactionValidationService {
     }
 
     private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) throws InterruptedException {
-        String lockKey = "lock:" + userId;
-        boolean locked = false;
+        String lockKey = "transaction_frequency:" + userId;
+
         try {
+//            locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS));
+            if (!acquireLock(userId, lockKey)) {
+                throw new InvalidOperationException("Service currently busy. Please try again later");
+            }
             String minuteKey = new StringBuilder("tx_count_minute:")
                     .append(userId)
                     .toString();
             String dayKey = new StringBuilder("tx_count_day:")
                     .append(userId)
                     .toString();
-            locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 10, TimeUnit.SECONDS));
 
-            if (!locked) {
-                throw new InvalidOperationException("Failed to acquire lock for transaction frequency validation");
-            }
 //            String minuteKey = "tx_count_minute:" + userId;
 //            String dayKey = "tx_count_day:" + userId;
             try {
@@ -250,9 +254,7 @@ public class TransactionValidationService {
                 log.error("Error validating transaction frequency", e);
                 throw new InvalidOperationException("Failed to validate transaction frequency");
             } finally {
-                if (locked) {
-                    redisTemplate.delete(lockKey);
-                }
+                releaseLock(lockKey);
             }
 
         } catch (Exception e) {
@@ -438,6 +440,55 @@ public class TransactionValidationService {
                             log.info("Redis health alert sent successfully");
                         }
                     });
+        }
+    }
+
+
+    public boolean acquireLock(String userId, String lockKey) {
+        int retryCount = 0;
+        long retryDelay = RETRY_DELAY;
+
+        while (retryCount < MAX_RETRIES) {
+            try {
+                log.debug("Trying to acquire lock for user: {}, key: {}, attempt: {}/{}",
+                        userId, lockKey, retryCount + 1, MAX_RETRIES);
+
+                Boolean acquired = redisTemplate.opsForValue()
+                        .setIfAbsent(lockKey, userId, LOCK_TIMEOUT, TimeUnit.SECONDS);
+
+                if (Boolean.TRUE.equals(acquired)) {
+                    log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
+                    return true;
+                }
+
+                log.debug("Lock acquisition failed for user: {}, key: {}, attempt: {}",
+                        userId, lockKey, retryCount + 1);
+
+                retryCount++;
+                Thread.sleep(retryDelay);
+                retryDelay *= 2; // exponential backoff
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Lock acquisition interrupted for user: {}", userId, e);
+                return false;
+            }
+        }
+
+        log.warn("Failed to acquire lock after {} retries for user: {}", MAX_RETRIES, userId);
+        return false;
+    }
+
+    public void releaseLock(String lockKey) {
+        try {
+            Boolean deleted = redisTemplate.delete(lockKey);
+            if (Boolean.TRUE.equals(deleted)) {
+                log.debug("Lock released successfully for key: {}", lockKey);
+            } else {
+                log.warn("Lock key {} not found or already released", lockKey);
+            }
+        } catch (Exception e) {
+            log.error("Error releasing lock for key: {}", lockKey, e);
         }
     }
 }

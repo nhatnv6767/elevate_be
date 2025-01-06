@@ -28,7 +28,7 @@ public class AuditLogService {
     HttpServletRequest request;
 
     @Transactional(rollbackFor = Exception.class)
-    public void logEvent(String userId, String action, String entityType, String entityId, Object previousState, Object currentState) {
+    public void logEvent(String userId, String action, String entityType, String entityId, Object previousState, Object currentState, AuditLog.AuditStatus status) {
         try {
             if (userId == null) {
                 log.warn("Cannot create audit log without user ID");
@@ -50,7 +50,8 @@ public class AuditLogService {
 
             String details = generateAuditDetails(previousState, currentState);
             auditLog.setDetails(details);
-            auditLog.setStatus(AuditLog.AuditStatus.SUCCESS);
+//            auditLog.setStatus(AuditLog.AuditStatus.SUCCESS);
+            auditLog.setStatus(status != null ? status : AuditLog.AuditStatus.SUCCESS);
             auditLog.setVersion(0L);
             auditLogRepository.save(auditLog);
             log.info("Audit log created for action: {} on entity: {}", action, entityId);
@@ -86,25 +87,34 @@ public class AuditLogService {
             }
 
             Map<String, Object> details = new HashMap<>();
-            Map<String, Object> previous = objectMapper.convertValue(previousState, Map.class);
-            Map<String, Object> current = objectMapper.convertValue(currentState, Map.class);
+            details.put("previousState", previousState);
+            details.put("currentState", currentState);
+            details.put("timestamp", LocalDateTime.now());
+            details.put("changes", getChanges(previousState, currentState));
 
-            // find changed fields
-            Map<String, ChangedValue> changes = new HashMap<>();
-            for (String key : current.keySet()) {
-                Object prevValue = previous.get(key);
-                Object currValue = current.get(key);
-                if (!Objects.equals(prevValue, currValue)) {
-                    changes.put(key, new ChangedValue(prevValue, currValue));
-                }
-            }
-
-            details.put("changes", changes);
             return objectMapper.writeValueAsString(details);
         } catch (Exception e) {
             log.error("Failed to generate audit details", e);
             return null;
         }
+    }
+
+
+    private Map<String, ?> getChanges(Object previousState, Object currentState) {
+        Map<String, ChangedValue> changes = new HashMap<>();
+        Map<String, Object> previous = objectMapper.convertValue(previousState, Map.class);
+        Map<String, Object> current = objectMapper.convertValue(currentState, Map.class);
+
+        // find changed fields
+
+        for (String key : current.keySet()) {
+            Object prevValue = previous.get(key);
+            Object currValue = current.get(key);
+            if (!Objects.equals(prevValue, currValue)) {
+                changes.put(key, new ChangedValue(prevValue, currValue));
+            }
+        }
+        return changes;
     }
 
     String getClientIpAddress() {

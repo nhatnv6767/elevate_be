@@ -78,4 +78,14 @@ public class AuditLog extends AuditableEntity {
     private String metadata;
 
 
+    @Column(name = "transaction_id")
+    private String transactionId;
+
+    @Column(name = "error_message")
+    private String errorMessage;
+
+    @Column(name = "execution_time")
+    private Long executionTime;
+
+
 }
