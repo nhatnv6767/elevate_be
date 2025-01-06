@@ -4,6 +4,7 @@ import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.log.AuditLog;
 import com.elevatebanking.exception.InvalidOperationException;
+import com.elevatebanking.exception.TransactionLimitExceededException;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.nonImp.AuditLogService;
@@ -14,6 +15,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.zookeeper.proto.ErrorResponse;
@@ -40,77 +43,125 @@ public class TransferController {
     private final AuditLogService auditLogService;
     private final TransactionValidationService transactionValidationService;
 
+    @Data
+    @AllArgsConstructor
+    private static class ErrorResponse {
+        private String message;
+        private String code;
+    }
+
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Initiate a new transfer")
     @PostMapping
-    public ResponseEntity<?> initiateTransfer(
-            @Valid @RequestBody TransferRequest request) {
-        log.debug("Received transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
-                request.getToAccountNumber(), request.getAmount());
+    public ResponseEntity<?> transfer(@Valid @RequestBody TransferRequest request) {
         String userId = securityUtils.getCurrentUserId();
         String lockKey = "transaction_frequency:" + userId;
+
         try {
-            TransactionResponse response = transactionService.transfer(request);
+            // First, try to clear any potential stuck locks
+            transactionValidationService.clearStuckLocks(userId);
+
+            // Try to acquire lock with retry mechanism
             if (!transactionValidationService.acquireLock(userId, lockKey)) {
-                String errorMessage = "Hệ thống đang bận, vui lòng thử lại sau";
-                auditLogService.logEvent(
-                        userId,
-                        "TRANSFER_FAILED",
-                        "TRANSACTION",
-                        response.getTransactionId(),
-                        request,
-                        Map.of(
-                                "error", errorMessage,
-                                "lockKey", lockKey,
-                                "timestamp", LocalDateTime.now()
-                        ),
-                        AuditLog.AuditStatus.FAILED
-                );
-                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                        .body(new ErrorResponse());
+                return ResponseEntity
+                        .status(HttpStatus.TOO_MANY_REQUESTS)
+                        .body(new ErrorResponse(
+                                "System is busy, please try again in a few moments",
+                                "LOCK_ACQUISITION_FAILED"
+                        ));
             }
 
+            try {
+                TransactionResponse response = transactionService.transfer(request);
+                return ResponseEntity.ok(response);
+            } finally {
+                transactionValidationService.releaseLock(lockKey);
+            }
 
-            auditLogService.logEvent(
-                    userId,
-                    "TRANSFER_COMPLETED",
-                    "TRANSACTION",
-                    response.getTransactionId(),
-                    request,
-                    Map.of("status", "SUCCESS"),
-                    AuditLog.AuditStatus.SUCCESS);
-            log.info("Transfer successfully completed with transaction ID: {}", response.getTransactionId());
-            return ResponseEntity.ok(response);
-
-        } catch (InvalidOperationException e) {
-            log.error("Lỗi xác thực giao dịch", e);
-            auditLogService.logEvent(
-                    userId,
-                    "TRANSFER_FAILED",
-                    "TRANSACTION",
-                    null,
-                    request,
-                    Map.of("error", e.getMessage()),
-                    AuditLog.AuditStatus.FAILED);
-            return ResponseEntity.badRequest().body("Error when processing transaction: " + e.getMessage());
+        } catch (TransactionLimitExceededException e) {
+            log.warn("Transaction limit exceeded for user: {}", userId, e);
+            return ResponseEntity
+                    .status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(new ErrorResponse(e.getMessage(), "LIMIT_EXCEEDED"));
 
         } catch (Exception e) {
-            log.error("Lỗi hệ thống khi thực hiện giao dịch", e);
-            auditLogService.logEvent(
-                    userId,
-                    "TRANSFER_FAILED",
-                    "TRANSACTION",
-                    null,
-                    request,
-                    Map.of("error", e.getMessage()),
-                    AuditLog.AuditStatus.FAILED);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error when processing transaction: " + e.getMessage());
-        } finally {
-            transactionValidationService.releaseLock(lockKey);
+            log.error("Error processing transfer for user: {}", userId, e);
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse(
+                            "An error occurred while processing your transfer",
+                            "INTERNAL_ERROR"
+                    ));
         }
-
     }
+//    public ResponseEntity<?> initiateTransfer(
+//            @Valid @RequestBody TransferRequest request) {
+//        log.debug("Received transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
+//                request.getToAccountNumber(), request.getAmount());
+//        String userId = securityUtils.getCurrentUserId();
+//        String lockKey = "transaction_frequency:" + userId;
+//        try {
+//            TransactionResponse response = transactionService.transfer(request);
+//            if (!transactionValidationService.acquireLock(userId, lockKey)) {
+//                String errorMessage = "Hệ thống đang bận, vui lòng thử lại sau";
+//                auditLogService.logEvent(
+//                        userId,
+//                        "TRANSFER_FAILED",
+//                        "TRANSACTION",
+//                        response.getTransactionId(),
+//                        request,
+//                        Map.of(
+//                                "error", errorMessage,
+//                                "lockKey", lockKey,
+//                                "timestamp", LocalDateTime.now()
+//                        ),
+//                        AuditLog.AuditStatus.FAILED
+//                );
+//                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+//                        .body(new ErrorResponse());
+//            }
+//
+//
+//            auditLogService.logEvent(
+//                    userId,
+//                    "TRANSFER_COMPLETED",
+//                    "TRANSACTION",
+//                    response.getTransactionId(),
+//                    request,
+//                    Map.of("status", "SUCCESS"),
+//                    AuditLog.AuditStatus.SUCCESS);
+//            log.info("Transfer successfully completed with transaction ID: {}", response.getTransactionId());
+//            return ResponseEntity.ok(response);
+//
+//        } catch (InvalidOperationException e) {
+//            log.error("Lỗi xác thực giao dịch", e);
+//            auditLogService.logEvent(
+//                    userId,
+//                    "TRANSFER_FAILED",
+//                    "TRANSACTION",
+//                    null,
+//                    request,
+//                    Map.of("error", e.getMessage()),
+//                    AuditLog.AuditStatus.FAILED);
+//            return ResponseEntity.badRequest().body("Error when processing transaction: " + e.getMessage());
+//
+//        } catch (Exception e) {
+//            log.error("Lỗi hệ thống khi thực hiện giao dịch", e);
+//            auditLogService.logEvent(
+//                    userId,
+//                    "TRANSFER_FAILED",
+//                    "TRANSACTION",
+//                    null,
+//                    request,
+//                    Map.of("error", e.getMessage()),
+//                    AuditLog.AuditStatus.FAILED);
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body("Error when processing transaction: " + e.getMessage());
+//        } finally {
+//            transactionValidationService.releaseLock(lockKey);
+//        }
+//
+//    }
 
     private void handleTransactionError(String userId, TransferRequest request,
                                         Exception e, String logMessage) {

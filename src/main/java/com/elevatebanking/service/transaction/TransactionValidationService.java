@@ -63,8 +63,9 @@ public class TransactionValidationService {
     private static final BigDecimal SINGLE_TRANSFER_LIMIT = new BigDecimal(1000000); // 1,000,000$
 
     private static final int MAX_RETRIES = 5;
-    private static final long LOCK_TIMEOUT = 30;
     private static final long RETRY_DELAY = 1000;
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final long LOCK_TIMEOUT = 10; // seconds
 
 
     public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount) throws InterruptedException {
@@ -230,47 +231,51 @@ public class TransactionValidationService {
 
     private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) throws InterruptedException {
         String lockKey = "transaction_frequency:" + userId;
-
         try {
-//            locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS));
             if (!acquireLock(userId, lockKey)) {
+                log.warn("Could not acquire Redis lock for user: {}", userId);
                 validateTransactionFrequencyFromDB(userId, limits);
                 return;
             }
-            String minuteKey = new StringBuilder("tx_count_minute:")
-                    .append(userId)
-                    .toString();
-            String dayKey = new StringBuilder("tx_count_day:")
-                    .append(userId)
-                    .toString();
-
-//            String minuteKey = "tx_count_minute:" + userId;
-//            String dayKey = "tx_count_day:" + userId;
             try {
-                Long txPerMinute = incrementAndGetCountWithRetry(minuteKey, 1, TimeUnit.MINUTES);
-                validateLimit(txPerMinute, (long) limits.getMaxTransactionsPerMinute(), "minute");
-
-                Long txPerDay = incrementAndGetCountWithRetry(dayKey, 1, TimeUnit.DAYS);
-                validateLimit(txPerDay, (long) limits.getMaxTransactionsPerDay(), "day");
-            } catch (Exception e) {
-                log.error("Error validating transaction frequency", e);
-                throw new InvalidOperationException("Failed to validate transaction frequency");
+                validateFrequencyWithRedis(userId, limits);
             } finally {
                 releaseLock(lockKey);
             }
 
         } catch (Exception e) {
-            if (e instanceof InvalidOperationException) {
-                throw e;
-            }
-            log.error("Error validating transaction frequency", e);
-            throw new InvalidOperationException("Failed to validate transaction frequency");
-        } finally {
-            try {
-                releaseLock(lockKey);
-            } catch (Exception e) {
-                log.error("Error releasing lock", e);
-            }
+            log.error("Error in transaction frequency validation", e);
+            // Fallback to database validation
+            validateTransactionFrequencyFromDB(userId, limits);
+        }
+    }
+
+    private void validateFrequencyWithRedis(String userId, TransactionLimitConfig.TierLimit limits) {
+        String minuteKey = "tx_count_minute:" + userId;
+        String dayKey = "tx_count_day:" + userId;
+
+        Long txPerMinute = redisTemplate.opsForValue().increment(minuteKey);
+        if (txPerMinute == 1) {
+            redisTemplate.expire(minuteKey, 1, TimeUnit.MINUTES);
+        }
+
+        if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
+            throw new TransactionLimitExceededException(
+                    String.format("Exceeded maximum transactions per minute of %d",
+                            limits.getMaxTransactionsPerMinute())
+            );
+        }
+
+        Long txPerDay = redisTemplate.opsForValue().increment(dayKey);
+        if (txPerDay == 1) {
+            redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
+        }
+
+        if (txPerDay > limits.getMaxTransactionsPerDay()) {
+            throw new TransactionLimitExceededException(
+                    String.format("Exceeded maximum transactions per day of %d",
+                            limits.getMaxTransactionsPerDay())
+            );
         }
     }
 
@@ -471,13 +476,13 @@ public class TransactionValidationService {
         int retryCount = 0;
         long retryDelay = 100;
 
-        while (retryCount < MAX_RETRIES) {
+        while (retryCount < MAX_RETRY_ATTEMPTS) {
             try {
                 log.debug("Trying to acquire lock for user: {}, key: {}, attempt: {}/{}",
-                        userId, lockKey, retryCount + 1, MAX_RETRIES);
+                        userId, lockKey, retryCount + 1, MAX_RETRY_ATTEMPTS);
 
                 Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, userId, 10, TimeUnit.SECONDS);
+                        .setIfAbsent(lockKey, userId, LOCK_TIMEOUT, TimeUnit.SECONDS);
 
                 if (Boolean.TRUE.equals(acquired)) {
                     log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
@@ -488,9 +493,9 @@ public class TransactionValidationService {
                         userId, lockKey, retryCount + 1);
 
                 retryCount++;
-                if (retryCount < MAX_RETRIES) {
+                if (retryCount < MAX_RETRY_ATTEMPTS) {
                     Thread.sleep(retryDelay);
-                    retryDelay *= 1.5; // exponential backoff
+                    retryDelay *= 2; // exponential backoff
                 }
 
             } catch (InterruptedException e) {
@@ -500,8 +505,21 @@ public class TransactionValidationService {
             }
         }
 
-        log.warn("Failed to acquire lock after {} retries for user: {}", MAX_RETRIES, userId);
+        log.warn("Failed to acquire lock after {} retries for user: {}", MAX_RETRY_ATTEMPTS, userId);
         return false;
+    }
+
+    public void clearStuckLocks(String userId) {
+        try {
+            String lockKeyPattern = "transaction_frequency:" + userId + "*";
+            Set<String> keys = redisTemplate.keys(lockKeyPattern);
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+                log.info("Cleared {} stuck locks for user: {}", keys.size(), userId);
+            }
+        } catch (Exception e) {
+            log.error("Error clearing stuck locks for user: {}", userId, e);
+        }
     }
 
     public void releaseLock(String lockKey) {

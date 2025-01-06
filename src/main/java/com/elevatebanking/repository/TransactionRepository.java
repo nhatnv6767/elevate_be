@@ -22,20 +22,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
     @Query("SELECT t FROM Transaction t WHERE t.status = :status AND t.createdAt < :timeout")
     List<Transaction> findTransactionsByStatusAndOlderThan(
             @Param("status") TransactionStatus status,
-            @Param("timeout") LocalDateTime timeout
-    );
+            @Param("timeout") LocalDateTime timeout);
 
     @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.id = :accountId OR t.toAccount.id = :accountId) AND t.createdAt BETWEEN :startDate AND :endDate ORDER BY t.createdAt DESC")
     List<Transaction> findTransactionsByAccountAndDateRange(
             @Param("accountId") String accountId,
             @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate
-    );
+            @Param("endDate") LocalDateTime endDate);
 
     // findPendingTransactionsOlderThan(timeout)
     @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :timeout")
     List<Transaction> findPendingTransactionsOlderThan(@Param("timeout") LocalDateTime timeout);
-
 
     @Query("SELECT t FROM Transaction t WHERE t.status = 'PENDING' AND t.createdAt < :threshold")
     List<Transaction> findStuckTransactions(LocalDateTime threshold);
@@ -49,10 +46,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    @Query("SELECT COALESCE(AVG((CAST(t.updatedAt as long) - CAST(t.createdAt as long)) / 1000000.0), 0) " +
-            "FROM Transaction t " +
-            "WHERE t.createdAt BETWEEN :start AND :end " +
-            "AND t.status = 'COMPLETED'")
+    // @Query("SELECT COALESCE(AVG((CAST(t.updatedAt as long) - CAST(t.createdAt as
+    // long)) / 1000000.0), 0) " +
+    // "FROM Transaction t " +
+    // "WHERE t.createdAt BETWEEN :start AND :end " +
+    // "AND t.status = 'COMPLETED'")
+
+    @Query(value = """
+                SELECT COALESCE(AVG(
+                    EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000.0
+                ), 0.0)
+                FROM transactions 
+                WHERE created_at BETWEEN :start AND :end 
+                AND status = 'COMPLETED'
+            """, nativeQuery = true)
     double calculateAverageProcessingTime(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
@@ -66,21 +73,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
     List<Transaction> findTransactionsByUserAndDateRange(
             @Param("userId") String userId,
             @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate
-    );
+            @Param("endDate") LocalDateTime endDate);
 
     @Query("SELECT count (t) from Transaction t where t.fromAccount.id =:accountId and t.createdAt >=:since")
     long countTransactionsInTimeframe(@Param("accountId") String accountId, @Param("since") LocalDateTime since);
 
     @Query("""
-                SELECT COUNT(t) FROM Transaction t 
-                WHERE (t.fromAccount.user.id = :userId OR t.toAccount.user.id = :userId) 
-                AND t.createdAt BETWEEN :startTime AND :endTime 
+                SELECT COUNT(t) FROM Transaction t
+                WHERE (t.fromAccount.user.id = :userId OR t.toAccount.user.id = :userId)
+                AND t.createdAt BETWEEN :startTime AND :endTime
                 AND t.status = 'COMPLETED'
             """)
     Long countTransactionsByUserInTimeRange(
             @Param("userId") String userId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
-    );
+            @Param("endTime") LocalDateTime endTime);
+
 }
