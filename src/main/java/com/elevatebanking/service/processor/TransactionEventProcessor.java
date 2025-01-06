@@ -135,7 +135,7 @@ public class TransactionEventProcessor {
         } catch (Exception e) {
             log.error("Error handling transaction initiated event: {}", e.getMessage());
             event.setStatus(TransactionStatus.FAILED);
-            kafkaTemplate.send("elevate.transaction", "transaction.failed", event);
+            kafkaTemplate.send("elevate.transactions", "transaction.failed", event);
         }
 
     }
