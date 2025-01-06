@@ -35,16 +35,4 @@ public class RedisConfig {
         return template;
     }
 
-
-//    @Bean
-//    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory connectionFactory) {
-//        RedisTemplate<String, String> template = new RedisTemplate<>();
-//        template.setConnectionFactory(connectionFactory);
-//        template.setDefaultSerializer(new StringRedisSerializer());
-//
-//        // Set retry policy
-//        template.setEnableTransactionSupport(true);
-//
-//        return template;
-//    }
 }

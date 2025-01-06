@@ -13,6 +13,7 @@ import com.elevatebanking.exception.TransactionProcessingException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.notification.NotificationService;
 import com.elevatebanking.service.transaction.config.TransactionLimitConfig;
+import com.elevatebanking.util.SecurityUtils;
 import io.lettuce.core.RedisConnectionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -29,9 +31,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -44,6 +44,7 @@ public class TransactionValidationService {
     private final TransactionLimitConfig limitConfig;
     private final NotificationService notificationService;
     private final KafkaTemplate<String, NotificationEvent> kafkaTemplate;
+    private final SecurityUtils securityUtils;
 
     @Value("${spring.data.redis.retry.initial-interval}")
     private long initialInterval;
@@ -233,7 +234,8 @@ public class TransactionValidationService {
         try {
 //            locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS));
             if (!acquireLock(userId, lockKey)) {
-                throw new InvalidOperationException("Service currently busy. Please try again later");
+                validateTransactionFrequencyFromDB(userId, limits);
+                return;
             }
             String minuteKey = new StringBuilder("tx_count_minute:")
                     .append(userId)
@@ -263,6 +265,27 @@ public class TransactionValidationService {
             }
             log.error("Error validating transaction frequency", e);
             throw new InvalidOperationException("Failed to validate transaction frequency");
+        } finally {
+            try {
+                releaseLock(lockKey);
+            } catch (Exception e) {
+                log.error("Error releasing lock", e);
+            }
+        }
+    }
+
+    private void validateTransactionFrequencyFromDB(String userId, TransactionLimitConfig.TierLimit limits) {
+        LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+        Long txPerMinute = transactionRepository.countTransactionsByUserInTimeRange(userId, oneMinuteAgo, LocalDateTime.now());
+
+        if (txPerMinute >= limits.getMaxTransactionsPerMinute()) {
+            throw new TransactionLimitExceededException(String.format("Exceeded maximum transaction per minute of %d", limits.getMaxTransactionsPerMinute()));
+        }
+
+        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+        Long txPerDay = transactionRepository.countTransactionsByUserInTimeRange(userId, startOfDay, LocalDateTime.now());
+        if (txPerDay >= limits.getMaxTransactionsPerDay()) {
+            throw new TransactionLimitExceededException(String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay()));
         }
     }
 
@@ -446,7 +469,7 @@ public class TransactionValidationService {
 
     public boolean acquireLock(String userId, String lockKey) {
         int retryCount = 0;
-        long retryDelay = RETRY_DELAY;
+        long retryDelay = 100;
 
         while (retryCount < MAX_RETRIES) {
             try {
@@ -454,7 +477,7 @@ public class TransactionValidationService {
                         userId, lockKey, retryCount + 1, MAX_RETRIES);
 
                 Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, userId, LOCK_TIMEOUT, TimeUnit.SECONDS);
+                        .setIfAbsent(lockKey, userId, 10, TimeUnit.SECONDS);
 
                 if (Boolean.TRUE.equals(acquired)) {
                     log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
@@ -465,8 +488,10 @@ public class TransactionValidationService {
                         userId, lockKey, retryCount + 1);
 
                 retryCount++;
-                Thread.sleep(retryDelay);
-                retryDelay *= 2; // exponential backoff
+                if (retryCount < MAX_RETRIES) {
+                    Thread.sleep(retryDelay);
+                    retryDelay *= 1.5; // exponential backoff
+                }
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -481,14 +506,36 @@ public class TransactionValidationService {
 
     public void releaseLock(String lockKey) {
         try {
-            Boolean deleted = redisTemplate.delete(lockKey);
-            if (Boolean.TRUE.equals(deleted)) {
-                log.debug("Lock released successfully for key: {}", lockKey);
-            } else {
-                log.warn("Lock key {} not found or already released", lockKey);
-            }
+            String script = "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                    "return redis.call('del', KEYS[1]) " +
+                    "else return 0 end";
+
+            redisTemplate.execute(new DefaultRedisScript<>(script, Long.class), Collections.singletonList(lockKey), getCurrentUserId());
         } catch (Exception e) {
             log.error("Error releasing lock for key: {}", lockKey, e);
         }
     }
+
+    private String getCurrentUserId() {
+        return securityUtils.getCurrentUserId();
+    }
+
+    @Scheduled(fixedRate = 60000)
+    public void monitorLockStatus() {
+        try {
+            Set<String> lockKeys = redisTemplate.keys("transaction_frequency:*");
+            if (lockKeys != null && !lockKeys.isEmpty()) {
+                for (String lockKey : lockKeys) {
+                    Long ttl = redisTemplate.getExpire(lockKey);
+                    if (ttl != null && ttl > 300) {
+                        log.warn("Lock key {} has TTL of {} seconds", lockKey, ttl);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error monitoring lock status", e);
+        }
+    }
+
+
 }
