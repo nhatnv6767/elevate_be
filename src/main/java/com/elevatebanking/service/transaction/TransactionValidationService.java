@@ -208,7 +208,7 @@ public class TransactionValidationService {
     }
 
     private BigDecimal getCachedOrCalculateTotal(String cacheKey, Supplier<BigDecimal> calculator,
-            long duration, TimeUnit timeUnit) {
+                                                 long duration, TimeUnit timeUnit) {
         String cachedValue = redisTemplate.opsForValue().get(cacheKey);
         if (cachedValue != null) {
             return new BigDecimal(cachedValue);
@@ -475,7 +475,7 @@ public class TransactionValidationService {
 
     public boolean acquireLock(String userId, String lockKey) {
         int retryCount = 0;
-        long retryDelay = 100;
+        long retryDelay = 200;
 
         while (retryCount < MAX_RETRY_ATTEMPTS) {
             try {
@@ -483,10 +483,11 @@ public class TransactionValidationService {
                         userId, lockKey, retryCount + 1, MAX_RETRY_ATTEMPTS);
 
                 Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, userId, LOCK_TIMEOUT, TimeUnit.SECONDS);
+                        .setIfAbsent(lockKey, userId, 30, TimeUnit.SECONDS);
 
                 if (Boolean.TRUE.equals(acquired)) {
                     log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
+                    extendLock(lockKey);
                     return true;
                 }
 
@@ -496,7 +497,7 @@ public class TransactionValidationService {
                 retryCount++;
                 if (retryCount < MAX_RETRY_ATTEMPTS) {
                     Thread.sleep(retryDelay);
-                    retryDelay *= 2; // exponential backoff
+                    retryDelay += 200;
                 }
 
             } catch (InterruptedException e) {
@@ -508,6 +509,10 @@ public class TransactionValidationService {
 
         log.warn("Failed to acquire lock after {} retries for user: {}", MAX_RETRY_ATTEMPTS, userId);
         return false;
+    }
+
+    private void extendLock(String lockKey) {
+        redisTemplate.expire(lockKey, 30, TimeUnit.SECONDS);
     }
 
     public void clearStuckLocks(String userId) {

@@ -1,7 +1,10 @@
 package com.elevatebanking.service.nonImp;
 
+import com.elevatebanking.entity.user.User;
 import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.exception.EmailSendException;
+import com.elevatebanking.exception.ResourceNotFoundException;
+import com.elevatebanking.repository.UserRepository;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +28,7 @@ public class EmailService {
     private final JavaMailSender mailSender;
     private final SpringTemplateEngine templateEngine;
     private final KafkaTemplate<String, EmailEvent> kafkaTemplate;
+    private final UserRepository userRepository;
 
     @Value("${MAIL_USERNAME}")
     private String fromEmail;
@@ -166,7 +170,10 @@ public class EmailService {
 
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public void sendTransactionEmail(String toEmail, String subject, String content) {
-        processAndSendEmail(toEmail, subject, content, "email/transaction-notification");
+
+        User user = userRepository.findById(toEmail).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        processAndSendEmail(user.getEmail(), subject, content, "email/transaction-notification");
     }
 
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))

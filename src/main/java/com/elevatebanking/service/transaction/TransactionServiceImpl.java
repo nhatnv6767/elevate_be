@@ -10,18 +10,24 @@ import com.elevatebanking.exception.*;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.util.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 
@@ -38,6 +44,7 @@ public class TransactionServiceImpl implements ITransactionService {
     private final TransactionCompensationService compensationService;
     private final TransactionMonitoringService monitoringService;
     private final TransactionRecoveryService recoveryService;
+    private final SecurityUtils securityUtils;
 
     @Override
     public Transaction createTransaction(Transaction transaction) throws InterruptedException {
@@ -91,10 +98,19 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private void handleTransactionError(Transaction transaction, Exception e) {
-        log.error("Transaction failed: {}", transaction.getId(), e);
-        transaction.setStatus(TransactionStatus.FAILED);
-        transaction = transactionRepository.save(transaction);
-        publishTransactionEvent(transaction, "transaction.failed");
+//        log.error("Transaction failed: {}", transaction.getId(), e);
+//        transaction.setStatus(TransactionStatus.FAILED);
+//        transaction = transactionRepository.save(transaction);
+//        publishTransactionEvent(transaction, "transaction.failed");
+
+        if (transaction != null) {
+            transaction.setStatus(TransactionStatus.FAILED);
+            transactionRepository.save(transaction);
+            CompletableFuture.runAsync(() -> {
+                publishTransactionEvent(transaction, "transaction.failed");
+                monitoringService.sendAlertNotification("Transaction failed: " + e.getMessage());
+            });
+        }
     }
 
     @Override
@@ -324,53 +340,85 @@ public class TransactionServiceImpl implements ITransactionService {
     //// NEW SERVICE
 
     @Override
+    @Transactional
+    @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public TransactionResponse transfer(TransferRequest request) throws InterruptedException {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
                 request.getToAccountNumber(), request.getAmount());
+        String userId = securityUtils.getCurrentUserId();
+        String lockKey = "transaction_frequency:" + userId;
+        Transaction transaction = null;
 
-        Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber()).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
-        Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber()).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
-
-        // validate account and balances
-        if (fromAccount != null && toAccount != null) {
-            Account fromAccountId = accountService.getAccountById(fromAccount.getId()).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
-            Account toAccountId = accountService.getAccountById(toAccount.getId()).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
-            validationService.validateTransferTransaction(fromAccountId, toAccountId, request.getAmount());
-        }
-
-//        validationService.validateTransferTransaction(fromAccount, toAccount, request.getAmount());
-        // create and save initial transaction
-        Transaction transaction = createInitialTransaction(
-                fromAccount, toAccount, request.getAmount(),
-                TransactionType.TRANSFER, request.getDescription());
-
-        // TODO: lan 1
         try {
-//            processTransfer(
-//                    fromAccount.getId(),
-//                    toAccount.getId(),
-//                    request.getAmount(),
-//                    request.getDescription());
+            if (!validationService.acquireLock(userId, lockKey)) {
+                throw new TransactionLimitExceededException("System is busy, please try again later");
+            }
 
-            executeTransfer(fromAccount.getId(), toAccount.getId(), request.getAmount());
-            // update transaction status
-            transaction.setStatus(TransactionStatus.COMPLETED);
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.completed");
+            Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber())
+                    .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
+            Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber())
+                    .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
 
-            monitoringService.monitorTransactionMetrics();
+
+            // validate using account IDs
+            validationService.validateTransferTransaction(
+                    accountService.getAccountById(fromAccount.getId()).orElseThrow(),
+                    accountService.getAccountById(toAccount.getId()).orElseThrow(),
+                    request.getAmount()
+            );
+
+            // initialize transaction
+            transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
+            // execute transfer with retry mechanism
+            executeTransferWithRetry(transaction);
+            Transaction finalTransaction = transaction;
+            CompletableFuture.runAsync(() -> {
+                publishTransactionEvent(finalTransaction, "transaction.completed");
+                monitoringService.monitorTransactionMetrics();
+            });
             return mapToTransactionResponse(transaction);
-        } catch (Exception e) {
-            log.error("Error processing transfer: {}", e.getMessage());
-            transaction.setStatus(TransactionStatus.FAILED);
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.failed");
 
-            monitoringService.sendAlertNotification("Transaction failed: " + e.getMessage());
-            throw new RuntimeException("Error processing transfer");
+        } catch (Exception e) {
+            handleTransactionError(transaction, e);
+            throw e;
+        } finally {
+            if (lockKey != null) {
+                validationService.releaseLock(lockKey);
+            }
         }
 
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    protected void executeTransferWithRetry(Transaction transaction) {
+        try {
+            executeTransfer(transaction.getFromAccount().getId(), transaction.getToAccount().getId(), transaction.getAmount());
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transactionRepository.save(transaction);
+        } catch (DataAccessException e) {
+            throw new RetryableException("Database error", e);
+//            log.error("Error executing transfer: {}", e.getMessage());
+//            throw new TransactionProcessingException("Error executing transfer", transaction.getId(), true);
+        } catch (Exception e) {
+            compensationService.compensateTransaction(transaction, "Error executing transfer: " + e.getMessage());
+            throw new NonRetryableException("Non-retryable error", e);
+        }
+    }
+
+    private Transaction initializeTransaction(Account fromAccount, Account toAccount, TransferRequest request) {
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(fromAccount);
+        transaction.setToAccount(toAccount);
+        transaction.setAmount(request.getAmount());
+        transaction.setType(TransactionType.TRANSFER);
+        transaction.setDescription(request.getDescription());
+        transaction.setStatus(TransactionStatus.PENDING);
+
+        transaction = transactionRepository.save(transaction);
+        publishTransactionEvent(transaction, "transaction.initiated");
+        return transaction;
+    }
+
 
     @Override
     public TransactionResponse deposit(DepositRequest request) throws InterruptedException {
