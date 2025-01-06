@@ -30,7 +30,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -55,7 +57,6 @@ public class TransactionValidationService {
 
     private static final String KEY_PREFIX = "tx_count:";
 
-
     private static final int MAX_TRANSACTIONS_PER_DAY = 20;
     private static final int MAX_TRANSACTIONS_PER_MINUTE = 3;
     private static final BigDecimal MIN_TRANSFER_AMOUNT = new BigDecimal("0.1"); // 0.1$
@@ -67,8 +68,8 @@ public class TransactionValidationService {
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final long LOCK_TIMEOUT = 10; // seconds
 
-
-    public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount) throws InterruptedException {
+    public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount)
+            throws InterruptedException {
         validateBasicRules(fromAccount, toAccount, amount);
         validateLimits(fromAccount, amount);
     }
@@ -82,7 +83,6 @@ public class TransactionValidationService {
         validateBasicRules(account, account, amount);
         validateLimits(account, amount);
     }
-
 
     private void validateBasicRules(Account fromAccount, Account toAccount, BigDecimal amount) {
         validateAccountStatus(fromAccount);
@@ -106,11 +106,9 @@ public class TransactionValidationService {
         if (amount.compareTo(limits.getSingleTransactionLimit()) > 0) {
             throw new TransactionLimitExceededException(
                     String.format("Transaction amount exceeds single transaction limit of %s",
-                            limits.getSingleTransactionLimit())
-            );
+                            limits.getSingleTransactionLimit()));
         }
     }
-
 
     private void validateSameAccount(Account fromAccount, Account toAccount) {
         if (fromAccount.getId().equals(toAccount.getId())) {
@@ -135,19 +133,16 @@ public class TransactionValidationService {
 
         if (amount.compareTo(SINGLE_TRANSFER_LIMIT) > 0) {
             throw new InvalidOperationException(
-                    String.format("Transaction amount exceeds limit of %s", SINGLE_TRANSFER_LIMIT)
-            );
+                    String.format("Transaction amount exceeds limit of %s", SINGLE_TRANSFER_LIMIT));
         }
     }
 
     private void validateAccountStatus(Account account) {
         if (account.getStatus() != AccountStatus.ACTIVE) {
             throw new InvalidOperationException(
-                    String.format("Account %s is not active", account.getAccountNumber())
-            );
+                    String.format("Account %s is not active", account.getAccountNumber()));
         }
     }
-
 
     private BigDecimal calculateDailyTotal(String userId) {
         try {
@@ -190,13 +185,11 @@ public class TransactionValidationService {
                 cacheKey,
                 () -> calculateDailyTotal(userId),
                 1,
-                TimeUnit.DAYS
-        );
+                TimeUnit.DAYS);
 
         if (dailyTotal.add(amount).compareTo(limits.getDailyLimit()) > 0) {
             throw new TransactionLimitExceededException(
-                    String.format("Daily transfer limit exceeded. Current limit: %s", limits.getDailyLimit())
-            );
+                    String.format("Daily transfer limit exceeded. Current limit: %s", limits.getDailyLimit()));
         }
     }
 
@@ -206,20 +199,16 @@ public class TransactionValidationService {
                 cacheKey,
                 () -> calculateMonthlyTotal(userId),
                 30,
-                TimeUnit.DAYS
-        );
+                TimeUnit.DAYS);
 
         if (monthlyTotal.add(amount).compareTo(limits.getMonthlyLimit()) > 0) {
             throw new TransactionLimitExceededException(
-                    String.format("Monthly transfer limit exceeded. Current limit: %s", limits.getMonthlyLimit())
-            );
+                    String.format("Monthly transfer limit exceeded. Current limit: %s", limits.getMonthlyLimit()));
         }
     }
 
-
     private BigDecimal getCachedOrCalculateTotal(String cacheKey, Supplier<BigDecimal> calculator,
-                                                 long duration, TimeUnit timeUnit
-    ) {
+            long duration, TimeUnit timeUnit) {
         String cachedValue = redisTemplate.opsForValue().get(cacheKey);
         if (cachedValue != null) {
             return new BigDecimal(cachedValue);
@@ -229,7 +218,8 @@ public class TransactionValidationService {
         return calculated;
     }
 
-    private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) throws InterruptedException {
+    private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits)
+            throws InterruptedException {
         String lockKey = "transaction_frequency:" + userId;
         try {
             if (!acquireLock(userId, lockKey)) {
@@ -262,8 +252,7 @@ public class TransactionValidationService {
         if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
             throw new TransactionLimitExceededException(
                     String.format("Exceeded maximum transactions per minute of %d",
-                            limits.getMaxTransactionsPerMinute())
-            );
+                            limits.getMaxTransactionsPerMinute()));
         }
 
         Long txPerDay = redisTemplate.opsForValue().increment(dayKey);
@@ -274,35 +263,38 @@ public class TransactionValidationService {
         if (txPerDay > limits.getMaxTransactionsPerDay()) {
             throw new TransactionLimitExceededException(
                     String.format("Exceeded maximum transactions per day of %d",
-                            limits.getMaxTransactionsPerDay())
-            );
+                            limits.getMaxTransactionsPerDay()));
         }
     }
 
     private void validateTransactionFrequencyFromDB(String userId, TransactionLimitConfig.TierLimit limits) {
         LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
-        Long txPerMinute = transactionRepository.countTransactionsByUserInTimeRange(userId, oneMinuteAgo, LocalDateTime.now());
+        Long txPerMinute = transactionRepository.countTransactionsByUserInTimeRange(userId, oneMinuteAgo,
+                LocalDateTime.now());
 
         if (txPerMinute >= limits.getMaxTransactionsPerMinute()) {
-            throw new TransactionLimitExceededException(String.format("Exceeded maximum transaction per minute of %d", limits.getMaxTransactionsPerMinute()));
+            throw new TransactionLimitExceededException(String.format("Exceeded maximum transaction per minute of %d",
+                    limits.getMaxTransactionsPerMinute()));
         }
 
         LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        Long txPerDay = transactionRepository.countTransactionsByUserInTimeRange(userId, startOfDay, LocalDateTime.now());
+        Long txPerDay = transactionRepository.countTransactionsByUserInTimeRange(userId, startOfDay,
+                LocalDateTime.now());
         if (txPerDay >= limits.getMaxTransactionsPerDay()) {
-            throw new TransactionLimitExceededException(String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay()));
+            throw new TransactionLimitExceededException(
+                    String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay()));
         }
     }
 
     private void validateLimit(Long current, Long max, String period) {
         if (current > max) {
             throw new TransactionLimitExceededException(
-                    String.format("Exceeded maximum transaction per %s of %d", period, max)
-            );
+                    String.format("Exceeded maximum transaction per %s of %d", period, max));
         }
     }
 
-    private Long incrementAndGetCountWithRetry(String key, long duration, TimeUnit timeUnit) throws InterruptedException {
+    private Long incrementAndGetCountWithRetry(String key, long duration, TimeUnit timeUnit)
+            throws InterruptedException {
         long retryDelay = 1000; // 1 second initial delay
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
@@ -330,6 +322,11 @@ public class TransactionValidationService {
 
     private Long incrementAndGetCount(String key, long duration, TimeUnit timeUnit) {
         try {
+
+            String userId = extractUserIdFromKey(key);
+            String dailyKey = "daily_total:" + userId + ":" + LocalDate.now();
+            String monthlyKey = "monthly_total:" + userId + ":" + YearMonth.now();
+
             // Thực hiện increment và set expire trong một transaction
             return redisTemplate.execute(new SessionCallback<Long>() {
                 @Override
@@ -339,10 +336,19 @@ public class TransactionValidationService {
                     Long count = operations.opsForValue().increment(key);
                     operations.expire(key, duration, timeUnit);
 
+                    operations.opsForValue().increment(dailyKey);
+                    operations.expire(dailyKey, 1, TimeUnit.DAYS);
+
+                    operations.opsForValue().increment(monthlyKey);
+                    operations.expire(monthlyKey, 30, TimeUnit.DAYS);
+
                     List<Object> results = operations.exec();
                     if (results == null || results.isEmpty()) {
                         throw new InvalidOperationException("Error processing Redis transaction");
                     }
+
+                    log.debug("Transaction counters - Frequency: {}, Daily: {}, Monthly: {}",
+                            results.get(0), results.get(1), results.get(2));
 
                     return (Long) results.get(0);
                 }
@@ -382,7 +388,6 @@ public class TransactionValidationService {
         throw new IllegalArgumentException("Invalid key format");
     }
 
-
     private Long handleWithDatabaseFallback(String key) {
         try {
             String userId = extractUserIdFromKey(key);
@@ -392,8 +397,7 @@ public class TransactionValidationService {
             return transactionRepository.countTransactionsByUserInTimeRange(
                     userId,
                     startTime,
-                    LocalDateTime.now()
-            ) + 1L;
+                    LocalDateTime.now()) + 1L;
         } catch (Exception e) {
             log.error("Database fallback failed for key: {}", key, e);
             throw new TransactionProcessingException("Failed to validate transaction frequency", null, false);
@@ -403,8 +407,7 @@ public class TransactionValidationService {
     private void logTransactionValidationAttempt(String userId, BigDecimal amount, int attempt) {
         log.info(
                 "Validating transaction - UserId: {}, Amount: {}, Attempt: {}/{}",
-                userId, amount, attempt, maxRetries
-        );
+                userId, amount, attempt, maxRetries);
     }
 
     private boolean isRedisAvailable() {
@@ -455,8 +458,7 @@ public class TransactionValidationService {
                     .metadata(Map.of(
                             "component", "Redis",
                             "status", "DOWN",
-                            "impact", "Transaction Validation"
-                    ))
+                            "impact", "Transaction Validation"))
                     .build();
 
             // Gửi notification qua Kafka
@@ -470,7 +472,6 @@ public class TransactionValidationService {
                     });
         }
     }
-
 
     public boolean acquireLock(String userId, String lockKey) {
         int retryCount = 0;
@@ -528,7 +529,8 @@ public class TransactionValidationService {
                     "return redis.call('del', KEYS[1]) " +
                     "else return 0 end";
 
-            redisTemplate.execute(new DefaultRedisScript<>(script, Long.class), Collections.singletonList(lockKey), getCurrentUserId());
+            redisTemplate.execute(new DefaultRedisScript<>(script, Long.class), Collections.singletonList(lockKey),
+                    getCurrentUserId());
         } catch (Exception e) {
             log.error("Error releasing lock for key: {}", lockKey, e);
         }
@@ -554,6 +556,5 @@ public class TransactionValidationService {
             log.error("Error monitoring lock status", e);
         }
     }
-
 
 }
