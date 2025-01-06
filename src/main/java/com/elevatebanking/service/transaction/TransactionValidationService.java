@@ -480,41 +480,29 @@ public class TransactionValidationService {
     }
 
     public boolean acquireLock(String userId, String lockKey) {
+        String lockValue = UUID.randomUUID().toString();
         int retryCount = 0;
-        Random random = new Random();
-        long retryDelay = 100; // Initial retry delay of 100ms
-        retryDelay = (long) (retryDelay + (retryDelay * random.nextDouble() * 0.5));
 
-        while (retryCount < MAX_RETRY_ATTEMPTS) {
+        while (retryCount < maxRetries) {
             try {
-                log.debug("Trying to acquire lock for user: {}, key: {}, attempt: {}/{}",
-                        userId, lockKey, retryCount + 1, MAX_RETRY_ATTEMPTS);
-
                 Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, userId, LOCK_TIMEOUT, TimeUnit.SECONDS);
+                        .setIfAbsent(lockKey, lockValue, 30, TimeUnit.SECONDS);
 
                 if (Boolean.TRUE.equals(acquired)) {
                     log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
                     return true;
                 }
 
-                log.debug("Lock acquisition failed for user: {}, key: {}, attempt: {}",
-                        userId, lockKey, retryCount + 1);
-
                 retryCount++;
-                if (retryCount < MAX_RETRY_ATTEMPTS) {
-                    Thread.sleep(retryDelay);
-                    retryDelay *= 2; // Exponential backoff: double the delay for the next attempt
-                }
+                Thread.sleep(initialInterval * (long) Math.pow(multiplier, retryCount));
 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("Lock acquisition interrupted for user: {}", userId, e);
+            } catch (Exception e) {
+                log.error("Error acquiring lock for user: {}", userId, e);
                 return false;
             }
         }
 
-        log.warn("Failed to acquire lock after {} retries for user: {}", MAX_RETRY_ATTEMPTS, userId);
+        log.warn("Failed to acquire lock after {} retries for user: {}", maxRetries, userId);
         return false;
     }
 

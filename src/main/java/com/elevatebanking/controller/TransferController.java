@@ -9,6 +9,7 @@ import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.nonImp.AuditLogService;
 import com.elevatebanking.service.transaction.TransactionValidationService;
+import com.elevatebanking.service.transaction.config.TransactionLockManager;
 import com.elevatebanking.util.SecurityUtils;
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -57,7 +58,7 @@ public class TransferController {
         String userId = securityUtils.getCurrentUserId();
         String lockKey = "transaction_frequency:" + userId;
 
-        try {
+        try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, transactionValidationService)) {
             // First, try to clear any potential stuck locks
             transactionValidationService.clearStuckLocks(userId);
 

@@ -68,10 +68,10 @@ spring:
       port: 6379
       database: 0
       #      timeout: 60000
-      timeout: 5000ms
+      timeout: 10000
       connect-timeout: 60000
       retry:
-        max-attempts: 5
+        max-attempts: 3
         initial-interval: 100
         multiplier: 2
       lettuce:
