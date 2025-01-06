@@ -65,8 +65,8 @@ public class TransactionValidationService {
 
     private static final int MAX_RETRIES = 5;
     private static final long RETRY_DELAY = 1000;
-    private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final long LOCK_TIMEOUT = 10; // seconds
+    private static final int MAX_RETRY_ATTEMPTS = 5;
+    private static final long LOCK_TIMEOUT = 5; // seconds
 
     public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount)
             throws InterruptedException {
@@ -224,11 +224,16 @@ public class TransactionValidationService {
         try {
             if (!acquireLock(userId, lockKey)) {
                 log.warn("Could not acquire Redis lock for user: {}", userId);
-                validateTransactionFrequencyFromDB(userId, limits);
-                return;
+//                validateTransactionFrequencyFromDB(userId, limits);
+//                return;
+                throw new TransactionLimitExceededException("System is busy, please try again later");
             }
             try {
                 validateFrequencyWithRedis(userId, limits);
+            } catch (Exception e) {
+                log.error("Error in Redis transaction frequency validation", e);
+                // Fall back to database validation if Redis fails
+                validateTransactionFrequencyFromDB(userId, limits);
             } finally {
                 releaseLock(lockKey);
             }
@@ -236,7 +241,8 @@ public class TransactionValidationService {
         } catch (Exception e) {
             log.error("Error in transaction frequency validation", e);
             // Fallback to database validation
-            validateTransactionFrequencyFromDB(userId, limits);
+//            validateTransactionFrequencyFromDB(userId, limits);
+            throw new TransactionLimitExceededException("System is busy, please try again later");
         }
     }
 
@@ -475,7 +481,9 @@ public class TransactionValidationService {
 
     public boolean acquireLock(String userId, String lockKey) {
         int retryCount = 0;
-        long retryDelay = 200;
+        Random random = new Random();
+        long retryDelay = 100; // Initial retry delay of 100ms
+        retryDelay = (long) (retryDelay + (retryDelay * random.nextDouble() * 0.5));
 
         while (retryCount < MAX_RETRY_ATTEMPTS) {
             try {
@@ -483,11 +491,10 @@ public class TransactionValidationService {
                         userId, lockKey, retryCount + 1, MAX_RETRY_ATTEMPTS);
 
                 Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, userId, 30, TimeUnit.SECONDS);
+                        .setIfAbsent(lockKey, userId, LOCK_TIMEOUT, TimeUnit.SECONDS);
 
                 if (Boolean.TRUE.equals(acquired)) {
                     log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
-                    extendLock(lockKey);
                     return true;
                 }
 
@@ -497,7 +504,7 @@ public class TransactionValidationService {
                 retryCount++;
                 if (retryCount < MAX_RETRY_ATTEMPTS) {
                     Thread.sleep(retryDelay);
-                    retryDelay += 200;
+                    retryDelay *= 2; // Exponential backoff: double the delay for the next attempt
                 }
 
             } catch (InterruptedException e) {
