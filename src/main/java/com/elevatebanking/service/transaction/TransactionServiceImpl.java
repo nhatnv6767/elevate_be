@@ -234,7 +234,8 @@ public class TransactionServiceImpl implements ITransactionService {
 
         try {
             TransactionEvent event = new TransactionEvent(transaction, eventType);
-            kafkaTemplate.send("${spring.kafka.topics.transaction}", eventType, event);
+//            kafkaTemplate.send("${spring.kafka.topics.transaction}", eventType, event);
+            kafkaTemplate.send("elevate.transactions", eventType, event);
             //
         } catch (Exception e) {
             log.error("Error publishing transaction event: {}", e.getMessage());

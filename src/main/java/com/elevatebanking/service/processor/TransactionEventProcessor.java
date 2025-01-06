@@ -37,13 +37,13 @@ public class TransactionEventProcessor {
     private final KafkaEventSender kafkaEventSender;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final String MAIN_TOPIC = "${spring.kafka.topics.transaction}";
+    private static final String MAIN_TOPIC = "elevate.transactions";
     private static final String RETRY_TOPIC = "elevate.transactions.retry";
     private static final String DLQ_TOPIC = "elevate.transactions.dlq";
 
     @KafkaListener(
             topics = MAIN_TOPIC,
-            groupId = "${spring.kafka.consumer.groups.transaction}",
+            groupId = "elevate-transaction-group",
             containerFactory = "transactionKafkaListenerContainerFactory"
     )
     public void processTransactionEvent(TransactionEvent event, Acknowledgment ack) {

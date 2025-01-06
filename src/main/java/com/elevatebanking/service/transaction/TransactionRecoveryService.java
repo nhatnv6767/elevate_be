@@ -33,9 +33,9 @@ public class TransactionRecoveryService {
     AccountRepository accountRepository;
     KafkaTemplate<String, TransactionEvent> kafkaTemplate;
 
-    @Value("${spring.kafka.topics.transaction}")
+    //    @Value("${spring.kafka.topics.transaction}")
     @NonFinal
-    private String transactionTopic;
+    private String transactionTopic = "elevate.transactions";
 
     @Scheduled(fixedRate = 300000) // 5 minutes
     public void recoverStuckTransactions() {

@@ -25,9 +25,9 @@ public class TransactionCompensationService {
     AccountRepository accountRepository;
     KafkaTemplate<String, TransactionEvent> kafkaTemplate;
 
-    @Value("${spring.kafka.topics.transaction}")
+    //    @Value("${spring.kafka.topics.transaction}")
     @NonFinal
-    private String transactionTopic;
+    private String transactionTopic = "elevate.transactions";
 
     @Transactional
     public void compensateTransaction(Transaction transaction, String reason) {
