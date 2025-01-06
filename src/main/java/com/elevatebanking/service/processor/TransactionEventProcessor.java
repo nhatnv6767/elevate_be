@@ -1,5 +1,6 @@
 package com.elevatebanking.service.processor;
 
+import com.elevatebanking.config.kafka.KafkaEventSender;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.TransactionType;
@@ -33,6 +34,7 @@ public class TransactionEventProcessor {
     private final TransactionRepository transactionRepository;
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
+    private final KafkaEventSender kafkaEventSender;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String MAIN_TOPIC = "${spring.kafka.topics.transaction}";
@@ -258,7 +260,6 @@ public class TransactionEventProcessor {
     }
 
     private void sendNotificationEvent(TransactionEvent event, String message) {
-
         log.info("Sending notification event: {} {}", event.getTransactionId(), message);
         try {
             // xac dinh loai thong bao va priority dua tren transaction status
@@ -295,7 +296,8 @@ public class TransactionEventProcessor {
                     .build();
 
             // gui event to kafka
-            notificationEventKafkaTemplate.send("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
+//            notificationEventKafkaTemplate.send("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
+            kafkaEventSender.sendWithRetry("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
             log.info("Notification event sent: {} - {}", notificationEvent.getEventId(), notificationEvent);
 
         } catch (Exception e) {
@@ -378,13 +380,14 @@ public class TransactionEventProcessor {
 
     private void sendToRetryTopic(TransactionEvent event) {
         try {
-            kafkaTemplate.send(RETRY_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
-                if (ex != null) {
-                    log.error("Error sending retry topic: {} - {}", event.getTransactionId(), ex.getMessage());
-                    // TODO: send to DLQ
-                    sendToDLQ(event, "Failed to send to retry topic");
-                }
-            });
+//            kafkaTemplate.send(RETRY_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
+//                if (ex != null) {
+//                    log.error("Error sending retry topic: {} - {}", event.getTransactionId(), ex.getMessage());
+//                    // TODO: send to DLQ
+//                    sendToDLQ(event, "Failed to send to retry topic");
+//                }
+//            });
+            kafkaEventSender.sendWithRetry(RETRY_TOPIC, event.getTransactionId(), event);
         } catch (Exception e) {
             log.error("Error sending event to retry topic: {} - {}", event.getTransactionId(), e.getMessage());
             // TODO: send to DLQ
@@ -395,14 +398,14 @@ public class TransactionEventProcessor {
     private void sendToDLQ(TransactionEvent event, String reason) {
         try {
             event.addProcessStep("SENT_TO_DLQ: " + reason);
-            kafkaTemplate.send(DLQ_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
-                if (ex != null) {
-                    log.error("Error sending DLQ: {} - {}", event.getTransactionId(), ex.getMessage());
-                }
-            });
+//            kafkaTemplate.send(DLQ_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
+//                if (ex != null) {
+//                    log.error("Error sending DLQ: {} - {}", event.getTransactionId(), ex.getMessage());
+//                }
+//            });
+            kafkaEventSender.sendWithRetry(DLQ_TOPIC, event.getTransactionId(), event);
             // TODO: Update transaction status to FAILED
             updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
-
             // TODO: Send notification event
             sendFailureNotification(event);
         } catch (Exception e) {
@@ -447,7 +450,8 @@ public class TransactionEventProcessor {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        notificationEventKafkaTemplate.send("elevate.notifications", notification.getEventId(), notification);
+//        notificationEventKafkaTemplate.send("elevate.notifications", notification.getEventId(), notification);
+        kafkaEventSender.sendWithRetry("elevate.notifications", notification.getEventId(), notification);
     }
 
     private String buildFailureMessage(TransactionEvent event) {

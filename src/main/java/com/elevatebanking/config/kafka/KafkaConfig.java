@@ -1,9 +1,13 @@
 
-package com.elevatebanking.config;
+package com.elevatebanking.config.kafka;
 
 import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.event.NotificationEvent;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -27,9 +31,7 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 
 import com.elevatebanking.event.TransactionEvent;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 @Configuration
 @Slf4j
@@ -95,7 +97,7 @@ public class KafkaConfig {
         config.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
 //        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        
+
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class.getName());
 
@@ -271,5 +273,58 @@ public class KafkaConfig {
         return buildTopic("elevate.notifications.dlq", 1, 1, Collections.emptyMap());
     }
 
-//
+
+    @PostConstruct
+    public void checkKafkaTopics() {
+        try {
+            AdminClient adminClient = AdminClient.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers));
+            ListTopicsResult topics = adminClient.listTopics();
+            Set<String> existingTopics = topics.names().get();
+
+            List<String> requiredTopics = Arrays.asList(
+                    "elevate.transactions",
+                    "elevate.transactions.retry",
+                    "elevate.transactions.dlq",
+                    "elevate.emails",
+                    "elevate.emails.retry",
+                    "elevate.emails.dlq",
+                    "elevate.notifications",
+                    "elevate.notifications.retry",
+                    "elevate.notifications.dlq"
+            );
+            for (String topic : requiredTopics) {
+                if (!existingTopics.contains(topic)) {
+                    log.error("Required Kafka topic {} does not exist", topic);
+                    createTopic(adminClient, topic);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error checking Kafka topics", e);
+        }
+    }
+
+    private void createTopic(AdminClient adminClient, String topicName) {
+        try {
+            NewTopic topic = new NewTopic(topicName, 3, (short) 1);
+            adminClient.createTopics(Collections.singleton(topic)).all().get();
+            log.info("Created Kafka topic {}", topicName);
+        } catch (Exception e) {
+            log.error("Error creating Kafka topic {}", topicName, e);
+        }
+    }
+
+
+    @Bean
+    public KafkaTemplate<String, Object> genericKafkaTemplate() {
+        return new KafkaTemplate<>(genericProducerFactory());
+    }
+
+    private ProducerFactory<String, Object> genericProducerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
 }

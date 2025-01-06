@@ -119,6 +119,7 @@ spring:
         request.timeout.ms: 10000
         retry.backoff.ms: 1000
         retries: 3
+      retries: 3
     topics:
       transaction: elevate.transactions
       transaction-retry: elevate.transactions.retry

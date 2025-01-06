@@ -1,4 +1,4 @@
-package com.elevatebanking.config;
+package com.elevatebanking.config.redis;
 
 import org.springframework.boot.actuate.health.AbstractHealthIndicator;
 import org.springframework.boot.actuate.health.Health;

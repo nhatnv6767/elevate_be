@@ -1,4 +1,4 @@
-package com.elevatebanking.config;
+package com.elevatebanking.config.redis;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
