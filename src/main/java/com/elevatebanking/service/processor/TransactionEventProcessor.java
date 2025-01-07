@@ -13,6 +13,7 @@ import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.service.notification.NotificationDeliveryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -35,6 +37,7 @@ public class TransactionEventProcessor {
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
     private final KafkaEventSender kafkaEventSender;
+    private final NotificationDeliveryService notificationDeliveryService;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String MAIN_TOPIC = "elevate.transactions";
@@ -144,6 +147,16 @@ public class TransactionEventProcessor {
         log.info("Handling transaction completed event: {}", event.getTransactionId());
         updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
         sendNotificationEvent(event, buildCompletedMessage(event));
+
+        Map<String, Object> data = Map.of(
+                "transactionId", event.getTransactionId(),
+                "amount", event.getAmount(),
+                "fromAccount", event.getFromAccount(),
+                "toAccount", event.getToAccount(),
+                "timestamp", event.getTimestamp()
+
+        );
+        notificationDeliveryService.sendNotification(event.getUserId(), "TRANSACTION_COMPLETED", data);
     }
 
     private void handleTransactionFailed(TransactionEvent event) {
@@ -335,7 +348,7 @@ public class TransactionEventProcessor {
         return title.toString();
     }
 
-    private String getUserId(Transaction transaction) {
+    private String getUserIdFromTransaction(Transaction transaction) {
         // lay userid cua nguoi can nhan notification
         // voi giao dich transfer, ca sender va receiver deu nhan notification
         if (transaction.getType() == TransactionType.TRANSFER) {
@@ -470,9 +483,14 @@ public class TransactionEventProcessor {
     private String getNotificationRecipient(TransactionEvent event) {
         // giao dich transfer, ca nguoi gui va nguoi nhan deu nhan notification
         if (event.getType() == TransactionType.TRANSFER) {
-            return event.getFromAccount().getAccountId(); // mac dinh gui cho nguoi chuyen
+//            return event.getFromAccount().getAccountId(); // mac dinh gui cho nguoi chuyen
+
+            // get user id from getUserIdFromTransaction
+            return getUserIdFromTransaction(transactionRepository.findById(event.getTransactionId()).get());
         } else if (event.getType() == TransactionType.DEPOSIT) {
             return event.getToAccount().getAccountId();
+            // get user id from getUserIdFromTransaction
+//            return getUserIdFromTransaction(transactionRepository.findById(event.getTransactionId()).get());
         } else { // withdrawal
             return event.getFromAccount().getAccountId();
         }
