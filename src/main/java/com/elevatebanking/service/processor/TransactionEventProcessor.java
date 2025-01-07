@@ -46,7 +46,7 @@ public class TransactionEventProcessor {
     private final Cache<String, TransactionEvent> processedEvents = CacheBuilder.newBuilder()
             .expireAfterWrite(5, TimeUnit.MINUTES)
             .build();
-
+    //
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String MAIN_TOPIC = "elevate.transactions";
     private static final String RETRY_TOPIC = "elevate.transactions.retry";
