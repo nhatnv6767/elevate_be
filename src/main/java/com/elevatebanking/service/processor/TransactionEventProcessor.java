@@ -24,6 +24,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -52,6 +53,7 @@ public class TransactionEventProcessor {
     private static final String RETRY_TOPIC = "elevate.transactions.retry";
     private static final String DLQ_TOPIC = "elevate.transactions.dlq";
 
+    @Transactional
     @KafkaListener(
             topics = MAIN_TOPIC,
             groupId = "elevate-transaction-group",
@@ -439,15 +441,17 @@ public class TransactionEventProcessor {
     }
 
     private String getUserIdFromTransaction(Transaction transaction) {
-        // lay userid cua nguoi can nhan notification
-        // voi giao dich transfer, ca sender va receiver deu nhan notification
-        if (transaction.getType() == TransactionType.TRANSFER) {
-            // simple by the way send to sender
-            return transaction.getFromAccount().getUser().getId();
-        } else if (transaction.getType() == TransactionType.DEPOSIT) {
-            return transaction.getToAccount().getUser().getId();
-        } else {
-            return transaction.getFromAccount().getUser().getId();
+        try {
+            if (transaction.getType() == TransactionType.TRANSFER) {
+                return transaction.getFromAccount().getUser().getId();
+            } else if (transaction.getType() == TransactionType.DEPOSIT) {
+                return transaction.getToAccount().getUser().getId();
+            } else {
+                return transaction.getFromAccount().getUser().getId();
+            }
+        } catch (Exception e) {
+            log.error("Error getting user ID from transaction: {}", transaction.getId(), e);
+            return null;
         }
     }
 
@@ -532,21 +536,29 @@ public class TransactionEventProcessor {
     }
 
     private void sendFailureNotification(TransactionEvent event) {
-        String message = buildFailureMessage(event);
+        try {
+            String userId = getNotificationRecipient(event);
+            if (userId == null) {
+                log.error("Error getting user ID from transaction: {}", event.getTransactionId());
+                return;
+            }
+            String message = buildFailureMessage(event);
 
-        NotificationEvent notification = NotificationEvent.builder()
-                .eventId(UUID.randomUUID().toString())
-                .userId(getNotificationRecipient(event))
-                .title(buildFailureTitle(event))
-                .message(message)
-                .type(NotificationEvent.NotificationType.TRANSACTION_FAILED.name())
-                .priority(event.isRetryable() ? NotificationEvent.Priority.MEDIUM.name() : NotificationEvent.Priority.HIGH.name())
-                .metadata(event.getMetadata())
-                .timestamp(LocalDateTime.now())
-                .build();
+            NotificationEvent notification = NotificationEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .userId(getNotificationRecipient(event))
+                    .title(buildFailureTitle(event))
+                    .message(message)
+                    .type(NotificationEvent.NotificationType.TRANSACTION_FAILED.name())
+                    .priority(event.isRetryable() ? NotificationEvent.Priority.MEDIUM.name() : NotificationEvent.Priority.HIGH.name())
+                    .metadata(event.getMetadata())
+                    .timestamp(LocalDateTime.now())
+                    .build();
 
-//        notificationEventKafkaTemplate.send("elevate.notifications", notification.getEventId(), notification);
-        kafkaEventSender.sendWithRetry("elevate.notifications", notification.getEventId(), notification);
+            kafkaEventSender.sendWithRetry("elevate.notifications", notification.getEventId(), notification);
+        } catch (Exception e) {
+            log.error("Error sending failure notification: {} - {}", event.getTransactionId(), e.getMessage());
+        }
     }
 
     private String buildFailureMessage(TransactionEvent event) {

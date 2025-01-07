@@ -93,7 +93,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("endTime") LocalDateTime endTime);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select t from Transaction t where t.id = :id")
+    @Query("select t from Transaction t left join fetch t.fromAccount fa left join fetch fa.user " +
+            "left join fetch t.toAccount ta left join fetch ta.user where t.id = :id")
     Optional<Transaction> findByIdForUpdate(@Param("id") String id);
 
 }
