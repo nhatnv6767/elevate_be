@@ -58,20 +58,11 @@ public class TransactionEventProcessor {
     private final RedisLockRegistry lockRegistry;
 
     @Transactional
-    @KafkaListener(
-            topics = MAIN_TOPIC,
-            groupId = "elevate-transaction-group",
-            containerFactory = "transactionKafkaListenerContainerFactory",
-            properties = {
-                    "max.poll.records=1",
-                    "enable.auto.commit=false",
-            }
-    )
-    @Retryable(
-            value = ResourceNotFoundException.class,
-            maxAttempts = 3,
-            backoff = @Backoff(delay = 1000)
-    )
+    @KafkaListener(topics = MAIN_TOPIC, groupId = "elevate-transaction-group", containerFactory = "transactionKafkaListenerContainerFactory", properties = {
+            "max.poll.records=1",
+            "enable.auto.commit=false",
+    })
+    @Retryable(value = ResourceNotFoundException.class, maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public void processTransactionEvent(TransactionEvent event, Acknowledgment ack) {
         MDC.put("transactionId", event.getTransactionId());
         log.info("Processing transaction event: {}, current status: {}",
@@ -98,7 +89,8 @@ public class TransactionEventProcessor {
 
                 Transaction transaction = transactionRepository
                         .findByIdForUpdate(event.getTransactionId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Transaction not found: " + event.getTransactionId()));
 
                 if (!isValidStateTransition(transaction.getStatus(), event)) {
                     if (event.isRetryable()) {
@@ -136,13 +128,12 @@ public class TransactionEventProcessor {
     }
 
     private boolean isDuplicateEvent(TransactionEvent event) {
-//        String eventKey = event.getTransactionId() + "-" + event.getEventType();
+        // String eventKey = event.getTransactionId() + "-" + event.getEventType();
         String eventKey = String.format("%s-%s-%d-%s",
                 event.getTransactionId(),
                 event.getEventType(),
                 event.getRetryCount(),
-                event.getTimestamp().toString()
-        );
+                event.getTimestamp().toString());
         event.addMetadata("deduplication_key", eventKey);
         event.addProcessStep("DEDUPLICATION_CHECK");
         return processedEvents.getIfPresent(eventKey) != null;
@@ -153,10 +144,13 @@ public class TransactionEventProcessor {
         event.addProcessStep(String.format("STATE_TRANSITION_CHECK: %s -> %s", currentStatus, event.getStatus()));
 
         Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
-                TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
-                TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK),
-                TransactionStatus.COMPLETED, Set.of()
-        );
+                TransactionStatus.PENDING,
+                Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED, TransactionStatus.CANCELLED),
+                TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK, TransactionStatus.ROLLBACK_FAILED),
+                TransactionStatus.CANCELLED, Set.of(),
+                TransactionStatus.ROLLBACK_FAILED, Set.of(),
+                TransactionStatus.ROLLED_BACK, Set.of(),
+                TransactionStatus.COMPLETED, Set.of());
 
         boolean isValid = validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
         if (!isValid) {
@@ -166,11 +160,7 @@ public class TransactionEventProcessor {
         return isValid;
     }
 
-    @KafkaListener(
-            topics = RETRY_TOPIC,
-            groupId = "${spring.kafka.consumer.groups.transaction-retry}",
-            containerFactory = "transactionKafkaListenerContainerFactory"
-    )
+    @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.groups.transaction-retry}", containerFactory = "transactionKafkaListenerContainerFactory")
     public void processRetryEvent(TransactionEvent event, Acknowledgment ack) {
         log.info("Processing retry event: {}", event);
         try {
@@ -192,9 +182,12 @@ public class TransactionEventProcessor {
             event.incrementRetryCount();
 
             // process transaction
-            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
-            if (transaction.getStatus() == TransactionStatus.COMPLETED || transaction.getStatus() == TransactionStatus.FAILED) {
-                log.warn("Transaction already completed or failed: {} - {}", transaction.getId(), transaction.getStatus());
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(
+                    () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+            if (transaction.getStatus() == TransactionStatus.COMPLETED
+                    || transaction.getStatus() == TransactionStatus.FAILED) {
+                log.warn("Transaction already completed or failed: {} - {}", transaction.getId(),
+                        transaction.getStatus());
                 ack.acknowledge();
                 return;
             }
@@ -220,7 +213,8 @@ public class TransactionEventProcessor {
 
         try {
             Transaction transaction = transactionRepository.findById(event.getTransactionId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
             // validate transaction status
             if (transaction.getStatus() != TransactionStatus.PENDING) {
@@ -342,10 +336,8 @@ public class TransactionEventProcessor {
 
     private boolean needsRollback(Transaction transaction) {
         return transaction.getStatus() == TransactionStatus.PENDING &&
-                (
-                        transaction.getType() == TransactionType.TRANSFER ||
-                                transaction.getType() == TransactionType.WITHDRAWAL
-                );
+                (transaction.getType() == TransactionType.TRANSFER ||
+                        transaction.getType() == TransactionType.WITHDRAWAL);
     }
 
     private void performRollback(Transaction transaction) {
@@ -356,16 +348,18 @@ public class TransactionEventProcessor {
                         Account fromAccount = accountService.getAccountById(transaction.getFromAccount().getId()).get();
                         Account toAccount = accountService.getAccountById(transaction.getToAccount().getId()).get();
 
-                        //reverse any partial transfer
+                        // reverse any partial transfer
                         if (fromAccount.getBalance().compareTo(transaction.getAmount()) < 0) {
-                            accountService.updateBalance(toAccount.getId(), toAccount.getBalance().subtract(transaction.getAmount()));
+                            accountService.updateBalance(toAccount.getId(),
+                                    toAccount.getBalance().subtract(transaction.getAmount()));
                         }
                     }
                     break;
                 case WITHDRAWAL:
                     if (transaction.getFromAccount() != null) {
                         Account account = accountService.getAccountById(transaction.getFromAccount().getId()).get();
-                        accountService.updateBalance(account.getId(), account.getBalance().add(transaction.getAmount()));
+                        accountService.updateBalance(account.getId(),
+                                account.getBalance().add(transaction.getAmount()));
                     }
                     break;
                 default:
@@ -416,7 +410,8 @@ public class TransactionEventProcessor {
                     .build();
 
             // gui event to kafka
-//            notificationEventKafkaTemplate.send("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
+            // notificationEventKafkaTemplate.send("elevate.notifications",
+            // notificationEvent.getEventId(), notificationEvent);
             kafkaEventSender.sendWithRetry("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
             log.info("Notification event sent: {} - {}", notificationEvent.getEventId(), notificationEvent);
 
@@ -502,13 +497,15 @@ public class TransactionEventProcessor {
 
     private void sendToRetryTopic(TransactionEvent event) {
         try {
-//            kafkaTemplate.send(RETRY_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
-//                if (ex != null) {
-//                    log.error("Error sending retry topic: {} - {}", event.getTransactionId(), ex.getMessage());
-//                    // TODO: send to DLQ
-//                    sendToDLQ(event, "Failed to send to retry topic");
-//                }
-//            });
+            // kafkaTemplate.send(RETRY_TOPIC, event.getTransactionId(),
+            // event).whenComplete((result, ex) -> {
+            // if (ex != null) {
+            // log.error("Error sending retry topic: {} - {}", event.getTransactionId(),
+            // ex.getMessage());
+            // // TODO: send to DLQ
+            // sendToDLQ(event, "Failed to send to retry topic");
+            // }
+            // });
             kafkaEventSender.sendWithRetry(RETRY_TOPIC, event.getTransactionId(), event);
         } catch (Exception e) {
             log.error("Error sending event to retry topic: {} - {}", event.getTransactionId(), e.getMessage());
@@ -520,11 +517,13 @@ public class TransactionEventProcessor {
     private void sendToDLQ(TransactionEvent event, String reason) {
         try {
             event.addProcessStep("SENT_TO_DLQ: " + reason);
-//            kafkaTemplate.send(DLQ_TOPIC, event.getTransactionId(), event).whenComplete((result, ex) -> {
-//                if (ex != null) {
-//                    log.error("Error sending DLQ: {} - {}", event.getTransactionId(), ex.getMessage());
-//                }
-//            });
+            // kafkaTemplate.send(DLQ_TOPIC, event.getTransactionId(),
+            // event).whenComplete((result, ex) -> {
+            // if (ex != null) {
+            // log.error("Error sending DLQ: {} - {}", event.getTransactionId(),
+            // ex.getMessage());
+            // }
+            // });
             kafkaEventSender.sendWithRetry(DLQ_TOPIC, event.getTransactionId(), event);
             // TODO: Update transaction status to FAILED
             updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
@@ -539,10 +538,10 @@ public class TransactionEventProcessor {
         return (long) Math.pow(2, retryCount) * 1000L; // exponential backoff in seconds: 2^retryCount * 1000
     }
 
-
     private void updateTransactionStatus(String transactionId, TransactionStatus status) {
         try {
-            Transaction transaction = transactionRepository.findById(transactionId).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
+            Transaction transaction = transactionRepository.findById(transactionId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
             transaction.setStatus(status);
             transactionRepository.save(transaction);
         } catch (Exception e) {
@@ -565,7 +564,8 @@ public class TransactionEventProcessor {
                     .title(buildFailureTitle(event))
                     .message(message)
                     .type(NotificationEvent.NotificationType.TRANSACTION_FAILED.name())
-                    .priority(event.isRetryable() ? NotificationEvent.Priority.MEDIUM.name() : NotificationEvent.Priority.HIGH.name())
+                    .priority(event.isRetryable() ? NotificationEvent.Priority.MEDIUM.name()
+                            : NotificationEvent.Priority.HIGH.name())
                     .metadata(event.getMetadata())
                     .timestamp(LocalDateTime.now())
                     .build();
@@ -580,8 +580,7 @@ public class TransactionEventProcessor {
         String message = String.format("Transaction %s (%s) of amount %s failed.",
                 event.getTransactionId(),
                 event.getType(),
-                event.getAmount()
-        );
+                event.getAmount());
 
         if (event.getErrorMessage() != null) {
             message += " Reason: " + event.getErrorMessage();
@@ -592,14 +591,16 @@ public class TransactionEventProcessor {
     private String getNotificationRecipient(TransactionEvent event) {
         // giao dich transfer, ca nguoi gui va nguoi nhan deu nhan notification
         if (event.getType() == TransactionType.TRANSFER) {
-//            return event.getFromAccount().getAccountId(); // mac dinh gui cho nguoi chuyen
+            // return event.getFromAccount().getAccountId(); // mac dinh gui cho nguoi
+            // chuyen
 
             // get user id from getUserIdFromTransaction
             return getUserIdFromTransaction(transactionRepository.findById(event.getTransactionId()).get());
         } else if (event.getType() == TransactionType.DEPOSIT) {
             return event.getToAccount().getAccountId();
             // get user id from getUserIdFromTransaction
-//            return getUserIdFromTransaction(transactionRepository.findById(event.getTransactionId()).get());
+            // return
+            // getUserIdFromTransaction(transactionRepository.findById(event.getTransactionId()).get());
         } else { // withdrawal
             return event.getFromAccount().getAccountId();
         }
@@ -631,20 +632,17 @@ public class TransactionEventProcessor {
                 message.append(String.format("Transfer of %s from account %s to account %s completed successfully.",
                         event.getAmount(),
                         event.getFromAccount().getAccountNumber(),
-                        event.getToAccount().getAccountNumber()
-                ));
+                        event.getToAccount().getAccountNumber()));
                 break;
             case DEPOSIT:
                 message.append(String.format("Deposit of %s to account %s completed successfully.",
                         event.getAmount(),
-                        event.getToAccount().getAccountNumber()
-                ));
+                        event.getToAccount().getAccountNumber()));
                 break;
             case WITHDRAWAL:
                 message.append(String.format("Withdrawal of %s from account %s completed successfully.",
                         event.getAmount(),
-                        event.getFromAccount().getAccountNumber()
-                ));
+                        event.getFromAccount().getAccountNumber()));
                 break;
             default:
                 message.append(String.format("Transaction of %s completed successfully.", event.getAmount()));
@@ -660,6 +658,5 @@ public class TransactionEventProcessor {
         }
         return message.toString();
     }
-
 
 }
