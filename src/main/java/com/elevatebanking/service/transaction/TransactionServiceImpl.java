@@ -385,9 +385,14 @@ public class TransactionServiceImpl implements ITransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     protected void executeTransferWithRetry(Transaction transaction) {
         try {
+
+            transaction.setStatus(TransactionStatus.PENDING);
+            transaction = transactionRepository.save(transaction);
+
             executeTransfer(transaction.getFromAccount().getId(), transaction.getToAccount().getId(), transaction.getAmount());
             transaction.setStatus(TransactionStatus.COMPLETED);
             transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.completed");
         } catch (DataAccessException e) {
             throw new RetryableException("Database error", e);
 //            log.error("Error executing transfer: {}", e.getMessage());

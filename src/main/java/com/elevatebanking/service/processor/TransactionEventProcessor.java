@@ -14,6 +14,7 @@ import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.notification.NotificationDeliveryService;
+import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -98,29 +99,45 @@ public class TransactionEventProcessor {
     )
     public void processRetryEvent(TransactionEvent event, Acknowledgment ack) {
         log.info("Processing retry event: {}", event);
-
-        if (event.getNextRetryAt() != null && LocalDateTime.now().isBefore(event.getNextRetryAt())) {
-            sendToRetryTopic(event);
-            ack.acknowledge();
-            return;
-        }
-
         try {
-            // increate retry count
-            // TODO: update retry count
-//            event.setRetryCount(event.getRetryCount() + 1);
-//            if (event.getRetryCount() <= MAX_RETRY_ATTEMPTS) {
-//                processTransactionEvent(event, ack);
-//            } else {
-//                kafkaTemplate.send("elevate.transaction.dlq", event);
-//                ack.acknowledge();
-//            }
+            // check retry count
+            if (event.getRetryCount() >= MAX_RETRY_ATTEMPTS) {
+                log.warn("Max retry attempts exceeded: {}", event);
+                sendToDLQ(event, "Max retry attempts exceeded");
+                ack.acknowledge();
+                return;
+            }
+
+            if (event.getNextRetryAt() != null && LocalDateTime.now().isBefore(event.getNextRetryAt())) {
+                log.info("Too early for retry, waiting until: {}", event.getNextRetryAt());
+                ack.acknowledge();
+                return;
+            }
+
+            // increment retry count
+            event.incrementRetryCount();
+
+            // process transaction
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+            if (transaction.getStatus() == TransactionStatus.COMPLETED || transaction.getStatus() == TransactionStatus.FAILED) {
+                log.warn("Transaction already completed or failed: {} - {}", transaction.getId(), transaction.getStatus());
+                ack.acknowledge();
+                return;
+            }
+            // try to process transaction
             processTransactionEvent(event, ack);
 
         } catch (Exception e) {
             log.error("Error processing retry event: {}", event, e);
-            handleProcessingError(event, e, ack);
-            ///
+            // if can be retried
+            if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
+                long backoffInterval = calculateBackoffInterval(event.getRetryCount());
+                event.setNextRetryAt(LocalDateTime.now().plusSeconds(backoffInterval));
+                kafkaTemplate.send(RETRY_TOPIC, event);
+            } else {
+                sendToDLQ(event, "Max retry attempts exceeded: " + e.getMessage());
+            }
+            ack.acknowledge();
         }
     }
 
