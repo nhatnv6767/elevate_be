@@ -14,6 +14,8 @@ import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.notification.NotificationDeliveryService;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +28,9 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +43,9 @@ public class TransactionEventProcessor {
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
     private final KafkaEventSender kafkaEventSender;
     private final NotificationDeliveryService notificationDeliveryService;
+    private final Cache<String, TransactionEvent> processedEvents = CacheBuilder.newBuilder()
+            .expireAfterWrite(5, TimeUnit.MINUTES)
+            .build();
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final String MAIN_TOPIC = "elevate.transactions";
@@ -59,7 +66,16 @@ public class TransactionEventProcessor {
         log.info("Processing transaction event: {}", event);
         try {
 
+            if (isDuplicateEvent(event)) {
+                log.warn("Duplicate event: {}", event);
+                ack.acknowledge();
+                return;
+            }
+
             validateEvent(event);
+            validateEventStatus(transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId())), event);
+
+            transactionRepository.findByIdForUpdate(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
             Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
@@ -88,8 +104,29 @@ public class TransactionEventProcessor {
         }
     }
 
+    private boolean isDuplicateEvent(TransactionEvent event) {
+        String eventKey = event.getTransactionId() + "-" + event.getEventType();
+        return processedEvents.getIfPresent(eventKey) != null;
+    }
+
+    private void validateEventStatus(Transaction transaction, TransactionEvent event) {
+        if (!isValidStateTransition(transaction.getStatus(), event.getStatus())) {
+            throw new InvalidOperationException(
+                    String.format("Không cho phép chuyển từ trạng thái %s sang %s",
+                            transaction.getStatus(), event.getStatus())
+            );
+        }
+    }
+
     private boolean isValidStateTransition(TransactionStatus currentStatus, TransactionStatus newStatus) {
-        return currentStatus != TransactionStatus.COMPLETED && currentStatus != TransactionStatus.FAILED;
+
+        Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
+                TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
+                TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK),
+                TransactionStatus.COMPLETED, Set.of()
+        );
+
+        return validTransitions.getOrDefault(currentStatus, Set.of()).contains(newStatus);
     }
 
     @KafkaListener(

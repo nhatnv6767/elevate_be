@@ -21,6 +21,7 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -115,6 +116,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     // TODO: who calls this method?
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
                                        String description) {
@@ -177,6 +179,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     public Transaction processDeposit(String accountId, BigDecimal amount) throws InterruptedException {
 
         Account account = validateAndGetAccount(accountId, "Account not found");
@@ -195,6 +198,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     public Transaction processWithdrawal(String accountId, BigDecimal amount) throws InterruptedException {
 
         Account account = validateAndGetAccount(accountId, "Account not found");
@@ -341,7 +345,7 @@ public class TransactionServiceImpl implements ITransactionService {
     //// NEW SERVICE
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public TransactionResponse transfer(TransferRequest request) throws InterruptedException {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
