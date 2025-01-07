@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -235,26 +236,66 @@ public class TransactionValidationService {
         String minuteKey = "tx_count_minute:" + userId;
         String dayKey = "tx_count_day:" + userId;
 
-        Long txPerMinute = redisTemplate.opsForValue().increment(minuteKey);
-        if (txPerMinute == 1) {
-            redisTemplate.expire(minuteKey, 1, TimeUnit.MINUTES);
-        }
+        try {
+            if (!isRedisAvailable()) {
+                log.warn("Redis is not available, falling back to database validation");
+                validateTransactionFrequencyFromDB(userId, limits);
+                return;
+            }
+            Long txPerMinute = redisTemplate.execute((RedisCallback<Long>) connection -> {
+                try {
+                    return connection.stringCommands().incr(minuteKey.getBytes());
+                } catch (Exception e) {
+                    log.error("Error incrementing minute counter: {}", e.getMessage());
+                    return null;
+                }
+            });
+            if (txPerMinute == null) {
+                log.warn("Failed to increment minute counter, falling back to database");
+                validateTransactionFrequencyFromDB(userId, limits);
+                return;
+            }
+            if (txPerMinute == 1) {
+                redisTemplate.expire(minuteKey, 1, TimeUnit.MINUTES);
+            }
 
-        if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
-            throw new TransactionLimitExceededException(
-                    String.format("Exceeded maximum transactions per minute of %d",
-                            limits.getMaxTransactionsPerMinute()));
-        }
+            if (txPerMinute > limits.getMaxTransactionsPerMinute()) {
+                throw new TransactionLimitExceededException(
+                        String.format("Exceeded maximum transactions per minute of %d",
+                                limits.getMaxTransactionsPerMinute()));
+            }
 
-        Long txPerDay = redisTemplate.opsForValue().increment(dayKey);
-        if (txPerDay == 1) {
-            redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
-        }
+            Long txPerDay = redisTemplate.execute((RedisCallback<Long>) connection -> {
+                try {
+                    return connection.stringCommands().incr(dayKey.getBytes());
+                } catch (Exception e) {
+                    log.error("Error incrementing daily counter: {}", e.getMessage());
+                    return null;
+                }
+            });
 
-        if (txPerDay > limits.getMaxTransactionsPerDay()) {
-            throw new TransactionLimitExceededException(
-                    String.format("Exceeded maximum transactions per day of %d",
-                            limits.getMaxTransactionsPerDay()));
+            if (txPerDay == null) {
+                log.warn("Failed to increment daily counter, falling back to database");
+                validateTransactionFrequencyFromDB(userId, limits);
+                return;
+            }
+            if (txPerDay == 1) {
+                redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
+            }
+
+            if (txPerDay > limits.getMaxTransactionsPerDay()) {
+                throw new TransactionLimitExceededException(
+                        String.format("Exceeded maximum transactions per day of %d",
+                                limits.getMaxTransactionsPerDay()));
+            }
+        } catch (RedisConnectionException e) {
+            log.error("Error in Redis transaction frequency validation", e);
+            // Fall back to database validation if Redis fails
+            validateTransactionFrequencyFromDB(userId, limits);
+        } catch (Exception e) {
+            log.error("Error in Redis transaction frequency validation", e);
+            // Fall back to database validation if Redis fails
+            validateTransactionFrequencyFromDB(userId, limits);
         }
     }
 
@@ -402,31 +443,13 @@ public class TransactionValidationService {
     }
 
     private boolean isRedisAvailable() {
-        long startTime = System.currentTimeMillis();
         try {
-            // Create a RedisCallback that will execute our Redis command
-            RedisCallback<String> pingCallback = connection -> {
-                try {
-                    // Get the raw Redis connection and execute PING command
-                    // Converting the returned byte[] to String
-                    return new String(connection.ping().getBytes(), StandardCharsets.UTF_8);
-                } catch (Exception e) {
-                    log.error("Error executing Redis PING command: {}", e.getMessage());
-                    return null;
-                }
-            };
-
-            // Execute the callback using RedisTemplate
-            String result = redisTemplate.execute(pingCallback);
-            long responseTime = System.currentTimeMillis() - startTime;
-            log.debug("Redis health check completed in {}ms", responseTime);
-
-            // Redis responds with "PONG" if the connection is alive
-            return "PONG".equals(result);
-
+            RedisConnection connection = redisTemplate.getConnectionFactory().getConnection();
+            connection.ping();
+            connection.close();
+            return true;
         } catch (Exception e) {
-            long failureTime = System.currentTimeMillis() - startTime;
-            log.error("Redis health check failed after {}ms: {}", failureTime, e.getMessage());
+            log.warn("Redis health check failed: {}", e.getMessage());
             return false;
         }
     }
