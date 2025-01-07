@@ -345,20 +345,11 @@ public class TransactionServiceImpl implements ITransactionService {
     public TransactionResponse transfer(TransferRequest request) throws InterruptedException {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
                 request.getToAccountNumber(), request.getAmount());
-        String userId = securityUtils.getCurrentUserId();
-        String lockKey = "transaction_frequency:" + userId;
-        Transaction transaction = null;
-
         try {
-            if (!validationService.acquireLock(userId, lockKey)) {
-                throw new TransactionLimitExceededException("System is busy, please try again later");
-            }
-
             Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber())
                     .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
             Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber())
                     .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
-
 
             // validate using account IDs
             validationService.validateTransferTransaction(
@@ -368,7 +359,7 @@ public class TransactionServiceImpl implements ITransactionService {
             );
 
             // initialize transaction
-            transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
+            Transaction transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
             // execute transfer with retry mechanism
             executeTransferWithRetry(transaction);
             Transaction finalTransaction = transaction;
@@ -379,12 +370,8 @@ public class TransactionServiceImpl implements ITransactionService {
             return mapToTransactionResponse(transaction);
 
         } catch (Exception e) {
-            handleTransactionError(transaction, e);
+            log.error("Error processing transfer: {}", e.getMessage());
             throw e;
-        } finally {
-            if (lockKey != null) {
-                validationService.releaseLock(lockKey);
-            }
         }
 
     }

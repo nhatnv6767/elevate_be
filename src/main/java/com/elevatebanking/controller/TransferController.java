@@ -1,9 +1,7 @@
 package com.elevatebanking.controller;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
-import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.log.AuditLog;
-import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.exception.TransactionLimitExceededException;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
@@ -20,7 +18,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.zookeeper.proto.ErrorResponse;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +39,8 @@ public class TransferController {
     private final SecurityUtils securityUtils;
     private final IAccountService accountService;
     private final AuditLogService auditLogService;
-    private final TransactionValidationService transactionValidationService;
+    private final TransactionValidationService validationService;
+//    private final TransactionLockManager lockManager;
 
     @Data
     @AllArgsConstructor
@@ -58,12 +56,12 @@ public class TransferController {
         String userId = securityUtils.getCurrentUserId();
         String lockKey = "transaction_frequency:" + userId;
 
-        try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, transactionValidationService)) {
+        try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, validationService)) {
             // First, try to clear any potential stuck locks
-            transactionValidationService.clearStuckLocks(userId);
+//            validationService.clearStuckLocks(userId);
 
             // Try to acquire lock with retry mechanism
-            if (!transactionValidationService.acquireLock(userId, lockKey)) {
+            if (!lockManager.acquireLock()) {
                 return ResponseEntity
                         .status(HttpStatus.TOO_MANY_REQUESTS)
                         .body(new ErrorResponse(
@@ -71,19 +69,16 @@ public class TransferController {
                                 "LOCK_ACQUISITION_FAILED"
                         ));
             }
-
             try {
                 TransactionResponse response = transactionService.transfer(request);
+                response.setTimestamp(LocalDateTime.now());
                 return ResponseEntity.ok(response);
-            } finally {
-                transactionValidationService.releaseLock(lockKey);
+            } catch (TransactionLimitExceededException e) {
+                log.warn("Transaction limit exceeded for user: {}", userId, e);
+                return ResponseEntity
+                        .status(HttpStatus.TOO_MANY_REQUESTS)
+                        .body(new ErrorResponse(e.getMessage(), "LIMIT_EXCEEDED"));
             }
-
-        } catch (TransactionLimitExceededException e) {
-            log.warn("Transaction limit exceeded for user: {}", userId, e);
-            return ResponseEntity
-                    .status(HttpStatus.TOO_MANY_REQUESTS)
-                    .body(new ErrorResponse(e.getMessage(), "LIMIT_EXCEEDED"));
 
         } catch (Exception e) {
             log.error("Error processing transfer for user: {}", userId, e);

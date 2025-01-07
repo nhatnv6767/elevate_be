@@ -220,30 +220,15 @@ public class TransactionValidationService {
 
     private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits)
             throws InterruptedException {
-        String lockKey = "transaction_frequency:" + userId;
         try {
-            if (!acquireLock(userId, lockKey)) {
-                log.warn("Could not acquire Redis lock for user: {}", userId);
-//                validateTransactionFrequencyFromDB(userId, limits);
-//                return;
-                throw new TransactionLimitExceededException("System is busy, please try again later");
-            }
-            try {
-                validateFrequencyWithRedis(userId, limits);
-            } catch (Exception e) {
-                log.error("Error in Redis transaction frequency validation", e);
-                // Fall back to database validation if Redis fails
-                validateTransactionFrequencyFromDB(userId, limits);
-            } finally {
-                releaseLock(lockKey);
-            }
-
+            validateFrequencyWithRedis(userId, limits);
         } catch (Exception e) {
-            log.error("Error in transaction frequency validation", e);
-            // Fallback to database validation
-//            validateTransactionFrequencyFromDB(userId, limits);
-            throw new TransactionLimitExceededException("System is busy, please try again later");
+            log.error("Error in Redis transaction frequency validation", e);
+            // Fall back to database validation if Redis fails
+            validateTransactionFrequencyFromDB(userId, limits);
         }
+
+
     }
 
     private void validateFrequencyWithRedis(String userId, TransactionLimitConfig.TierLimit limits) {
@@ -479,60 +464,65 @@ public class TransactionValidationService {
         }
     }
 
-    public boolean acquireLock(String userId, String lockKey) {
-        String lockValue = UUID.randomUUID().toString();
-        int retryCount = 0;
+    public boolean acquireLock(String lockValue, String lockKey) {
+        try {
+            Boolean acquired = redisTemplate.opsForValue()
+                    .setIfAbsent(lockKey, lockValue, LOCK_TIMEOUT, TimeUnit.SECONDS);
 
-        while (retryCount < maxRetries) {
-            try {
-                Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, lockValue, 30, TimeUnit.SECONDS);
-
-                if (Boolean.TRUE.equals(acquired)) {
-                    log.info("Lock acquired successfully for user: {}, key: {}", userId, lockKey);
-                    return true;
-                }
-
-                retryCount++;
-                Thread.sleep(initialInterval * (long) Math.pow(multiplier, retryCount));
-
-            } catch (Exception e) {
-                log.error("Error acquiring lock for user: {}", userId, e);
-                return false;
+            if (Boolean.TRUE.equals(acquired)) {
+                log.info("Lock acquired successfully for value: {}, key: {}", lockValue, lockKey);
+                return true;
             }
+            return false;
+
+        } catch (Exception e) {
+            log.error("Error while trying to acquire lock: {}", e.getMessage());
+            return false;
         }
 
-        log.warn("Failed to acquire lock after {} retries for user: {}", maxRetries, userId);
-        return false;
     }
 
-    private void extendLock(String lockKey) {
-        redisTemplate.expire(lockKey, 30, TimeUnit.SECONDS);
-    }
-
-    public void clearStuckLocks(String userId) {
+    public void clearStuckLocks(String lockKey) {
         try {
-            String lockKeyPattern = "transaction_frequency:" + userId + "*";
-            Set<String> keys = redisTemplate.keys(lockKeyPattern);
-            if (keys != null && !keys.isEmpty()) {
-                redisTemplate.delete(keys);
-                log.info("Cleared {} stuck locks for user: {}", keys.size(), userId);
+            Long ttl = redisTemplate.getExpire(lockKey);
+            if (ttl != null && ttl > 60) {
+                redisTemplate.delete(lockKey);
+                log.info("Cleared stuck lock for key: {}", lockKey);
             }
         } catch (Exception e) {
-            log.error("Error clearing stuck locks for user: {}", userId, e);
+            log.error("Error clearing stuck lock for key: {} - {}", lockKey, e.getMessage(), e);
         }
     }
 
-    public void releaseLock(String lockKey) {
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckLocks() {
         try {
-            String script = "if redis.call('get', KEYS[1]) == ARGV[1] then " +
-                    "return redis.call('del', KEYS[1]) " +
-                    "else return 0 end";
+            Set<String> keys = redisTemplate.keys("transaction_frequency:*");
+            if (keys != null) {
+                for (String key : keys) {
+                    clearStuckLocks(key);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error in cleanup: {}", e.getMessage());
+        }
+    }
+
+    public void releaseLock(String lockKey, String expectedValue) {
+        try {
+            String script =
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                            "    return redis.call('del', KEYS[1]) " +
+                            "else " +
+                            "    return 0 " +
+                            "end";
 
             redisTemplate.execute(new DefaultRedisScript<>(script, Long.class), Collections.singletonList(lockKey),
-                    getCurrentUserId());
+                    expectedValue);
+            log.debug("Lock released: {}", lockKey);
         } catch (Exception e) {
-            log.error("Error releasing lock for key: {}", lockKey, e);
+            log.error("Error releasing lock: {}", e.getMessage());
+            throw e;
         }
     }
 
