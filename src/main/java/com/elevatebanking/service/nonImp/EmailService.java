@@ -180,21 +180,36 @@ public class EmailService {
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public void sendTransactionEmail(String userId, String subject, String content) {
         if (userId == null) {
+            log.error("Cannot send transaction email - userId is null");
             throw new IllegalArgumentException("UserId cannot be null");
         }
 
-        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.warn("User not found for email notification: {}", userId);
+                    return new ResourceNotFoundException("User not found");
+                });
 
         String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
         sendEmail(user.getEmail(), subject, emailContent);
     }
 
     public void sendSystemAlert(String subject, String content) {
-        String emailContent = prepareEmailContent(subject, content, "email/system-alert");
-        sendEmail(fromEmail, subject, emailContent);
+        try {
+            String emailContent = prepareEmailContent(subject, content, "email/system-alert");
+            sendEmail(fromEmail, subject, emailContent);
+            log.info("System alert email sent successfully");
+        } catch (Exception e) {
+            log.error("Failed to send system alert email: {}", e.getMessage());
+            throw new EmailSendException("Failed to send system alert", e);
+        }
     }
 
     private void sendEmail(String toEmail, String subject, String content) {
+        if (toEmail == null || toEmail.trim().isEmpty()) {
+            log.error("Cannot send email - recipient email is null or empty");
+            throw new IllegalArgumentException("Recipient email cannot be null or empty");
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");

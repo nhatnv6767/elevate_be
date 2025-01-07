@@ -28,8 +28,13 @@ public class NotificationDeliveryService {
     public void sendNotification(String userId, String templateCode, Map<String, Object> data) {
         try {
 
-            if (userId == null || isSystemAlert(templateCode)) {
+            if (isSystemAlert(templateCode)) {
                 handleSystemAlert(templateCode, data);
+                return;
+            }
+
+            if (userId == null) {
+                log.warn("Attempted to send user notification with null userId");
                 return;
             }
 
@@ -39,7 +44,7 @@ public class NotificationDeliveryService {
             String content = templateService.renderTemplate(template, data);
 
             if (preferences.isEmailEnabled()) {
-                sendEmail(userId, template.getSubjectTemplate(), content);
+                sendEmailSafely(userId, template.getSubjectTemplate(), content);
             }
 
             if (preferences.isPushEnabled()) {
@@ -72,6 +77,8 @@ public class NotificationDeliveryService {
         try {
             if (userId != null) {
                 emailService.sendTransactionEmail(userId, subject, content);
+            } else {
+                log.warn("Attempted to send email with null userId");
             }
         } catch (ResourceNotFoundException e) {
             log.warn("User not found for email notification: {}", userId);
@@ -90,7 +97,9 @@ public class NotificationDeliveryService {
     }
 
     private boolean isSystemAlert(String templateCode) {
-        return templateCode != null && templateCode.startsWith("SYSTEM_");
+        return templateCode != null &&
+                (templateCode.startsWith("SYSTEM_") ||
+                        templateCode.equals("MONITORING_ALERT"));
     }
 
     void sendEmail(String userId, String subject, String content) {
