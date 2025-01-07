@@ -126,6 +126,15 @@ public class EmailService {
         }
     }
 
+    private String prepareEmailContentTransaction(String subject, String content, String template) {
+        Context context = new Context();
+        context.setVariable("subject", subject);
+        context.setVariable("message", content);
+        context.setVariable("bankName", "Elevate Banking");
+        context.setVariable("supportEmail", fromEmail);
+        return templateEngine.process(template, context);
+    }
+
     private String prepareEmailContent(String subject, String content, String templateName) {
         Context context = new Context();
         if (templateName.equals("email/reset-password")) {
@@ -169,12 +178,41 @@ public class EmailService {
     }
 
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
-    public void sendTransactionEmail(String toEmail, String subject, String content) {
+    public void sendTransactionEmail(String userId, String subject, String content) {
+        if (userId == null) {
+            throw new IllegalArgumentException("UserId cannot be null");
+        }
 
-        User user = userRepository.findById(toEmail).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        processAndSendEmail(user.getEmail(), subject, content, "email/transaction-notification");
+        String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
+        sendEmail(user.getEmail(), subject, emailContent);
     }
+
+    public void sendSystemAlert(String subject, String content) {
+        String emailContent = prepareEmailContent(subject, content, "email/system-alert");
+        sendEmail(fromEmail, subject, emailContent);
+    }
+
+    private void sendEmail(String toEmail, String subject, String content) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject(subject);
+            helper.setText(content, true);
+
+            mailSender.send(message);
+            log.info("Email sent successfully to: {}", toEmail);
+
+        } catch (Exception e) {
+            log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
+            throw new EmailSendException("Failed to send email", e);
+        }
+    }
+
 
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public void sendResetPasswordEmail(String toEmail, String token, String username) {

@@ -2,6 +2,7 @@ package com.elevatebanking.service.notification;
 
 import com.elevatebanking.entity.notification.NotificationPreference;
 import com.elevatebanking.entity.notification.NotificationTemplate;
+import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.NotificationChannelRepository;
 import com.elevatebanking.service.nonImp.EmailService;
 import lombok.AccessLevel;
@@ -25,22 +26,71 @@ public class NotificationDeliveryService {
 
     @Transactional
     public void sendNotification(String userId, String templateCode, Map<String, Object> data) {
-        NotificationPreference preferences = preferenceService.getUserPreferences(userId);
-        NotificationTemplate template = templateService.getTemplate(templateCode);
+        try {
 
-        String content = templateService.renderTemplate(template, data);
+            if (userId == null || isSystemAlert(templateCode)) {
+                handleSystemAlert(templateCode, data);
+                return;
+            }
 
-        if (preferences.isEmailEnabled()) {
-            sendEmail(userId, template.getSubjectTemplate(), content);
+            NotificationPreference preferences = preferenceService.getUserPreferences(userId);
+            NotificationTemplate template = templateService.getTemplate(templateCode);
+
+            String content = templateService.renderTemplate(template, data);
+
+            if (preferences.isEmailEnabled()) {
+                sendEmail(userId, template.getSubjectTemplate(), content);
+            }
+
+            if (preferences.isPushEnabled()) {
+                sendPushNotification(userId, template.getSubjectTemplate(), content);
+            }
+
+            if (preferences.isSmsEnabled()) {
+                sendSms(userId, content);
+            }
+        } catch (Exception e) {
+            log.error("Failed to send notification to user: {}", userId, e);
         }
+    }
 
-        if (preferences.isPushEnabled()) {
-            sendPushNotification(userId, template.getSubjectTemplate(), content);
-        }
+    private void handleSystemAlert(String templateCode, Map<String, Object> data) {
+        try {
+            NotificationTemplate template = templateService.getTemplate(templateCode);
+            String content = templateService.renderTemplate(template, data);
 
-        if (preferences.isSmsEnabled()) {
-            sendSms(userId, content);
+            // Send to admin or monitoring channels
+            sendSystemAlertEmail(template.getSubjectTemplate(), content);
+//            sendSystemAlertPush(template.getSubjectTemplate(), content);
+
+        } catch (Exception e) {
+            log.error("Failed to send system alert: {}", e.getMessage());
         }
+    }
+
+    private void sendEmailSafely(String userId, String subject, String content) {
+        try {
+            if (userId != null) {
+                emailService.sendTransactionEmail(userId, subject, content);
+            }
+        } catch (ResourceNotFoundException e) {
+            log.warn("User not found for email notification: {}", userId);
+        } catch (Exception e) {
+            log.error("Failed to send email to user: {}", userId, e);
+        }
+    }
+
+    private void sendSystemAlertEmail(String subject, String content) {
+        try {
+            // Send to admin email configured in properties
+            emailService.sendSystemAlert(subject, content);
+        } catch (Exception e) {
+            log.error("Failed to send system alert email: {}", e.getMessage());
+        }
+    }
+
+    private boolean isSystemAlert(String templateCode) {
+        return templateCode != null && templateCode.startsWith("SYSTEM_");
     }
 
     void sendEmail(String userId, String subject, String content) {
