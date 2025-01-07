@@ -345,7 +345,7 @@ public class TransactionServiceImpl implements ITransactionService {
     //// NEW SERVICE
 
     @Override
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     @Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public TransactionResponse transfer(TransferRequest request) throws InterruptedException {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
@@ -366,17 +366,10 @@ public class TransactionServiceImpl implements ITransactionService {
 
             // initialize transaction
             Transaction transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
-            transaction = transactionRepository.save(transaction);
-            publishTransactionEvent(transaction, "transaction.initiated");
 
             // execute transfer with retry mechanism
             executeTransferWithRetry(transaction);
             transaction = completeTransaction(transaction);
-//            Transaction finalTransaction = transaction;
-//            CompletableFuture.runAsync(() -> {
-//                publishTransactionEvent(finalTransaction, "transaction.completed");
-//                monitoringService.monitorTransactionMetrics();
-//            });
             return mapToTransactionResponse(transaction);
 
         } catch (Exception e) {

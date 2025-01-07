@@ -16,13 +16,15 @@ import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.notification.NotificationDeliveryService;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import jakarta.validation.constraints.Max;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.integration.redis.util.RedisLockRegistry;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 
 @Service
 @RequiredArgsConstructor
@@ -52,6 +55,7 @@ public class TransactionEventProcessor {
     private static final String MAIN_TOPIC = "elevate.transactions";
     private static final String RETRY_TOPIC = "elevate.transactions.retry";
     private static final String DLQ_TOPIC = "elevate.transactions.dlq";
+    private final RedisLockRegistry lockRegistry;
 
     @Transactional
     @KafkaListener(
@@ -63,60 +67,71 @@ public class TransactionEventProcessor {
                     "enable.auto.commit=false",
             }
     )
+    @Retryable(
+            value = ResourceNotFoundException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
+    )
     public void processTransactionEvent(TransactionEvent event, Acknowledgment ack) {
         MDC.put("transactionId", event.getTransactionId());
-        log.info("Processing transaction event: {}", event);
-        try {
-            event.addProcessStep("EVENT_RECEIVED");
+        log.info("Processing transaction event: {}, current status: {}",
+                event.getTransactionId(), event.getStatus());
+        Lock lock = lockRegistry.obtain(event.getTransactionId());
+        if (lock.tryLock()) {
+            try {
+                event.addProcessStep("EVENT_RECEIVED");
 
-            if (event.isExpired()) {
-                event.setError("Event is expired");
-                sendToDLQ(event, "Event is expired");
-                log.warn("Expired event detected: {}", event);
-                ack.acknowledge();
-                return;
-            }
-
-            if (isDuplicateEvent(event)) {
-                event.addProcessStep("DUPLICATE_DETECTED");
-                log.warn("Duplicate event detected: {}", event);
-                ack.acknowledge();
-                return;
-            }
-
-            Transaction transaction = transactionRepository
-                    .findByIdForUpdate(event.getTransactionId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
-
-            if (!isValidStateTransition(transaction.getStatus(), event)) {
-                if (event.isRetryable()) {
-                    event.incrementRetryCount();
-                    sendToRetryTopic(event);
-                } else {
-                    sendToDLQ(event, "Invalid state transition");
+                if (event.isExpired()) {
+                    event.setError("Event is expired");
+                    sendToDLQ(event, "Event is expired");
+                    log.warn("Expired event detected: {}", event);
+                    ack.acknowledge();
+                    return;
                 }
-                log.warn("Invalid state transition: {} -> {}", transaction.getStatus(), event.getStatus());
-                ack.acknowledge();
-                return;
-            }
 
-            switch (event.getEventType()) {
-                case "transaction.initiated":
-                    handleTransactionInitiated(event);
-                    break;
-                case "transaction.completed":
-                    handleTransactionCompleted(event);
-                    break;
-                case "transaction.failed":
-                    handleTransactionFailed(event);
-                    break;
-                default:
-                    log.warn("Unknown event type: {}", event.getEventType());
+                if (isDuplicateEvent(event)) {
+                    event.addProcessStep("DUPLICATE_DETECTED");
+                    log.warn("Duplicate event detected: {}", event);
+                    ack.acknowledge();
+                    return;
+                }
+
+                Transaction transaction = transactionRepository
+                        .findByIdForUpdate(event.getTransactionId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+
+                if (!isValidStateTransition(transaction.getStatus(), event)) {
+                    if (event.isRetryable()) {
+                        event.incrementRetryCount();
+                        sendToRetryTopic(event);
+                    } else {
+                        sendToDLQ(event, "Invalid state transition");
+                    }
+                    log.warn("Invalid state transition: {} -> {}", transaction.getStatus(), event.getStatus());
+                    ack.acknowledge();
+                    return;
+                }
+
+                switch (event.getEventType()) {
+                    case "transaction.initiated":
+                        handleTransactionInitiated(event);
+                        break;
+                    case "transaction.completed":
+                        handleTransactionCompleted(event);
+                        break;
+                    case "transaction.failed":
+                        handleTransactionFailed(event);
+                        break;
+                    default:
+                        log.warn("Unknown event type: {}", event.getEventType());
+                }
+                ack.acknowledge();
+            } catch (Exception e) {
+                log.error("Error processing transaction event: {}", event, e);
+                handleProcessingError(event, e, ack);
+            } finally {
+                lock.unlock();
             }
-            ack.acknowledge();
-        } catch (Exception e) {
-            log.error("Error processing transaction event: {}", event, e);
-            handleProcessingError(event, e, ack);
         }
     }
 
