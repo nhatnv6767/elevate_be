@@ -47,7 +47,11 @@ public class TransactionEventProcessor {
     @KafkaListener(
             topics = MAIN_TOPIC,
             groupId = "elevate-transaction-group",
-            containerFactory = "transactionKafkaListenerContainerFactory"
+            containerFactory = "transactionKafkaListenerContainerFactory",
+            properties = {
+                    "max.poll.records=1",
+                    "enable.auto.commit=false",
+            }
     )
     public void processTransactionEvent(TransactionEvent event, Acknowledgment ack) {
         MDC.put("transactionId", event.getTransactionId());
@@ -55,6 +59,15 @@ public class TransactionEventProcessor {
         try {
 
             validateEvent(event);
+
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+
+            if (!isValidStateTransition(transaction.getStatus(), event.getStatus())) {
+                log.warn("Invalid state transition: {} -> {}", transaction.getStatus(), event.getStatus());
+                ack.acknowledge();
+                return;
+            }
+
             switch (event.getEventType()) {
                 case "transaction.initiated":
                     handleTransactionInitiated(event);
@@ -72,6 +85,10 @@ public class TransactionEventProcessor {
             log.error("Error processing transaction event: {}", event, e);
             handleProcessingError(event, e, ack);
         }
+    }
+
+    private boolean isValidStateTransition(TransactionStatus currentStatus, TransactionStatus newStatus) {
+        return currentStatus != TransactionStatus.COMPLETED && currentStatus != TransactionStatus.FAILED;
     }
 
     @KafkaListener(

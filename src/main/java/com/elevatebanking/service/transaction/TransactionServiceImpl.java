@@ -10,6 +10,7 @@ import com.elevatebanking.exception.*;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.service.transaction.config.TransactionLockManager;
 import com.elevatebanking.util.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -346,6 +347,7 @@ public class TransactionServiceImpl implements ITransactionService {
         log.info("Processing transfer request: {} -> {}, amount: {}", request.getFromAccountNumber(),
                 request.getToAccountNumber(), request.getAmount());
         try {
+
             Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber())
                     .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
             Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber())
@@ -360,13 +362,17 @@ public class TransactionServiceImpl implements ITransactionService {
 
             // initialize transaction
             Transaction transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
+            transaction = transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.initiated");
+
             // execute transfer with retry mechanism
             executeTransferWithRetry(transaction);
-            Transaction finalTransaction = transaction;
-            CompletableFuture.runAsync(() -> {
-                publishTransactionEvent(finalTransaction, "transaction.completed");
-                monitoringService.monitorTransactionMetrics();
-            });
+            transaction = completeTransaction(transaction);
+//            Transaction finalTransaction = transaction;
+//            CompletableFuture.runAsync(() -> {
+//                publishTransactionEvent(finalTransaction, "transaction.completed");
+//                monitoringService.monitorTransactionMetrics();
+//            });
             return mapToTransactionResponse(transaction);
 
         } catch (Exception e) {
