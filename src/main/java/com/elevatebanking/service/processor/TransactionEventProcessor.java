@@ -65,21 +65,34 @@ public class TransactionEventProcessor {
         MDC.put("transactionId", event.getTransactionId());
         log.info("Processing transaction event: {}", event);
         try {
+            event.addProcessStep("EVENT_RECEIVED");
 
-            if (isDuplicateEvent(event)) {
-                log.warn("Duplicate event: {}", event);
+            if (event.isExpired()) {
+                event.setError("Event is expired");
+                sendToDLQ(event, "Event is expired");
+                log.warn("Expired event detected: {}", event);
                 ack.acknowledge();
                 return;
             }
 
-            validateEvent(event);
-            validateEventStatus(transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId())), event);
+            if (isDuplicateEvent(event)) {
+                event.addProcessStep("DUPLICATE_DETECTED");
+                log.warn("Duplicate event detected: {}", event);
+                ack.acknowledge();
+                return;
+            }
 
-            transactionRepository.findByIdForUpdate(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+            Transaction transaction = transactionRepository
+                    .findByIdForUpdate(event.getTransactionId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
-            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
-
-            if (!isValidStateTransition(transaction.getStatus(), event.getStatus())) {
+            if (!isValidStateTransition(transaction.getStatus(), event)) {
+                if (event.isRetryable()) {
+                    event.incrementRetryCount();
+                    sendToRetryTopic(event);
+                } else {
+                    sendToDLQ(event, "Invalid state transition");
+                }
                 log.warn("Invalid state transition: {} -> {}", transaction.getStatus(), event.getStatus());
                 ack.acknowledge();
                 return;
@@ -98,6 +111,7 @@ public class TransactionEventProcessor {
                 default:
                     log.warn("Unknown event type: {}", event.getEventType());
             }
+            ack.acknowledge();
         } catch (Exception e) {
             log.error("Error processing transaction event: {}", event, e);
             handleProcessingError(event, e, ack);
@@ -105,20 +119,21 @@ public class TransactionEventProcessor {
     }
 
     private boolean isDuplicateEvent(TransactionEvent event) {
-        String eventKey = event.getTransactionId() + "-" + event.getEventType();
+//        String eventKey = event.getTransactionId() + "-" + event.getEventType();
+        String eventKey = String.format("%s-%s-%d-%s",
+                event.getTransactionId(),
+                event.getEventType(),
+                event.getRetryCount(),
+                event.getTimestamp().toString()
+        );
+        event.addMetadata("deduplication_key", eventKey);
+        event.addProcessStep("DEDUPLICATION_CHECK");
         return processedEvents.getIfPresent(eventKey) != null;
     }
 
-    private void validateEventStatus(Transaction transaction, TransactionEvent event) {
-        if (!isValidStateTransition(transaction.getStatus(), event.getStatus())) {
-            throw new InvalidOperationException(
-                    String.format("Không cho phép chuyển từ trạng thái %s sang %s",
-                            transaction.getStatus(), event.getStatus())
-            );
-        }
-    }
+    private boolean isValidStateTransition(TransactionStatus currentStatus, TransactionEvent event) {
 
-    private boolean isValidStateTransition(TransactionStatus currentStatus, TransactionStatus newStatus) {
+        event.addProcessStep(String.format("STATE_TRANSITION_CHECK: %s -> %s", currentStatus, event.getStatus()));
 
         Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
                 TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
@@ -126,7 +141,12 @@ public class TransactionEventProcessor {
                 TransactionStatus.COMPLETED, Set.of()
         );
 
-        return validTransitions.getOrDefault(currentStatus, Set.of()).contains(newStatus);
+        boolean isValid = validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
+        if (!isValid) {
+            event.setError(String.format("Invalid state transition: %s -> %s", currentStatus, event.getStatus()));
+        }
+
+        return isValid;
     }
 
     @KafkaListener(
@@ -237,25 +257,24 @@ public class TransactionEventProcessor {
     }
 
     private void handleProcessingError(TransactionEvent event, Exception e, Acknowledgment ack) {
-        if (e instanceof NonRetryableException) {
-            handleNonRetryableError(event, e, ack);
+
+        event.addProcessStep("ERROR_HANDLING: " + e.getMessage());
+        if (e instanceof NonRetryableException || !event.isRetryable()) {
+            event.addProcessStep("NON_RETRYABLE_ERROR");
+            sendToDLQ(event, "Non-retryable error: " + e.getMessage());
+            updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
+            sendFailureNotification(event);
         } else {
-            handleRetryableError(event, e, ack);
+            event.addProcessStep("RETRYABLE_ERROR");
+            event.incrementRetryCount();
+
+            // count the next retry time
+            long backoffInterval = calculateBackoffInterval(event.getRetryCount());
+            event.setNextRetryAt(LocalDateTime.now().plusSeconds(backoffInterval));
+            sendToDLQ(event, "Retryable error: " + e.getMessage());
         }
-        try {
-            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
-            if (needsRollback(transaction)) {
-                performRollback(transaction);
-            }
-        } catch (Exception rollbackEx) {
-            log.error("Error during rollback: {}", rollbackEx.getMessage());
-        }
-//        if (event.getRetryCount() < MAX_RETRY_ATTEMPTS) {
-//            kafkaTemplate.send("elevate.transactions.retry", event);
-//        } else {
-//            kafkaTemplate.send("elevate.transactions.dlq", event);
-//        }
-//        ack.acknowledge();
+        ack.acknowledge();
+
     }
 
     private void processTransferTransaction(Transaction transaction, TransactionEvent event) {
@@ -501,14 +520,6 @@ public class TransactionEventProcessor {
         return (long) Math.pow(2, retryCount) * 1000L; // exponential backoff in seconds: 2^retryCount * 1000
     }
 
-    private void validateEvent(TransactionEvent event) {
-        if (event == null || event.getTransactionId() == null) {
-            throw new NonRetryableException("Invalid event format");
-        }
-        if (event.isExpired()) {
-            throw new NonRetryableException("Event is expired");
-        }
-    }
 
     private void updateTransactionStatus(String transactionId, TransactionStatus status) {
         try {
