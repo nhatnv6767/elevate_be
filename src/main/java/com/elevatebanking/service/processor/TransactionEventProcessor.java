@@ -150,11 +150,13 @@ public class TransactionEventProcessor {
         Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
                 TransactionStatus.PENDING,
                 Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED, TransactionStatus.CANCELLED),
+                TransactionStatus.COMPLETED, Set.of(),
                 TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK, TransactionStatus.ROLLBACK_FAILED),
                 TransactionStatus.CANCELLED, Set.of(),
                 TransactionStatus.ROLLBACK_FAILED, Set.of(),
-                TransactionStatus.ROLLED_BACK, Set.of(),
-                TransactionStatus.COMPLETED, Set.of());
+                TransactionStatus.ROLLED_BACK, Set.of()
+        );
+
 
         boolean isValid = validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
         if (!isValid) {

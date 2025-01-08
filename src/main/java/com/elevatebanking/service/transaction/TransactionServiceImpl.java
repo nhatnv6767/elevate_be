@@ -276,7 +276,7 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction = transactionRepository.save(transaction);
 
         // publish transaction event
-        publishTransactionEvent(transaction, "transaction.initiated");
+//        publishTransactionEvent(transaction, "transaction.initiated");
 
         return transaction;
     }
@@ -352,6 +352,7 @@ public class TransactionServiceImpl implements ITransactionService {
                 request.getToAccountNumber(), request.getAmount());
         try {
 
+            // 1. Validate and get accounts
             Account fromAccount = accountService.getAccountByNumber(request.getFromAccountNumber())
                     .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
             Account toAccount = accountService.getAccountByNumber(request.getToAccountNumber())
@@ -364,12 +365,12 @@ public class TransactionServiceImpl implements ITransactionService {
                     request.getAmount()
             );
 
-            // initialize transaction
+            // 2. initialize transaction without publish event
             Transaction transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
 
-            // execute transfer with retry mechanism
+            // 3.  execute transfer with retry mechanism
             executeTransferWithRetry(transaction);
-            transaction = completeTransaction(transaction);
+//            transaction = completeTransaction(transaction);
             return mapToTransactionResponse(transaction);
 
         } catch (Exception e) {
@@ -383,12 +384,20 @@ public class TransactionServiceImpl implements ITransactionService {
     protected void executeTransferWithRetry(Transaction transaction) {
         try {
 
+            // 1. set pending and save
             transaction.setStatus(TransactionStatus.PENDING);
             transaction = transactionRepository.save(transaction);
 
+            // 2. publish initiated event
+            publishTransactionEvent(transaction, "transaction.initiated");
+
+            // 3. execute transfer
             executeTransfer(transaction.getFromAccount().getId(), transaction.getToAccount().getId(), transaction.getAmount());
+
+            // 4. complete transaction
             transaction.setStatus(TransactionStatus.COMPLETED);
-            transactionRepository.save(transaction);
+            transaction = transactionRepository.save(transaction);
+            // 5. publish completed event
             publishTransactionEvent(transaction, "transaction.completed");
         } catch (DataAccessException e) {
             throw new RetryableException("Database error", e);
