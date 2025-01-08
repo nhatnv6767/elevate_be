@@ -26,6 +26,7 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -57,7 +58,7 @@ public class TransactionEventProcessor {
     private static final String DLQ_TOPIC = "elevate.transactions.dlq";
     private final RedisLockRegistry lockRegistry;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @KafkaListener(topics = MAIN_TOPIC, groupId = "elevate-transaction-group", containerFactory = "transactionKafkaListenerContainerFactory", properties = {
             "max.poll.records=1",
             "enable.auto.commit=false",
@@ -71,6 +72,7 @@ public class TransactionEventProcessor {
         if (lock.tryLock()) {
             try {
                 event.addProcessStep("EVENT_RECEIVED");
+
 
                 if (event.isExpired()) {
                     event.setError("Event is expired");
@@ -86,6 +88,8 @@ public class TransactionEventProcessor {
                     ack.acknowledge();
                     return;
                 }
+
+                Thread.sleep(100);
 
                 Transaction transaction = transactionRepository
                         .findByIdForUpdate(event.getTransactionId())
@@ -588,7 +592,7 @@ public class TransactionEventProcessor {
         return message;
     }
 
-    private String getNotificationRecipient(TransactionEvent event) {
+    private String getNotificationRecipient_BACKUP(TransactionEvent event) {
         // giao dich transfer, ca nguoi gui va nguoi nhan deu nhan notification
         if (event.getType() == TransactionType.TRANSFER) {
             // return event.getFromAccount().getAccountId(); // mac dinh gui cho nguoi
@@ -603,6 +607,24 @@ public class TransactionEventProcessor {
             // getUserIdFromTransaction(transactionRepository.findById(event.getTransactionId()).get());
         } else { // withdrawal
             return event.getFromAccount().getAccountId();
+        }
+    }
+
+    private String getNotificationRecipient(TransactionEvent event) {
+        try {
+            Transaction transaction = transactionRepository.findById(event.getTransactionId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+
+            if (event.getType() == TransactionType.TRANSFER) {
+                return transaction.getFromAccount().getUser().getId();
+            } else if (event.getType() == TransactionType.DEPOSIT) {
+                return transaction.getToAccount().getUser().getId();
+            } else {
+                return transaction.getFromAccount().getUser().getId();
+            }
+        } catch (Exception e) {
+            log.error("Error getting notification recipient: {}", e.getMessage());
+            throw new RuntimeException("Failed to get notification recipient", e);
         }
     }
 
