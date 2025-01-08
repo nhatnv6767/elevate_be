@@ -389,7 +389,7 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction = transactionRepository.save(transaction);
 
             // 2. publish initiated event
-            publishTransactionEvent(transaction, "transaction.initiated");
+//            publishTransactionEvent(transaction, "transaction.initiated");
 
             // 3. execute transfer
             executeTransfer(transaction.getFromAccount().getId(), transaction.getToAccount().getId(), transaction.getAmount());
