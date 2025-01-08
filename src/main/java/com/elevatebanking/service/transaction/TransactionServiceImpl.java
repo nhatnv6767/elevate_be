@@ -383,18 +383,19 @@ public class TransactionServiceImpl implements ITransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     protected void executeTransferWithRetry(Transaction transaction) {
         try {
+            Transaction currentTx = transactionRepository.findByIdForUpdate(transaction.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
 
-            // 1. set pending and save
-            transaction.setStatus(TransactionStatus.PENDING);
-            transaction = transactionRepository.save(transaction);
+            if (currentTx.getStatus() != TransactionStatus.PENDING) {
+                throw new InvalidOperationException("Transaction is not pending");
+            }
 
-            // 3. execute transfer
-            executeTransfer(transaction.getFromAccount().getId(), transaction.getToAccount().getId(), transaction.getAmount());
+            executeTransfer(transaction.getFromAccount().getId(),
+                    transaction.getToAccount().getId(),
+                    transaction.getAmount());
 
-            // 4. complete transaction
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
-            // 5. publish completed event
             publishTransactionEvent(transaction, "transaction.completed");
         } catch (DataAccessException e) {
             throw new RetryableException("Database error", e);

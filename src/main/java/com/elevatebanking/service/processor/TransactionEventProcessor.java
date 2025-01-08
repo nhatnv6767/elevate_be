@@ -68,7 +68,8 @@ public class TransactionEventProcessor {
         MDC.put("transactionId", event.getTransactionId());
         log.info("Processing transaction event: {}, current status: {}",
                 event.getTransactionId(), event.getStatus());
-        Lock lock = lockRegistry.obtain(event.getTransactionId());
+        String lockKey = "tx:" + event.getTransactionId();
+        Lock lock = lockRegistry.obtain(lockKey);
         if (lock.tryLock()) {
             try {
                 event.addProcessStep("EVENT_RECEIVED");
