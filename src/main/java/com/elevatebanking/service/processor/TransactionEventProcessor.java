@@ -145,6 +145,7 @@ public class TransactionEventProcessor {
 
     private boolean isValidStateTransition(TransactionStatus currentStatus, TransactionEvent event) {
 
+        //
         event.addProcessStep(String.format("STATE_TRANSITION_CHECK: %s -> %s", currentStatus, event.getStatus()));
 
         Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
