@@ -148,19 +148,17 @@ public class TransactionEventProcessor {
         event.addProcessStep(String.format("STATE_TRANSITION_CHECK: %s -> %s", currentStatus, event.getStatus()));
 
         Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
-                TransactionStatus.PENDING,
-                Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
+                TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
                 TransactionStatus.COMPLETED, Set.of(),
                 TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK)
         );
 
+//        boolean isValid = validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
+//        if (!isValid) {
+//            event.setError(String.format("Invalid state transition: %s -> %s", currentStatus, event.getStatus()));
+//        }
 
-        boolean isValid = validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
-        if (!isValid) {
-            event.setError(String.format("Invalid state transition: %s -> %s", currentStatus, event.getStatus()));
-        }
-
-        return isValid;
+        return validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
     }
 
     @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.groups.transaction-retry}", containerFactory = "transactionKafkaListenerContainerFactory")

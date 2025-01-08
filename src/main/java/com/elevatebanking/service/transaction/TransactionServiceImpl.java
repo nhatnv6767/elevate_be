@@ -388,9 +388,6 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction.setStatus(TransactionStatus.PENDING);
             transaction = transactionRepository.save(transaction);
 
-            // 2. publish initiated event
-//            publishTransactionEvent(transaction, "transaction.initiated");
-
             // 3. execute transfer
             executeTransfer(transaction.getFromAccount().getId(), transaction.getToAccount().getId(), transaction.getAmount());
 
@@ -404,6 +401,9 @@ public class TransactionServiceImpl implements ITransactionService {
 //            log.error("Error executing transfer: {}", e.getMessage());
 //            throw new TransactionProcessingException("Error executing transfer", transaction.getId(), true);
         } catch (Exception e) {
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction = transactionRepository.save(transaction);
+            publishTransactionEvent(transaction, "transaction.failed");
             compensationService.compensateTransaction(transaction, "Error executing transfer: " + e.getMessage());
             throw new NonRetryableException("Non-retryable error", e);
         }
