@@ -152,12 +152,6 @@ public class TransactionEventProcessor {
                 TransactionStatus.COMPLETED, Set.of(),
                 TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK)
         );
-
-//        boolean isValid = validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
-//        if (!isValid) {
-//            event.setError(String.format("Invalid state transition: %s -> %s", currentStatus, event.getStatus()));
-//        }
-
         return validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
     }
 
