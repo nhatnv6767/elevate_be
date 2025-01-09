@@ -75,22 +75,10 @@ public class TransactionEventProcessor {
                 event.addProcessStep("EVENT_RECEIVED");
 
 
-                if (event.isExpired()) {
-                    event.setError("Event is expired");
-                    sendToDLQ(event, "Event is expired");
-                    log.warn("Expired event detected: {}", event);
-                    ack.acknowledge();
+                if (event.isExpired() || isDuplicateEvent(event)) {
+                    handleExpiredOrDuplicate(event, ack);
                     return;
                 }
-
-                if (isDuplicateEvent(event)) {
-                    event.addProcessStep("DUPLICATE_DETECTED");
-                    log.warn("Duplicate event detected: {}", event);
-                    ack.acknowledge();
-                    return;
-                }
-
-                Thread.sleep(100);
 
                 Transaction transaction = transactionRepository
                         .findByIdForUpdate(event.getTransactionId())
@@ -98,14 +86,7 @@ public class TransactionEventProcessor {
                                 "Transaction not found: " + event.getTransactionId()));
 
                 if (!isValidStateTransition(transaction.getStatus(), event)) {
-                    if (event.isRetryable()) {
-                        event.incrementRetryCount();
-                        sendToRetryTopic(event);
-                    } else {
-                        sendToDLQ(event, "Invalid state transition");
-                    }
-                    log.warn("Invalid state transition: {} -> {}", transaction.getStatus(), event.getStatus());
-                    ack.acknowledge();
+                    handleInvalidTransition(event, ack);
                     return;
                 }
 
@@ -132,6 +113,29 @@ public class TransactionEventProcessor {
         }
     }
 
+    private void handleExpiredOrDuplicate(TransactionEvent event, Acknowledgment ack) {
+        if (event.isExpired()) {
+            event.setError("Event is expired");
+            sendToDLQ(event, "Event is expired");
+            log.warn("Expired event detected: {}", event);
+        } else {
+            event.addProcessStep("DUPLICATE_DETECTED");
+            log.warn("Duplicate event detected: {}", event);
+        }
+        ack.acknowledge();
+    }
+
+    private void handleInvalidTransition(TransactionEvent event, Acknowledgment ack) {
+        if (event.isRetryable()) {
+            event.incrementRetryCount();
+            sendToRetryTopic(event);
+        } else {
+            sendToDLQ(event, "Invalid state transition");
+        }
+        log.warn("Invalid state transition: {} -> {}", event.getStatus());
+        ack.acknowledge();
+    }
+
     private boolean isDuplicateEvent(TransactionEvent event) {
         // String eventKey = event.getTransactionId() + "-" + event.getEventType();
         String eventKey = String.format("%s-%s-%d-%s",
@@ -149,12 +153,28 @@ public class TransactionEventProcessor {
         //
         event.addProcessStep(String.format("STATE_TRANSITION_CHECK: %s -> %s", currentStatus, event.getStatus()));
 
-        Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
-                TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
-                TransactionStatus.COMPLETED, Set.of(),
-                TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK)
-        );
-        return validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
+//        Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
+//                TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
+//                TransactionStatus.COMPLETED, Set.of(),
+//                TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK)
+//        );
+//        return validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
+
+        if (currentStatus == TransactionStatus.COMPLETED) {
+            log.info("Transaction already completed, ignoring event: {}", event.getTransactionId());
+            return false;
+        }
+
+        switch (currentStatus) {
+            case PENDING:
+                return event.getStatus() == TransactionStatus.COMPLETED
+                        || event.getStatus() == TransactionStatus.FAILED;
+            case FAILED:
+                return event.getStatus() == TransactionStatus.ROLLED_BACK
+                        || event.getStatus() == TransactionStatus.PENDING; // Allow retry
+            default:
+                return false;
+        }
     }
 
     @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.groups.transaction-retry}", containerFactory = "transactionKafkaListenerContainerFactory")
@@ -377,11 +397,14 @@ public class TransactionEventProcessor {
     private void sendNotificationEvent(TransactionEvent event, String message) {
         log.info("Sending notification event: {} {}", event.getTransactionId(), message);
         try {
+
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+
             // xac dinh loai thong bao va priority dua tren transaction status
             NotificationEvent.NotificationType notificationType;
             NotificationEvent.Priority priority;
 
-            switch (event.getStatus()) {
+            switch (transaction.getStatus()) {
                 case COMPLETED:
                     notificationType = NotificationEvent.NotificationType.TRANSACTION_COMPLETED;
                     priority = NotificationEvent.Priority.MEDIUM;
@@ -396,8 +419,8 @@ public class TransactionEventProcessor {
             }
 
             // xay dung title dua tren loai giao dich
-            String title = buildNotificationTitle(event.getType(), event.getStatus());
-
+//            String title = buildNotificationTitle(event.getType(), event.getStatus());
+            String title = buildNotificationTitle(transaction.getType(), transaction.getStatus());
             // tao notification event
             NotificationEvent notificationEvent = NotificationEvent.builder()
                     .eventId(UUID.randomUUID().toString())
