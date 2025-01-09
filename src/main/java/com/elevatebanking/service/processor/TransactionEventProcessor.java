@@ -540,10 +540,12 @@ public class TransactionEventProcessor {
 
     private void updateTransactionStatus(String transactionId, TransactionStatus status) {
         try {
-            Transaction transaction = transactionRepository.findById(transactionId)
+            transactionRepository.findById(transactionId)
                     .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
-            transaction.setStatus(status);
-            transactionRepository.save(transaction);
+//            transaction.setStatus(status);
+//            transactionRepository.save(transaction);
+            transactionRepository.updateStatus(transactionId, status);
+            log.info("Transaction status updated: {} - {}", transactionId, status);
         } catch (Exception e) {
             log.error("Error updating transaction status: {} - {}", transactionId, e.getMessage());
         }

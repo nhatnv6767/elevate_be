@@ -97,4 +97,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             "left join fetch t.toAccount ta left join fetch ta.user where t.id = :id")
     Optional<Transaction> findByIdForUpdate(@Param("id") String id);
 
+    @Query("UPDATE Transaction t SET t.status = :status WHERE t.id = :transactionId")
+    void updateStatus(String transactionId, TransactionStatus status);
 }
