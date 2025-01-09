@@ -370,7 +370,6 @@ public class TransactionServiceImpl implements ITransactionService {
 
             // 3.  execute transfer with retry mechanism
             executeTransferWithRetry(transaction);
-//            transaction = completeTransaction(transaction);
             return mapToTransactionResponse(transaction);
 
         } catch (Exception e) {

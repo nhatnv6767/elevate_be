@@ -281,6 +281,9 @@ public class TransactionEventProcessor {
             event.setNextRetryAt(LocalDateTime.now().plusSeconds(backoffInterval));
             sendToDLQ(event, "Retryable error: " + e.getMessage());
         }
+        if (event.isRetryable()) {
+            sendToRetryTopic(event);
+        }
         ack.acknowledge();
 
     }
