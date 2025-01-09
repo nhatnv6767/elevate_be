@@ -269,6 +269,7 @@ public class TransactionEventProcessor {
         event.addProcessStep("ERROR_HANDLING: " + e.getMessage());
         if (e instanceof NonRetryableException || !event.isRetryable()) {
             event.addProcessStep("NON_RETRYABLE_ERROR");
+            log.error("Non-retryable error processing event checking: {} - {}", event.getTransactionId(), e.getMessage());
             sendToDLQ(event, "Non-retryable error: " + e.getMessage());
             updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
             sendFailureNotification(event);
@@ -517,13 +518,6 @@ public class TransactionEventProcessor {
     private void sendToDLQ(TransactionEvent event, String reason) {
         try {
             event.addProcessStep("SENT_TO_DLQ: " + reason);
-            // kafkaTemplate.send(DLQ_TOPIC, event.getTransactionId(),
-            // event).whenComplete((result, ex) -> {
-            // if (ex != null) {
-            // log.error("Error sending DLQ: {} - {}", event.getTransactionId(),
-            // ex.getMessage());
-            // }
-            // });
             kafkaEventSender.sendWithRetry(DLQ_TOPIC, event.getTransactionId(), event);
             // TODO: Update transaction status to FAILED
             updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
