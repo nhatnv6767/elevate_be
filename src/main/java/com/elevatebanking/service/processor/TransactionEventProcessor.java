@@ -162,7 +162,7 @@ public class TransactionEventProcessor {
 
         if (currentStatus == TransactionStatus.COMPLETED) {
             log.info("Transaction already completed, ignoring event: {}", event.getTransactionId());
-            return false;
+            return event.getStatus() == TransactionStatus.COMPLETED;
         }
 
         switch (currentStatus) {
@@ -666,7 +666,7 @@ public class TransactionEventProcessor {
         StringBuilder message = new StringBuilder();
         switch (event.getType()) {
             case TRANSFER:
-                message.append(String.format("Transfer of %s from account %s to account %s completed successfully.",
+                message.append(String.format("Transfer of $%s from account %s to account %s completed successfully.",
                         event.getAmount(),
                         event.getFromAccount().getAccountNumber(),
                         event.getToAccount().getAccountNumber()));
