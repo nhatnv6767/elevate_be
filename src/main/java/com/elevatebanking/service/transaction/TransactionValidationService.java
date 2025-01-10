@@ -181,17 +181,21 @@ public class TransactionValidationService {
     }
 
     private void validateDailyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
+        String currentDateStr = LocalDate.now().toString();
         String cacheKey = "daily_total:" + userId;
         BigDecimal dailyTotal = getCachedOrCalculateTotal(
                 cacheKey,
                 () -> calculateDailyTotal(userId),
                 1,
                 TimeUnit.DAYS);
+        BigDecimal newTotal = dailyTotal.add(amount);
 
         if (dailyTotal.add(amount).compareTo(limits.getDailyLimit()) > 0) {
             throw new TransactionLimitExceededException(
                     String.format("Daily transfer limit exceeded. Current limit: %s", limits.getDailyLimit()));
         }
+
+        redisTemplate.opsForValue().set(cacheKey + ":" + currentDateStr, newTotal.toString(), 1, TimeUnit.DAYS);
     }
 
     private void validateMonthlyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
@@ -210,12 +214,17 @@ public class TransactionValidationService {
 
     private BigDecimal getCachedOrCalculateTotal(String cacheKey, Supplier<BigDecimal> calculator,
                                                  long duration, TimeUnit timeUnit) {
-        String cachedValue = redisTemplate.opsForValue().get(cacheKey);
+        String currentDateStr = LocalDate.now().toString();
+        String fullCacheKey = cacheKey + ":" + currentDateStr;
+        String cachedValue = redisTemplate.opsForValue().get(fullCacheKey);
         if (cachedValue != null) {
-            return new BigDecimal(cachedValue);
+            BigDecimal currentTotal = new BigDecimal(cachedValue);
+            log.debug("Found cache total for key {}: {}", fullCacheKey, currentTotal);
+            return currentTotal;
         }
         BigDecimal calculated = calculator.get();
-        redisTemplate.opsForValue().set(cacheKey, calculated.toString(), duration, timeUnit);
+        redisTemplate.opsForValue().set(fullCacheKey, calculated.toString(), duration, timeUnit);
+        log.debug("Calculated total for key {}: {}", fullCacheKey, calculated);
         return calculated;
     }
 
