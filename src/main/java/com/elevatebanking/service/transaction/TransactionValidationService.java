@@ -199,17 +199,21 @@ public class TransactionValidationService {
     }
 
     private void validateMonthlyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
+        String currentMonth = YearMonth.now().toString();
         String cacheKey = "monthly_total:" + userId;
         BigDecimal monthlyTotal = getCachedOrCalculateTotal(
                 cacheKey,
                 () -> calculateMonthlyTotal(userId),
                 30,
                 TimeUnit.DAYS);
+        BigDecimal newTotal = monthlyTotal.add(amount);
 
         if (monthlyTotal.add(amount).compareTo(limits.getMonthlyLimit()) > 0) {
             throw new TransactionLimitExceededException(
                     String.format("Monthly transfer limit exceeded. Current limit: %s", limits.getMonthlyLimit()));
         }
+        
+        redisTemplate.opsForValue().set(cacheKey + ":" + currentMonth, newTotal.toString(), 30, TimeUnit.DAYS);
     }
 
     private BigDecimal getCachedOrCalculateTotal(String cacheKey, Supplier<BigDecimal> calculator,
