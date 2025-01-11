@@ -2,6 +2,8 @@ package com.elevatebanking.controller;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.log.AuditLog;
+import com.elevatebanking.entity.transaction.Transaction;
+import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.exception.TransactionLimitExceededException;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
@@ -186,6 +188,28 @@ public class TransferController {
     @GetMapping("/{transferId}")
     public ResponseEntity<TransactionResponse> getTransferStatus(@PathVariable String transferId) {
         log.debug("Fetching transfer status for ID: {}", transferId);
+
+        // get current user id
+        String userId = securityUtils.getCurrentUserId();
+        // get the transaction
+
+        Transaction transaction = transactionService.getTransactionById(transferId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found " + transferId));
+
+        // check if user is involved in the transaction
+        boolean isInvolved = false;
+        if (transaction.getFromAccount() != null) {
+            isInvolved = accountService.isAccountOwner(transaction.getFromAccount().getId(), userId);
+        }
+        if (!isInvolved && transaction.getToAccount() != null) {
+            isInvolved = accountService.isAccountOwner(transaction.getToAccount().getId(), userId);
+        }
+
+        if (!isInvolved) {
+            log.warn("Unauthorized access attempt - userId: {}, transferId: {}", userId, transferId);
+            throw new UnauthorizedException("Not authorized to view this transfer");
+        }
+
         TransactionResponse response = transactionService.getTransaction(transferId);
         return ResponseEntity.ok(response);
     }
