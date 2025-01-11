@@ -3,6 +3,8 @@ package com.elevatebanking.repository;
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.transaction.Transaction;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -27,8 +29,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("status") TransactionStatus status,
             @Param("timeout") LocalDateTime timeout);
 
-    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.id = :accountId) AND t.createdAt BETWEEN :startDate AND :endDate ORDER BY t.createdAt DESC")
-    List<Transaction> findTransactionsByAccountAndDateRange(
+    @Query("SELECT t FROM Transaction t WHERE " +
+            "(t.fromAccount.id = :accountId OR t.toAccount.id = :accountId) " +
+            "AND t.createdAt BETWEEN :startDate AND :endDate " +
+            "ORDER BY t.createdAt DESC")
+    Page<Transaction> findTransactionsByAccountAndDateRange(
+            @Param("accountId") String accountId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate, Pageable pageable);
+
+
+    @Query("SELECT t FROM Transaction t WHERE " +
+            "(t.fromAccount.id = :accountId OR t.toAccount.id = :accountId) " +
+            "AND t.createdAt BETWEEN :startDate AND :endDate " +
+            "ORDER BY t.createdAt DESC")
+    List<Transaction> findTransactionsByAccountAndDateRangeWithoutPaging(
             @Param("accountId") String accountId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);

@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -515,18 +518,37 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate,
-                                                                  LocalDateTime endDate) {
-        List<Transaction> transactions;
-        if (startDate != null && endDate != null) {
-            transactions = transactionRepository.findTransactionsByAccountAndDateRange(accountId, startDate, endDate);
-        } else {
-            transactions = transactionRepository.findTransactionsByAccountId(accountId);
+    public Page<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate,
+                                                                  LocalDateTime endDate, Pageable pageable) {
+        startDate = startDate != null ? startDate : LocalDateTime.now().minusMonths(1);
+        endDate = endDate != null ? endDate : LocalDateTime.now();
+
+        log.debug("Fetching transaction history for account: {}, start date: {}, end date: {}", accountId, startDate, endDate);
+
+        Page<Transaction> transactions = transactionRepository.findTransactionsByAccountAndDateRange(accountId, startDate, endDate, pageable);
+
+        if (transactions == null) {
+            log.error("Null response from repository for account: {}, start date: {}, end date: {}", accountId, startDate, endDate);
+            throw new RuntimeException("Error fetching transaction history");
         }
 
-        return transactions.stream()
-                .map(this::mapToTransactionHistoryResponse)
-                .collect(Collectors.toList());
+        if (startDate.isAfter(endDate)) {
+            throw new InvalidOperationException("Start date cannot be after end date");
+        }
+
+        if (ChronoUnit.MONTHS.between(startDate, endDate) > 12) {
+            throw new InvalidOperationException("Date range cannot exceed 12 months");
+        }
+
+        return transactions.map(transaction -> {
+            try {
+                return mapToTransactionHistoryResponse(transaction);
+            } catch (Exception e) {
+                log.error("Error mapping transaction: {} - {}", transaction.getId(), e.getMessage());
+                throw new RuntimeException("Error mapping transaction", e);
+            }
+
+        });
     }
 
     private TransactionResponse mapToTransactionResponse(Transaction transaction) {
@@ -548,18 +570,28 @@ public class TransactionServiceImpl implements ITransactionService {
         TransactionHistoryResponse.TransactionParty toParty = null;
 
         if (transaction.getFromAccount() != null) {
+            fromParty = TransactionHistoryResponse.TransactionParty.builder()
+                    .accountId(transaction.getFromAccount().getId())
+                    .accountNumber(transaction.getFromAccount().getAccountNumber())
+                    .accountName(transaction.getFromAccount().getUser() != null ? transaction.getFromAccount().getUser().getFullName() : null)
+                    .balanceAfter(transaction.getFromAccount().getBalance())
+                    .build();
+        }
+
+        if (transaction.getToAccount() != null) {
             toParty = TransactionHistoryResponse.TransactionParty.builder()
                     .accountId(transaction.getToAccount().getId())
                     .accountNumber(transaction.getToAccount().getAccountNumber())
-                    .accountName(transaction.getToAccount().getUser().getFullName())
+                    .accountName(transaction.getToAccount().getUser() != null ? transaction.getToAccount().getUser().getFullName() : null)
+                    .balanceAfter(transaction.getToAccount().getBalance())
                     .build();
         }
 
         return TransactionHistoryResponse.builder()
                 .transactionId(transaction.getId())
-                .type(transaction.getType().name())
+                .type(transaction.getType() != null ? transaction.getType().name() : null)
                 .amount(transaction.getAmount())
-                .status(transaction.getStatus().name())
+                .status(transaction.getStatus() != null ? transaction.getStatus().name() : null)
                 .description(transaction.getDescription())
                 .timestamp(transaction.getCreatedAt())
                 .from(fromParty)

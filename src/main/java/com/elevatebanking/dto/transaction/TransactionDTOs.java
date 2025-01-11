@@ -95,6 +95,12 @@ public class TransactionDTOs {
         private TransactionParty from;
         private TransactionParty to;
 
+        private String referenceNumber;
+        private BigDecimal balanceBefore;
+        private BigDecimal balanceAfter;
+        private String remarks;
+        private String transactionCode;
+
 
         @Data
         @Builder
@@ -104,11 +110,14 @@ public class TransactionDTOs {
             private String accountId;
             private String accountNumber;
             private String accountName;
+            private BigDecimal balanceBefore;
+            private BigDecimal balanceAfter;
         }
 
     }
 
-    @Data
+    @Getter
+    @Setter
 //    @Builder
     @NoArgsConstructor
     @AllArgsConstructor

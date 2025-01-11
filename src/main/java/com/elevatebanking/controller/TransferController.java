@@ -18,6 +18,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +28,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -188,34 +192,61 @@ public class TransferController {
 
     @Operation(summary = "Get user's recent transfers")
     @GetMapping("/history")
-    public ResponseEntity<List<TransactionHistoryResponse>> getTransferHistory(
+    public ResponseEntity<Page<TransactionHistoryResponse>> getTransferHistory(
             @RequestParam String accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
-        // verify account ownership
-        String userId = securityUtils.getCurrentUserId();
-        auditLogService.logEvent(
-                userId,
-                "VIEW_TRANSFER_HISTORY",
-                "ACCOUNT",
-                accountId,
-                null,
-                Map.of("startDate", startDate, "endDate", endDate),
-                AuditLog.AuditStatus.SUCCESS);
-        if (!accountService.isAccountOwner(accountId, userId)) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @PageableDefault(size = 20) Pageable page) {
+
+        try {
+            if (startDate != null && endDate != null) {
+                if (startDate.isAfter(endDate)) {
+                    throw new IllegalArgumentException("startDate must be before endDate");
+                }
+                if (endDate.isAfter(LocalDateTime.now())) {
+                    throw new IllegalArgumentException("endDate must be before current time");
+                }
+                if (ChronoUnit.DAYS.between(startDate, endDate) > 365) {
+                    throw new IllegalArgumentException("Date range must be within 365 days");
+                }
+            }
+            log.debug("Fetching transfer history for account: {}", accountId);
+            // verify account ownership
+            String userId = securityUtils.getCurrentUserId();
+            log.debug("Current userId: {}", userId);
             auditLogService.logEvent(
                     userId,
-                    "UNAUTHORIZED_HISTORY_ACCESS",
+                    "VIEW_TRANSFER_HISTORY",
                     "ACCOUNT",
                     accountId,
                     null,
                     Map.of("startDate", startDate, "endDate", endDate),
+                    AuditLog.AuditStatus.SUCCESS);
+            if (!accountService.isAccountOwner(accountId, userId)) {
+                auditLogService.logEvent(
+                        userId,
+                        "UNAUTHORIZED_HISTORY_ACCESS",
+                        "ACCOUNT",
+                        accountId,
+                        null,
+                        Map.of("startDate", startDate, "endDate", endDate),
+                        AuditLog.AuditStatus.FAILED);
+                throw new UnauthorizedException("Not authorized to view this account's transfers");
+            }
+            Page<TransactionHistoryResponse> history = transactionService.getTransactionHistory(accountId, startDate,
+                    endDate, page);
+            return ResponseEntity.ok(history);
+        } catch (Exception e) {
+            auditLogService.logEvent(
+                    securityUtils.getCurrentUserId(),
+                    "VIEW_TRANSFER_HISTORY_FAILED",
+                    "ACCOUNT",
+                    accountId,
+                    null,
+                    Map.of("error", e.getMessage()),
                     AuditLog.AuditStatus.FAILED);
-            throw new UnauthorizedException("Not authorized to view this account's transfers");
+            throw e;
         }
-        List<TransactionHistoryResponse> history = transactionService.getTransactionHistory(accountId, startDate,
-                endDate);
-        return ResponseEntity.ok(history);
     }
 
     @Operation(summary = "Cancel a pending transfer")

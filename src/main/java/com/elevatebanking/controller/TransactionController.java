@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -90,10 +92,13 @@ public class TransactionController {
     @Operation(summary = "Get transaction history with optional date range")
     @GetMapping("/history")
     @PreAuthorize("hasAnyRole('USER', 'TELLER', 'ADMIN')")
-    public ResponseEntity<List<TransactionHistoryResponse>> getTransactionHistory(
+    public ResponseEntity<Page<TransactionHistoryResponse>> getTransactionHistory(
             @RequestParam String accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(defaultValue = "0") Pageable page
+
+    ) {
 
         String userId = securityUtils.getCurrentUserId();
         if (!accountService.isAccountOwner(accountId, userId)) {
@@ -101,7 +106,7 @@ public class TransactionController {
         }
 
         log.info("Fetching transaction history fro account: {}, from: {}, to: {}", accountId, startDate, endDate);
-        return ResponseEntity.ok(transactionService.getTransactionHistory(accountId, startDate, endDate));
+        return ResponseEntity.ok(transactionService.getTransactionHistory(accountId, startDate, endDate, page));
     }
 
     private boolean hasAdminOrTellerRole() {

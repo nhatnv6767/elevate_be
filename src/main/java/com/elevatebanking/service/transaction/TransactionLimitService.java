@@ -179,7 +179,7 @@ public class TransactionLimitService {
             // if not in cache , calculate from db
             LocalDateTime startOfMonth = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
             monthlyTotal = transactionRepository
-                    .findTransactionsByAccountAndDateRange(userId, startOfMonth, LocalDateTime.now())
+                    .findTransactionsByAccountAndDateRangeWithoutPaging(userId, startOfMonth, LocalDateTime.now())
                     .stream()
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
@@ -207,7 +207,7 @@ public class TransactionLimitService {
             // if not in cache , calculate from db
             LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
             dailyTotal = transactionRepository
-                    .findTransactionsByAccountAndDateRange(userId, startOfDay, LocalDateTime.now())
+                    .findTransactionsByAccountAndDateRangeWithoutPaging(userId, startOfDay, LocalDateTime.now())
                     .stream()
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
