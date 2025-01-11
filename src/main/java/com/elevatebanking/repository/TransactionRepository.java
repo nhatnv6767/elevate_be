@@ -27,7 +27,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             @Param("status") TransactionStatus status,
             @Param("timeout") LocalDateTime timeout);
 
-    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.id = :accountId OR t.toAccount.id = :accountId) AND t.createdAt BETWEEN :startDate AND :endDate ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.id = :accountId) AND t.createdAt BETWEEN :startDate AND :endDate ORDER BY t.createdAt DESC")
     List<Transaction> findTransactionsByAccountAndDateRange(
             @Param("accountId") String accountId,
             @Param("startDate") LocalDateTime startDate,
@@ -72,7 +72,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             TransactionStatus status,
             LocalDateTime since);
 
-    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.user.id = :userId or t.toAccount.user.id = :userId) AND t.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.user.id = :userId) AND t.createdAt BETWEEN :startDate AND :endDate")
     List<Transaction> findTransactionsByUserAndDateRange(
             @Param("userId") String userId,
             @Param("startDate") LocalDateTime startDate,
@@ -83,7 +83,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
     @Query("""
                 SELECT COUNT(t) FROM Transaction t
-                WHERE (t.fromAccount.user.id = :userId OR t.toAccount.user.id = :userId)
+                WHERE (t.fromAccount.user.id = :userId)
                 AND t.createdAt BETWEEN :startTime AND :endTime
                 AND t.status = 'COMPLETED'
             """)
