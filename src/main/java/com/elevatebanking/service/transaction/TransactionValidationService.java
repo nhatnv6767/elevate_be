@@ -150,11 +150,12 @@ public class TransactionValidationService {
             LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
             List<Transaction> dailyTransactions = transactionRepository
                     .findTransactionsByUserAndDateRange(userId, startOfDay, LocalDateTime.now());
-
-            return dailyTransactions.stream()
+            BigDecimal total = dailyTransactions.stream()
                     .filter(transaction -> transaction.getStatus() == TransactionStatus.COMPLETED)
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            log.debug("Calculated daily total for user {}: {}", userId, total);
+            return total;
         } catch (Exception e) {
             log.error("Error calculating daily total for user {}: {}", userId, e.getMessage());
             throw new InvalidOperationException("Could not calculate daily transaction total");
@@ -181,8 +182,8 @@ public class TransactionValidationService {
     }
 
     private void validateDailyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
-        String currentDateStr = LocalDate.now().toString();
-        String cacheKey = "daily_total:" + userId;
+        LocalDate today = LocalDate.now();
+        String cacheKey = String.format("daily_total:%s:%s", userId, today);
         BigDecimal dailyTotal = getCachedOrCalculateTotal(
                 cacheKey,
                 () -> calculateDailyTotal(userId),
@@ -195,12 +196,12 @@ public class TransactionValidationService {
                     String.format("Daily transfer limit exceeded. Current limit: %s", limits.getDailyLimit()));
         }
 
-        redisTemplate.opsForValue().set(cacheKey + ":" + currentDateStr, newTotal.toString(), 1, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(cacheKey, newTotal.toString(), 1, TimeUnit.DAYS);
     }
 
     private void validateMonthlyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
-        String currentMonth = YearMonth.now().toString();
-        String cacheKey = "monthly_total:" + userId;
+        YearMonth currentMonth = YearMonth.now();
+        String cacheKey = String.format("monthly_total:%s:%s", userId, currentMonth);
         BigDecimal monthlyTotal = getCachedOrCalculateTotal(
                 cacheKey,
                 () -> calculateMonthlyTotal(userId),
@@ -212,14 +213,13 @@ public class TransactionValidationService {
             throw new TransactionLimitExceededException(
                     String.format("Monthly transfer limit exceeded. Current limit: %s", limits.getMonthlyLimit()));
         }
-        
-        redisTemplate.opsForValue().set(cacheKey + ":" + currentMonth, newTotal.toString(), 30, TimeUnit.DAYS);
+
+        redisTemplate.opsForValue().set(cacheKey, newTotal.toString(), 30, TimeUnit.DAYS);
     }
 
-    private BigDecimal getCachedOrCalculateTotal(String cacheKey, Supplier<BigDecimal> calculator,
+    private BigDecimal getCachedOrCalculateTotal(String fullCacheKey, Supplier<BigDecimal> calculator,
                                                  long duration, TimeUnit timeUnit) {
-        String currentDateStr = LocalDate.now().toString();
-        String fullCacheKey = cacheKey + ":" + currentDateStr;
+
         String cachedValue = redisTemplate.opsForValue().get(fullCacheKey);
         if (cachedValue != null) {
             BigDecimal currentTotal = new BigDecimal(cachedValue);
@@ -580,6 +580,38 @@ public class TransactionValidationService {
             }
         } catch (Exception e) {
             log.error("Error monitoring lock status", e);
+        }
+    }
+
+    private void verifyTransactionTotals(String userId) {
+        YearMonth currentMonth = YearMonth.now();
+        LocalDate today = LocalDate.now();
+
+        String dailyKey = String.format("daily_total:%s:%s", userId, today);
+        String monthlyKey = String.format("monthly_total:%s:%s", userId, currentMonth);
+
+        BigDecimal cachedDailyTotal = new BigDecimal(Objects.requireNonNull(redisTemplate.opsForValue().get(dailyKey)));
+        BigDecimal cachedMonthlyTotal = new BigDecimal(Objects.requireNonNull(redisTemplate.opsForValue().get(monthlyKey)));
+        BigDecimal calculatedDailyTotal = calculateDailyTotal(userId);
+        BigDecimal calculatedMonthlyTotal = calculateMonthlyTotal(userId);
+
+        if (!cachedDailyTotal.equals(calculatedDailyTotal)) {
+            log.warn("Daily total mismatch for user {}: Cached: {}, Calculated: {}", userId, cachedDailyTotal, calculatedDailyTotal);
+            redisTemplate.opsForValue().set(dailyKey, cachedDailyTotal.toString(), 1, TimeUnit.DAYS);
+        }
+        if (!cachedMonthlyTotal.equals(calculatedMonthlyTotal)) {
+            log.warn("Monthly total mismatch for user {}: Cached: {}, Calculated: {}", userId, cachedMonthlyTotal, calculatedMonthlyTotal);
+            redisTemplate.opsForValue().set(monthlyKey, cachedMonthlyTotal.toString(), 30, TimeUnit.DAYS);
+        }
+    }
+
+    @Scheduled(fixedRate = 300000) // 5 minutes
+    public void scheduledTotalVerification() {
+        try {
+            String currentUserId = getCurrentUserId();
+            verifyTransactionTotals(currentUserId);
+        } catch (Exception e) {
+            log.error("Error in scheduled total verification: {}", e.getMessage());
         }
     }
 
