@@ -214,15 +214,13 @@ public class TransferController {
             // verify account ownership
             String userId = securityUtils.getCurrentUserId();
             log.debug("Current userId: {}", userId);
-            auditLogService.logEvent(
-                    userId,
-                    "VIEW_TRANSFER_HISTORY",
-                    "ACCOUNT",
-                    accountId,
-                    null,
-                    Map.of("startDate", startDate, "endDate", endDate),
-                    AuditLog.AuditStatus.SUCCESS);
-            if (!accountService.isAccountOwner(accountId, userId)) {
+
+            // log account ownership check
+            boolean isOwner = accountService.isAccountOwner(accountId, userId);
+            log.debug("Is account owner: {}", isOwner);
+
+            if (!isOwner) {
+                log.warn("Unauthorized access attempt - userId: {}, accountId: {}", userId, accountId);
                 auditLogService.logEvent(
                         userId,
                         "UNAUTHORIZED_HISTORY_ACCESS",
@@ -233,8 +231,19 @@ public class TransferController {
                         AuditLog.AuditStatus.FAILED);
                 throw new UnauthorizedException("Not authorized to view this account's transfers");
             }
+
+//            auditLogService.logEvent(
+//                    userId,
+//                    "VIEW_TRANSFER_HISTORY",
+//                    "ACCOUNT",
+//                    accountId,
+//                    null,
+//                    Map.of("startDate", startDate, "endDate", endDate),
+//                    AuditLog.AuditStatus.SUCCESS);
+            log.debug("Fetching transfer history for account: {}", accountId);
             Page<TransactionHistoryResponse> history = transactionService.getTransactionHistory(accountId, startDate,
                     endDate, page);
+            log.debug("Found {} transactions for account: {}", history.getTotalElements(), accountId);
             return ResponseEntity.ok(history);
         } catch (Exception e) {
             auditLogService.logEvent(
