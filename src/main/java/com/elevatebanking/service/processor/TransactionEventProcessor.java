@@ -76,6 +76,12 @@ public class TransactionEventProcessor {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+
+        if (!lock.tryLock()) {
+            log.warn("Cannot acquire lock for transaction: {}", event.getTransactionId());
+            ack.acknowledge();
+            return;
+        }
         if (lock.tryLock()) {
             try {
                 event.addProcessStep("EVENT_RECEIVED");
@@ -93,6 +99,12 @@ public class TransactionEventProcessor {
 
                 if (!isValidStateTransition(transaction.getStatus(), event)) {
                     handleInvalidTransition(event, ack);
+                    return;
+                }
+
+                if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+                    log.info("Transaction already completed: {}", event.getTransactionId());
+                    ack.acknowledge();
                     return;
                 }
 

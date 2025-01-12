@@ -324,9 +324,6 @@ public class TransactionValidationService {
     }
 
     private void validateFrequencyWithRedis(String userId, TransactionLimitConfig.TierLimit limits) {
-        String dayKey = KEY_PREFIX + userId + ":" + LocalDate.now();
-
-        // Dùng lockKey để đảm bảo atomic operation
         String lockKey = "transaction_frequency:" + userId;
 
         try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, this)) {
@@ -337,38 +334,23 @@ public class TransactionValidationService {
             }
 
             executeWithRetry(() -> {
-                redisTemplate.execute(new SessionCallback<List<Object>>() {
-                    @Override
-                    public List<Object> execute(RedisOperations operations) throws DataAccessException {
-                        try {
-                            operations.watch(dayKey.getBytes());
-                            operations.multi();
+                String dayKey = KEY_PREFIX + userId + ":" + LocalDate.now();
+                String countStr = redisTemplate.opsForValue().get(dayKey);
+                long count = (countStr != null) ? Long.parseLong(countStr) : 0;
 
-                            String countStr = (String) operations.opsForValue().get(dayKey);
-                            long count = (countStr != null) ? Long.parseLong(countStr) : 0;
-                            count++;
+                if (count >= limits.getMaxTransactionsPerDay()) {
+                    throw new TransactionLimitExceededException(
+                            String.format("Exceeded maximum transactions per day of %d",
+                                    limits.getMaxTransactionsPerDay()));
+                }
 
-                            if (count > limits.getMaxTransactionsPerDay()) {
-                                operations.discard();
-                                throw new TransactionLimitExceededException(
-                                        String.format("Exceeded maximum transactions per day of %d",
-                                                limits.getMaxTransactionsPerDay()));
-                            }
+                redisTemplate.opsForValue().increment(dayKey);
+                redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
 
-                            operations.opsForValue().set(dayKey, String.valueOf(count));
-                            operations.expire(dayKey, 1, TimeUnit.DAYS);
-                            return operations.exec();
-                        } catch (Exception e) {
-                            operations.discard();
-                            throw e;
-                        }
-                    }
-                });
                 return null;
             }, "validateFrequencyWithRedis");
-
         } catch (Exception e) {
-            log.error("Error in Redis transaction frequency validation", e);
+            log.error("Error in Redis validation", e);
             validateTransactionFrequencyFromDB(userId, limits);
         }
     }

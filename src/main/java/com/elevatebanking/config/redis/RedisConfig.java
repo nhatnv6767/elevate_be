@@ -6,6 +6,7 @@ import io.lettuce.core.resource.DefaultClientResources;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,11 +14,13 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.*;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
-import java.util.List;
+import java.util.*;
 
 @Configuration
 public class RedisConfig {
@@ -81,14 +84,8 @@ public class RedisConfig {
     }
 
     @Slf4j
-    private static class MetricRedisConnection implements RedisConnection {
-        private final RedisConnection delegate;
-        private final MeterRegistry meterRegistry;
-
-        public MetricRedisConnection(RedisConnection delegate, MeterRegistry meterRegistry) {
-            this.delegate = delegate;
-            this.meterRegistry = meterRegistry;
-        }
+    private record MetricRedisConnection(RedisConnection delegate,
+                                         MeterRegistry meterRegistry) implements RedisConnection {
 
         @Override
         public void close() throws DataAccessException {
@@ -113,7 +110,7 @@ public class RedisConfig {
         }
 
         @Override
-        public Object getNativeConnection() {
+        public @NotNull Object getNativeConnection() {
             return delegate.getNativeConnection();
         }
 
@@ -133,77 +130,77 @@ public class RedisConfig {
         }
 
         @Override
-        public List<Object> closePipeline() throws RedisPipelineException {
+        public @NotNull List<Object> closePipeline() throws RedisPipelineException {
             return delegate.closePipeline();
         }
 
         @Override
-        public RedisSentinelConnection getSentinelConnection() {
+        public @NotNull RedisSentinelConnection getSentinelConnection() {
             return delegate.getSentinelConnection();
         }
 
         @Override
-        public Object execute(String command, byte[]... args) {
+        public Object execute(@NotNull String command, byte[] @NotNull ... args) {
             return delegate.execute(command, args);
         }
 
         @Override
-        public RedisCommands commands() {
+        public @NotNull RedisCommands commands() {
             return delegate.commands();
         }
 
         @Override
-        public RedisGeoCommands geoCommands() {
+        public @NotNull RedisGeoCommands geoCommands() {
             return delegate.geoCommands();
         }
 
         @Override
-        public RedisHashCommands hashCommands() {
+        public @NotNull RedisHashCommands hashCommands() {
             return delegate.hashCommands();
         }
 
         @Override
-        public RedisHyperLogLogCommands hyperLogLogCommands() {
+        public @NotNull RedisHyperLogLogCommands hyperLogLogCommands() {
             return delegate.hyperLogLogCommands();
         }
 
         @Override
-        public RedisKeyCommands keyCommands() {
+        public @NotNull RedisKeyCommands keyCommands() {
             return delegate.keyCommands();
         }
 
         @Override
-        public RedisListCommands listCommands() {
+        public @NotNull RedisListCommands listCommands() {
             return delegate.listCommands();
         }
 
         @Override
-        public RedisSetCommands setCommands() {
+        public @NotNull RedisSetCommands setCommands() {
             return delegate.setCommands();
         }
 
         @Override
-        public RedisScriptingCommands scriptingCommands() {
+        public @NotNull RedisScriptingCommands scriptingCommands() {
             return delegate.scriptingCommands();
         }
 
         @Override
-        public RedisServerCommands serverCommands() {
+        public @NotNull RedisServerCommands serverCommands() {
             return delegate.serverCommands();
         }
 
         @Override
-        public RedisStreamCommands streamCommands() {
+        public @NotNull RedisStreamCommands streamCommands() {
             return delegate.streamCommands();
         }
 
         @Override
-        public RedisStringCommands stringCommands() {
+        public @NotNull RedisStringCommands stringCommands() {
             return delegate.stringCommands();
         }
 
         @Override
-        public RedisZSetCommands zSetCommands() {
+        public @NotNull RedisZSetCommands zSetCommands() {
             return delegate.zSetCommands();
         }
 
@@ -213,9 +210,9 @@ public class RedisConfig {
         }
 
         @Override
-        public byte[] echo(byte[] message) {
+        public byte[] echo(byte @NotNull [] message) {
             return delegate.echo(message);
-//            return new byte[0];
+            // return new byte[0];
         }
 
         @Override
@@ -234,17 +231,17 @@ public class RedisConfig {
         }
 
         @Override
-        public Long publish(byte[] channel, byte[] message) {
+        public Long publish(byte @NotNull [] channel, byte @NotNull [] message) {
             return delegate.publish(channel, message);
         }
 
         @Override
-        public void subscribe(MessageListener listener, byte[]... channels) {
+        public void subscribe(@NotNull MessageListener listener, byte[] @NotNull ... channels) {
             delegate.subscribe(listener, channels);
         }
 
         @Override
-        public void pSubscribe(MessageListener listener, byte[]... patterns) {
+        public void pSubscribe(@NotNull MessageListener listener, byte[] @NotNull ... patterns) {
             delegate.pSubscribe(listener, patterns);
         }
 
@@ -254,7 +251,7 @@ public class RedisConfig {
         }
 
         @Override
-        public List<Object> exec() {
+        public @NotNull List<Object> exec() {
             return delegate.exec();
         }
 
@@ -275,17 +272,11 @@ public class RedisConfig {
     }
 
     @Slf4j
-    private static class MetricRedisConnectionFactory implements RedisConnectionFactory {
-        private final RedisConnectionFactory delegate;
-        private final MeterRegistry meterRegistry;
-
-        public MetricRedisConnectionFactory(RedisConnectionFactory delegate, MeterRegistry meterRegistry) {
-            this.delegate = delegate;
-            this.meterRegistry = meterRegistry;
-        }
+    private record MetricRedisConnectionFactory(RedisConnectionFactory delegate,
+                                                MeterRegistry meterRegistry) implements RedisConnectionFactory {
 
         @Override
-        public RedisConnection getConnection() {
+        public @NotNull RedisConnection getConnection() {
             Timer.Sample sample = Timer.start(meterRegistry);
             try {
                 RedisConnection connection = delegate.getConnection();
@@ -304,22 +295,310 @@ public class RedisConfig {
 
         @Override
         public boolean getConvertPipelineAndTxResults() {
-            return false;
+            return delegate.getConvertPipelineAndTxResults();
         }
 
         @Override
-        public RedisClusterConnection getClusterConnection() {
-            return null;
+        public @NotNull RedisClusterConnection getClusterConnection() {
+            delegate.getClusterConnection();
+            return new MetricRedisClusterConnection(delegate.getClusterConnection(), meterRegistry);
         }
 
         @Override
-        public RedisSentinelConnection getSentinelConnection() {
-            return null;
+        public @NotNull RedisSentinelConnection getSentinelConnection() {
+            delegate.getSentinelConnection();
+            return delegate.getSentinelConnection();
         }
 
         @Override
         public DataAccessException translateExceptionIfPossible(RuntimeException ex) {
-            return null;
+            return delegate.translateExceptionIfPossible(ex);
+        }
+    }
+
+    @Slf4j
+    private record MetricRedisClusterConnection(RedisClusterConnection delegate,
+                                                MeterRegistry meterRegistry) implements RedisClusterConnection {
+
+        @Override
+        public @NotNull String ping(@NotNull RedisClusterNode node) {
+            return Objects.requireNonNull(delegate.ping(node));
+        }
+
+        @Override
+        public @NotNull Set<byte[]> keys(@NotNull RedisClusterNode node, byte[] pattern) {
+            return Objects.requireNonNull(delegate.keys(node, pattern));
+        }
+
+        @Override
+        public @NotNull Cursor<byte[]> scan(@NotNull RedisClusterNode node, @NotNull ScanOptions options) {
+            return delegate.scan(node, options);
+        }
+
+        @Override
+        public byte[] randomKey(@NotNull RedisClusterNode node) {
+            return delegate.randomKey(node);
+        }
+
+        @Override
+        public @NotNull RedisClusterCommands clusterCommands() {
+            return delegate.clusterCommands();
+        }
+
+        @Override
+        public @NotNull RedisCommands commands() {
+            return delegate.commands();
+        }
+
+        @Override
+        public @NotNull RedisGeoCommands geoCommands() {
+            return delegate.geoCommands();
+        }
+
+        @Override
+        public @NotNull RedisHashCommands hashCommands() {
+            return delegate.hashCommands();
+        }
+
+        @Override
+        public @NotNull RedisHyperLogLogCommands hyperLogLogCommands() {
+            return delegate.hyperLogLogCommands();
+        }
+
+        @Override
+        public @NotNull RedisKeyCommands keyCommands() {
+            return delegate.keyCommands();
+        }
+
+        @Override
+        public @NotNull RedisListCommands listCommands() {
+            return delegate.listCommands();
+        }
+
+        @Override
+        public @NotNull RedisSetCommands setCommands() {
+            return delegate.setCommands();
+        }
+
+        @Override
+        public @NotNull RedisScriptingCommands scriptingCommands() {
+            return delegate.scriptingCommands();
+        }
+
+        @Override
+        public @NotNull RedisClusterServerCommands serverCommands() {
+            return delegate.serverCommands();
+        }
+
+        @Override
+        public @NotNull RedisStreamCommands streamCommands() {
+            return delegate.streamCommands();
+        }
+
+        @Override
+        public @NotNull RedisStringCommands stringCommands() {
+            return delegate.stringCommands();
+        }
+
+        @Override
+        public @NotNull RedisZSetCommands zSetCommands() {
+            return delegate.zSetCommands();
+        }
+
+        @Override
+        public void close() throws DataAccessException {
+            delegate.close();
+        }
+
+        @Override
+        public boolean isClosed() {
+            return delegate.isClosed();
+        }
+
+        @Override
+        public @NotNull Object getNativeConnection() {
+            return delegate.getNativeConnection();
+        }
+
+        @Override
+        public boolean isQueueing() {
+            return delegate.isQueueing();
+        }
+
+        @Override
+        public boolean isPipelined() {
+            return delegate.isPipelined();
+        }
+
+        @Override
+        public void openPipeline() {
+            delegate.openPipeline();
+        }
+
+        @Override
+        public @NotNull List<Object> closePipeline() throws RedisPipelineException {
+            return delegate.closePipeline();
+        }
+
+        @Override
+        public @NotNull RedisSentinelConnection getSentinelConnection() {
+            return delegate.getSentinelConnection();
+        }
+
+        @Override
+        public @NotNull Iterable<RedisClusterNode> clusterGetNodes() {
+            return delegate.clusterGetNodes();
+        }
+
+        @Override
+        public @NotNull Collection<RedisClusterNode> clusterGetReplicas(@NotNull RedisClusterNode master) {
+            return delegate.clusterGetReplicas(master);
+        }
+
+        @Override
+        public @NotNull Map<RedisClusterNode, Collection<RedisClusterNode>> clusterGetMasterReplicaMap() {
+            return delegate.clusterGetMasterReplicaMap();
+        }
+
+        @Override
+        public @NotNull Integer clusterGetSlotForKey(byte[] key) {
+            return delegate.clusterGetSlotForKey(key);
+        }
+
+        @Override
+        public @NotNull RedisClusterNode clusterGetNodeForSlot(int slot) {
+            return delegate.clusterGetNodeForSlot(slot);
+        }
+
+        @Override
+        public @NotNull RedisClusterNode clusterGetNodeForKey(byte[] key) {
+            return delegate.clusterGetNodeForKey(key);
+        }
+
+        @Override
+        public @NotNull ClusterInfo clusterGetClusterInfo() {
+            return delegate.clusterGetClusterInfo();
+        }
+
+        @Override
+        public void clusterAddSlots(@NotNull RedisClusterNode node, int... slots) {
+            delegate.clusterAddSlots(node, slots);
+        }
+
+        @Override
+        public void clusterAddSlots(@NotNull RedisClusterNode node, @NotNull RedisClusterNode.SlotRange range) {
+            delegate.clusterAddSlots(node, range);
+        }
+
+        @Override
+        public @NotNull Long clusterCountKeysInSlot(int slot) {
+            return delegate.clusterCountKeysInSlot(slot);
+        }
+
+        @Override
+        public void clusterDeleteSlots(@NotNull RedisClusterNode node, int... slots) {
+            delegate.clusterDeleteSlots(node, slots);
+        }
+
+        @Override
+        public void clusterDeleteSlotsInRange(@NotNull RedisClusterNode node,
+                                              @NotNull RedisClusterNode.SlotRange range) {
+            delegate.clusterDeleteSlotsInRange(node, range);
+        }
+
+        @Override
+        public void clusterForget(@NotNull RedisClusterNode node) {
+            delegate.clusterForget(node);
+        }
+
+        @Override
+        public void clusterMeet(@NotNull RedisClusterNode node) {
+            delegate.clusterMeet(node);
+        }
+
+        @Override
+        public void clusterSetSlot(@NotNull RedisClusterNode node, int slot, @NotNull AddSlots mode) {
+            delegate.clusterSetSlot(node, slot, mode);
+        }
+
+        @Override
+        public @NotNull List<byte[]> clusterGetKeysInSlot(int slot, Integer count) {
+            return delegate.clusterGetKeysInSlot(slot, count);
+        }
+
+        @Override
+        public void clusterReplicate(@NotNull RedisClusterNode master, @NotNull RedisClusterNode replica) {
+            delegate.clusterReplicate(master, replica);
+        }
+
+        @Override
+        public @NotNull Object execute(@NotNull String command, byte[]... args) {
+            return Objects.requireNonNull(delegate.execute(command, args));
+        }
+
+        @Override
+        public void select(int dbIndex) {
+            delegate.select(dbIndex);
+        }
+
+        @Override
+        public byte[] echo(byte[] message) {
+            return delegate.echo(message);
+        }
+
+        @Override
+        public @NotNull String ping() {
+            return Objects.requireNonNull(delegate.ping());
+        }
+
+        @Override
+        public boolean isSubscribed() {
+            return delegate.isSubscribed();
+        }
+
+        @Override
+        public @NotNull Subscription getSubscription() {
+            return Objects.requireNonNull(delegate.getSubscription());
+        }
+
+        @Override
+        public @NotNull Long publish(byte[] channel, byte[] message) {
+            return Objects.requireNonNull(delegate.publish(channel, message));
+        }
+
+        @Override
+        public void subscribe(@NotNull MessageListener listener, byte[]... channels) {
+            delegate.subscribe(listener, channels);
+        }
+
+        @Override
+        public void pSubscribe(@NotNull MessageListener listener, byte[]... patterns) {
+            delegate.pSubscribe(listener, patterns);
+        }
+
+        @Override
+        public void multi() {
+            delegate.multi();
+        }
+
+        @Override
+        public @NotNull List<Object> exec() {
+            return delegate.exec();
+        }
+
+        @Override
+        public void discard() {
+            delegate.discard();
+        }
+
+        @Override
+        public void watch(byte[]... keys) {
+            delegate.watch(keys);
+        }
+
+        @Override
+        public void unwatch() {
+            delegate.unwatch();
         }
     }
 

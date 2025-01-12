@@ -190,7 +190,15 @@ public class KafkaConfig {
 
     @Bean
     public ConsumerFactory<String, TransactionEvent> transactionConsumerFactory() {
-        return buildConsumerFactory(TransactionEvent.class, transactionGroupId);
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 1);
+//        return new DefaultKafkaConsumerFactory<>(props);
+//        return buildConsumerFactory(TransactionEvent.class, transactionGroupId);
+        return new DefaultKafkaConsumerFactory<>(getConsumerConfigs(TransactionEvent.class, transactionGroupId),
+                new StringDeserializer(),
+                new JsonDeserializer<>(TransactionEvent.class, false));
     }
 
     @Bean
