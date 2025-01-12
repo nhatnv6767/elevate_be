@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisOperations;
@@ -32,6 +33,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.sql.Time;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -284,15 +286,34 @@ public class TransactionValidationService {
         }
     }
 
-    private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits)
-            throws InterruptedException {
-        try {
-            validateFrequencyWithRedis(userId, limits);
-        } catch (Exception e) {
-            log.error("Error in Redis transaction frequency validation", e);
-            // Fall back to database validation if Redis fails
-            validateTransactionFrequencyFromDB(userId, limits);
+    private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits) {
+        int retryAttempts = 0;
+        while (retryAttempts < MAX_RETRY_ATTEMPTS) {
+            try {
+                validateFrequencyWithRedis(userId, limits);
+                return;
+            } catch (TransactionLimitExceededException e) {
+                throw e;
+            } catch (Exception e) {
+                retryAttempts++;
+                log.warn("Redis validation failed, attempt {}/{}", retryAttempts, MAX_RETRY_ATTEMPTS);
+
+                if (retryAttempts >= MAX_RETRY_ATTEMPTS) {
+                    log.error("Redis validation failed after {} attempts", retryAttempts);
+                    // Fall back to database validation if Redis fails
+                    validateTransactionFrequencyFromDB(userId, limits);
+                    return;
+                }
+                try {
+                    Thread.sleep(RETRY_DELAY * retryAttempts);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new TransactionProcessingException("Interrupted during retry", ie.getMessage(), true);
+                }
+
+            }
         }
+
     }
 
     private Long getTransactionCountFromDB(String userId) {
@@ -311,49 +332,45 @@ public class TransactionValidationService {
         }
 
         try {
-            RedisAtomicLong counter = new RedisAtomicLong(dayKey, Objects.requireNonNull(redisTemplate.getConnectionFactory()));
             executeWithRetry(() -> {
-                List<Object> results = redisTemplate.execute(new SessionCallback<List<Object>>() {
+                redisTemplate.execute(new SessionCallback<List<Object>>() {
                     @Override
                     public List<Object> execute(RedisOperations operations) throws DataAccessException {
                         try {
+                            // watch key before starting transaction
+                            operations.watch(dayKey.getBytes());
+                            // start transaction
                             operations.multi();
-
                             // increment counter
-                            Long newCount = counter.incrementAndGet();
-
-                            if (newCount == 1) {
+                            Long count = operations.opsForValue().increment(dayKey);
+                            // set expiry for new key
+                            if (count != null && count == 1) {
                                 operations.expire(dayKey, 1, TimeUnit.DAYS);
                             }
-                            List<Object> txResults = operations.exec();
-                            if (txResults != null && !txResults.isEmpty()) {
-                                Long finalCount = (Long) txResults.get(0);
-                                if (finalCount > limits.getMaxTransactionsPerDay()) {
-                                    // rollback by decrementing
-                                    counter.decrementAndGet();
-                                    throw new TransactionLimitExceededException(
-                                            String.format("Exceeded maximum transactions per day of %d", limits.getMaxTransactionsPerDay()));
-                                }
+                            // check limit
+                            if (count != null && count > limits.getMaxTransactionsPerDay()) {
+                                // discard transaction if limit exceeded
+                                operations.discard();
+                                throw new TransactionLimitExceededException(
+                                        String.format("Exceeded maximum transactions per day of %d",
+                                                limits.getMaxTransactionsPerDay()));
                             }
-                            return txResults;
+                            // commit transaction
+                            List<Object> results = operations.exec();
+                            if (results == null || results.isEmpty()) {
+                                // Transaction failed, key was modified
+                                throw new OptimisticLockingFailureException("Transaction failed - key was modified");
+                            }
+                            return results;
+
                         } catch (Exception e) {
                             operations.discard();
                             throw e;
                         }
                     }
                 });
-                if (results == null || results.isEmpty()) {
-                    log.error("Error processing Redis transaction");
-                    validateTransactionFrequencyFromDB(userId, limits);
-                }
-                return results;
+                return null;
             }, "validateFrequencyWithRedis");
-
-        } catch (RedisConnectionException e) {
-            log.error("Error in Redis transaction frequency validation", e);
-            validateTransactionFrequencyFromDB(userId, limits);
-        } catch (TransactionLimitExceededException e) {
-            throw e;
         } catch (Exception e) {
             log.error("Error in Redis transaction frequency validation", e);
             validateTransactionFrequencyFromDB(userId, limits);
@@ -772,26 +789,37 @@ public class TransactionValidationService {
 
     private <T> T executeWithRetry(Supplier<T> operation, String operationName) {
         int attempts = 0;
-        long retryDelay = initialInterval;
+        long delay = initialInterval;
+        Exception lastException = null;
         while (attempts < maxRetries) {
             try {
                 return operation.get();
-            } catch (RedisConnectionException e) {
+            } catch (Exception e) {
+                lastException = e;
                 attempts++;
                 if (attempts == maxRetries) {
                     log.error("Failed to execute {} after {} attempts", operationName, attempts);
-                    throw e;
+                    throw new TransactionProcessingException(
+                            String.format("Failed to execute %s after %d attempts", operationName, attempts),
+                            e.getMessage(),
+                            true);
                 }
                 log.warn("Retry attempt {} for operation {}", attempts, operationName);
                 try {
-                    Thread.sleep((long) (retryDelay * Math.pow(multiplier, attempts - 1)));
+                    // exponential backoff with jitter
+                    long jitter = (long) (Math.random() * delay * 0.1);
+                    Thread.sleep(delay + jitter);
+                    delay *= multiplier;
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Interrupted while waiting for retry", ie);
                 }
             }
         }
-        throw new RuntimeException("Failed to execute " + operationName + " after " + maxRetries + " attempts");
+        throw new TransactionProcessingException(
+                String.format("Failed to execute %s after %d attempts", operationName, maxRetries),
+                lastException.getMessage(),
+                true);
     }
 
 }
