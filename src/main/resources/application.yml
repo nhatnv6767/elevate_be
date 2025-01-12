@@ -120,6 +120,7 @@ spring:
         retry.backoff.ms: 1000
         retries: 3
       retries: 3
+      retry-backoff-ms: 1000
     topics:
       transaction: elevate.transactions
       transaction-retry: elevate.transactions.retry
@@ -132,7 +133,9 @@ spring:
     consumer:
       enable-auto-commit: false
       isolation-level: read_committed
-      max-poll-records: 1
+      max-poll-records: 500
+      max-poll-interval-ms: 300000
+      connection-timeout-ms: 60000
       groups:
         transaction: elevate-transaction-group
         transaction-retry: elevate-transaction-retry-group

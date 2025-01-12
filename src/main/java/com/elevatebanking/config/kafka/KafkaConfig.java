@@ -178,6 +178,7 @@ public class KafkaConfig {
 
     @Bean
     public KafkaTemplate<String, NotificationEvent> notificationKafkaTemplate() {
+        log.info("Tạo notification kafka template");
         return new KafkaTemplate<>(notificationProducerFactory());
     }
 
@@ -225,6 +226,7 @@ public class KafkaConfig {
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, NotificationEvent> notificationKafkaListenerContainerFactory() {
+        log.info("Creating notification kafka listener factory");
         return buildListenerContainerFactory(notificationConsumerFactory());
     }
 

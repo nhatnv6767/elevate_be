@@ -28,8 +28,8 @@ public class NotificationEventProcessor {
     private static final String DLQ_TOPIC = "${spring.kafka.topics.notification-dlq}";
 
     @KafkaListener(
-            topics = MAIN_TOPIC,
-            groupId = "${spring.kafka.consumer.groups.transaction}",
+            topics = "${spring.kafka.topics.notification}",
+            groupId = "${spring.kafka.consumer.groups.notification}",
             containerFactory = "notificationKafkaListenerContainerFactory"
     )
     public void processNotificationEvent(NotificationEvent event, Acknowledgment ack) {

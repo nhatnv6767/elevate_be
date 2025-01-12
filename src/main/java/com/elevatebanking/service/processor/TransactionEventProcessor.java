@@ -5,6 +5,7 @@ import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
+import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.event.NotificationEvent;
 import com.elevatebanking.event.TransactionEvent;
 import com.elevatebanking.exception.InvalidOperationException;
@@ -82,53 +83,54 @@ public class TransactionEventProcessor {
             ack.acknowledge();
             return;
         }
-        if (lock.tryLock()) {
-            try {
-                event.addProcessStep("EVENT_RECEIVED");
+//        if (lock.tryLock()) {
+
+        try {
+            event.addProcessStep("EVENT_RECEIVED");
 
 
-                if (event.isExpired() || isDuplicateEvent(event)) {
-                    handleExpiredOrDuplicate(event, ack);
-                    return;
-                }
-
-                Transaction transaction = transactionRepository
-                        .findByIdForUpdate(event.getTransactionId())
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "Transaction not found: " + event.getTransactionId()));
-
-                if (!isValidStateTransition(transaction.getStatus(), event)) {
-                    handleInvalidTransition(event, ack);
-                    return;
-                }
-
-                if (transaction.getStatus() == TransactionStatus.COMPLETED) {
-                    log.info("Transaction already completed: {}", event.getTransactionId());
-                    ack.acknowledge();
-                    return;
-                }
-
-                switch (event.getEventType()) {
-                    case "transaction.initiated":
-                        handleTransactionInitiated(event);
-                        break;
-                    case "transaction.completed":
-                        handleTransactionCompleted(event);
-                        break;
-                    case "transaction.failed":
-                        handleTransactionFailed(event);
-                        break;
-                    default:
-                        log.warn("Unknown event type: {}", event.getEventType());
-                }
-                ack.acknowledge();
-            } catch (Exception e) {
-                log.error("Error processing transaction event: {}", event, e);
-                handleProcessingError(event, e, ack);
-            } finally {
-                lock.unlock();
+            if (event.isExpired() || isDuplicateEvent(event)) {
+                handleExpiredOrDuplicate(event, ack);
+                return;
             }
+
+            Transaction transaction = transactionRepository
+                    .findByIdForUpdate(event.getTransactionId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Transaction not found: " + event.getTransactionId()));
+
+            if (!isValidStateTransition(transaction.getStatus(), event)) {
+                handleInvalidTransition(event, ack);
+                return;
+            }
+
+            if (transaction.getStatus() == TransactionStatus.COMPLETED) {
+                log.info("Transaction already completed: {}", event.getTransactionId());
+                ack.acknowledge();
+                return;
+            }
+
+            switch (event.getEventType()) {
+                case "transaction.initiated":
+                    handleTransactionInitiated(event);
+                    break;
+                case "transaction.completed":
+                    handleTransactionCompleted(event);
+                    break;
+                case "transaction.failed":
+                    handleTransactionFailed(event);
+                    break;
+                default:
+                    log.warn("Unknown event type: {}", event.getEventType());
+            }
+            ack.acknowledge();
+        } catch (Exception e) {
+            log.error("Error processing transaction event: {}", event, e);
+            handleProcessingError(event, e, ack);
+        } finally {
+            lock.unlock();
         }
+
     }
 
     private void handleExpiredOrDuplicate(TransactionEvent event, Acknowledgment ack) {
@@ -281,9 +283,11 @@ public class TransactionEventProcessor {
     }
 
     private void handleTransactionCompleted(TransactionEvent event) {
-        log.info("Handling transaction completed event: {}", event.getTransactionId());
+        log.info("Starting handle completed transaction: {}", event.getTransactionId());
         updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
+        log.info("Preparing to send notification for transaction: {}", event.getTransactionId());
         sendNotificationEvent(event, buildCompletedMessage(event));
+
 
         Map<String, Object> data = new HashMap<>();
         data.put("transactionId", event.getTransactionId());
@@ -296,6 +300,7 @@ public class TransactionEventProcessor {
         }
         data.put("timestamp", event.getTimestamp());
         notificationDeliveryService.sendNotification(event.getUserId(), "TRANSACTION_COMPLETED", data);
+        log.info("Notification sent for transaction: {}", event.getTransactionId());
     }
 
     private void handleTransactionFailed(TransactionEvent event) {
@@ -422,21 +427,20 @@ public class TransactionEventProcessor {
 
             // xac dinh loai thong bao va priority dua tren transaction status
             NotificationEvent.NotificationType notificationType;
-            NotificationEvent.Priority priority;
-
-            switch (transaction.getStatus()) {
-                case COMPLETED:
+            NotificationEvent.Priority priority = switch (transaction.getStatus()) {
+                case COMPLETED -> {
                     notificationType = NotificationEvent.NotificationType.TRANSACTION_COMPLETED;
-                    priority = NotificationEvent.Priority.MEDIUM;
-                    break;
-                case FAILED:
+                    yield NotificationEvent.Priority.MEDIUM;
+                }
+                case FAILED -> {
                     notificationType = NotificationEvent.NotificationType.TRANSACTION_FAILED;
-                    priority = NotificationEvent.Priority.HIGH;
-                    break;
-                default:
+                    yield NotificationEvent.Priority.HIGH;
+                }
+                default -> {
                     notificationType = NotificationEvent.NotificationType.TRANSACTION_INITIATED;
-                    priority = NotificationEvent.Priority.LOW;
-            }
+                    yield NotificationEvent.Priority.LOW;
+                }
+            };
 
             // xay dung title dua tren loai giao dich
 //            String title = buildNotificationTitle(event.getType(), event.getStatus());
@@ -454,13 +458,22 @@ public class TransactionEventProcessor {
                     .build();
 
             // gui event to kafka
-            // notificationEventKafkaTemplate.send("elevate.notifications",
-            // notificationEvent.getEventId(), notificationEvent);
+//            notificationEventKafkaTemplate.send("elevate.notifications",
+//                    notificationEvent.getEventId(), notificationEvent);
             kafkaEventSender.sendWithRetry("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
+
+
+//            kafkaEventSender.sendWithRetry("elevate.notifications", notificationEvent.getEventId(), notificationEvent)
+//                    .addCallback(
+//                            result -> log.info("Notification sent successfully: {}", notificationEvent.getEventId()),
+//                            ex -> log.error("Failed to send notification: ")
+//                    );
+
             log.info("Notification event sent: {} - {}", notificationEvent.getEventId(), notificationEvent);
 
         } catch (Exception e) {
             log.error("Error sending notification event: {} -  {}", event.getTransactionId(), e.getMessage());
+            throw new RuntimeException("Failed to send notification event", e);
         }
     }
 

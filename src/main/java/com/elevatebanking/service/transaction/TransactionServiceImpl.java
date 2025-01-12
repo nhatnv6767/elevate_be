@@ -35,7 +35,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
-
 @Service
 @Transactional
 @Slf4j
@@ -89,7 +88,6 @@ public class TransactionServiceImpl implements ITransactionService {
             throw new TransactionProcessingException("Error executing transfer", null, true);
         }
 
-
     }
 
     private void executeWithdrawal(String accountId, BigDecimal amount) {
@@ -103,10 +101,10 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private void handleTransactionError(Transaction transaction, Exception e) {
-//        log.error("Transaction failed: {}", transaction.getId(), e);
-//        transaction.setStatus(TransactionStatus.FAILED);
-//        transaction = transactionRepository.save(transaction);
-//        publishTransactionEvent(transaction, "transaction.failed");
+        // log.error("Transaction failed: {}", transaction.getId(), e);
+        // transaction.setStatus(TransactionStatus.FAILED);
+        // transaction = transactionRepository.save(transaction);
+        // publishTransactionEvent(transaction, "transaction.failed");
 
         if (transaction != null) {
             transaction.setStatus(TransactionStatus.FAILED);
@@ -125,10 +123,13 @@ public class TransactionServiceImpl implements ITransactionService {
                                        String description) {
         Transaction transaction = null;
         try {
-            Account fromAccount = accountService.getAccountById(fromAccountId).orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
-            Account toAccount = accountService.getAccountById(toAccountId).orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
+            Account fromAccount = accountService.getAccountById(fromAccountId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
+            Account toAccount = accountService.getAccountById(toAccountId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
             validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description, TransactionType.TRANSFER);
+            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description,
+                    TransactionType.TRANSFER);
             executeTransfer(fromAccountId, toAccountId, amount);
             //
             return completeTransaction(transaction);
@@ -148,13 +149,13 @@ public class TransactionServiceImpl implements ITransactionService {
             throw new TransactionProcessingException(
                     "Error processing transfer: " + e.getMessage(),
                     transaction != null ? transaction.getId() : null,
-                    true
-            );
+                    true);
         }
 
     }
 
-    private Transaction createInitialTransaction(String fromAccountId, String toAccountId, BigDecimal amount, String description, TransactionType type) {
+    private Transaction createInitialTransaction(String fromAccountId, String toAccountId, BigDecimal amount,
+                                                 String description, TransactionType type) {
         // Validate accounts and balance before creating transaction
         Transaction transaction = new Transaction();
         transaction.setFromAccount(validateAndGetAccount(fromAccountId, "Source account not found"));
@@ -168,17 +169,19 @@ public class TransactionServiceImpl implements ITransactionService {
         publishTransactionEvent(transaction, "transaction.initiated");
         return transaction;
 
-//        validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-//        Transaction transaction = buildTransaction(fromAccount, toAccount, amount, description,
-//                TransactionType.TRANSFER);
-//        transaction = initializeAndSaveTransaction(transaction);
-//        try {
-//            executeTransfer(fromAccountId, toAccountId, amount);
-//            return completeTransaction(transaction);
-//        } catch (Exception e) {
-//            handleTransactionError(transaction, "Error executing transfer", e);
-//            throw new RuntimeException("Error executing transfer", e);
-//        }
+        // validationService.validateTransferTransaction(fromAccount, toAccount,
+        // amount);
+        // Transaction transaction = buildTransaction(fromAccount, toAccount, amount,
+        // description,
+        // TransactionType.TRANSFER);
+        // transaction = initializeAndSaveTransaction(transaction);
+        // try {
+        // executeTransfer(fromAccountId, toAccountId, amount);
+        // return completeTransaction(transaction);
+        // } catch (Exception e) {
+        // handleTransactionError(transaction, "Error executing transfer", e);
+        // throw new RuntimeException("Error executing transfer", e);
+        // }
     }
 
     @Override
@@ -258,11 +261,15 @@ public class TransactionServiceImpl implements ITransactionService {
 
         try {
             TransactionEvent event = new TransactionEvent(transaction, eventType);
-//            kafkaTemplate.send("${spring.kafka.topics.transaction}", eventType, event);
-            kafkaTemplate.send("elevate.transactions", eventType, event);
-            //
+            kafkaTemplate.send("elevate.transactions", eventType, event)
+                    .thenAccept(result -> log.info("Transaction event sent successfully: {}", event.getTransactionId()))
+                    .exceptionally(ex -> {
+                        log.error("Failed to send transaction event: {}", ex.getMessage());
+                        throw new RuntimeException("Failed to publish transaction event", ex);
+                    });
         } catch (Exception e) {
             log.error("Error publishing transaction event: {}", e.getMessage());
+            throw new RuntimeException("Failed to publish transaction event", e);
         }
     }
 
@@ -279,7 +286,7 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction = transactionRepository.save(transaction);
 
         // publish transaction event
-//        publishTransactionEvent(transaction, "transaction.initiated");
+        // publishTransactionEvent(transaction, "transaction.initiated");
 
         return transaction;
     }
@@ -316,7 +323,8 @@ public class TransactionServiceImpl implements ITransactionService {
         log.info("Performing rollback for transaction: {}", transaction.getId());
         // add rollback logic here
         try {
-            transaction = transactionRepository.findById(transaction.getId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+            transaction = transactionRepository.findById(transaction.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
             switch (transaction.getType()) {
                 case TRANSFER:
                     executeTransfer(
@@ -365,13 +373,13 @@ public class TransactionServiceImpl implements ITransactionService {
             validationService.validateTransferTransaction(
                     accountService.getAccountById(fromAccount.getId()).orElseThrow(),
                     accountService.getAccountById(toAccount.getId()).orElseThrow(),
-                    request.getAmount()
-            );
+                    request.getAmount());
 
             // 2. initialize transaction without publish event
-            Transaction transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(), TransactionType.TRANSFER, request.getDescription());
+            Transaction transaction = createInitialTransaction(fromAccount, toAccount, request.getAmount(),
+                    TransactionType.TRANSFER, request.getDescription());
 
-            // 3.  execute transfer with retry mechanism
+            // 3. execute transfer with retry mechanism
             executeTransferWithRetry(transaction);
             return mapToTransactionResponse(transaction);
 
@@ -401,8 +409,9 @@ public class TransactionServiceImpl implements ITransactionService {
             publishTransactionEvent(transaction, "transaction.completed");
         } catch (DataAccessException e) {
             throw new RetryableException("Database error", e);
-//            log.error("Error executing transfer: {}", e.getMessage());
-//            throw new TransactionProcessingException("Error executing transfer", transaction.getId(), true);
+            // log.error("Error executing transfer: {}", e.getMessage());
+            // throw new TransactionProcessingException("Error executing transfer",
+            // transaction.getId(), true);
         } catch (Exception e) {
             transaction.setStatus(TransactionStatus.FAILED);
             transaction = transactionRepository.save(transaction);
@@ -425,7 +434,6 @@ public class TransactionServiceImpl implements ITransactionService {
         publishTransactionEvent(transaction, "transaction.initiated");
         return transaction;
     }
-
 
     @Override
     public TransactionResponse deposit(DepositRequest request) throws InterruptedException {
@@ -472,7 +480,8 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     public WithdrawalResponse withdraw(WithdrawRequest request) throws InterruptedException {
 
-        log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
+        log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountNumber(),
+                request.getAmount());
         // validateTransactionAmount(request.getAmount());
 
         Account account = accountService.getAccountByNumber(request.getAccountNumber())
@@ -486,6 +495,7 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction.setType(TransactionType.WITHDRAWAL);
         transaction.setDescription(request.getDescription());
         transaction.setStatus(TransactionStatus.PENDING);
+        transaction.setCreatedAt(LocalDateTime.now());
 
         transaction = transactionRepository.save(transaction);
         publishTransactionEvent(transaction, "transaction.initiated");
@@ -523,12 +533,15 @@ public class TransactionServiceImpl implements ITransactionService {
         startDate = startDate != null ? startDate : LocalDateTime.now().minusMonths(1);
         endDate = endDate != null ? endDate : LocalDateTime.now();
 
-        log.debug("Fetching transaction history for account: {}, start date: {}, end date: {}", accountId, startDate, endDate);
+        log.debug("Fetching transaction history for account: {}, start date: {}, end date: {}", accountId, startDate,
+                endDate);
 
-        Page<Transaction> transactions = transactionRepository.findTransactionsByAccountAndDateRange(accountId, startDate, endDate, pageable);
+        Page<Transaction> transactions = transactionRepository.findTransactionsByAccountAndDateRange(accountId,
+                startDate, endDate, pageable);
 
         if (transactions == null) {
-            log.error("Null response from repository for account: {}, start date: {}, end date: {}", accountId, startDate, endDate);
+            log.error("Null response from repository for account: {}, start date: {}, end date: {}", accountId,
+                    startDate, endDate);
             throw new RuntimeException("Error fetching transaction history");
         }
 
@@ -586,7 +599,9 @@ public class TransactionServiceImpl implements ITransactionService {
             fromParty = TransactionHistoryResponse.TransactionParty.builder()
                     .accountId(transaction.getFromAccount().getId())
                     .accountNumber(transaction.getFromAccount().getAccountNumber())
-                    .accountName(transaction.getFromAccount().getUser() != null ? transaction.getFromAccount().getUser().getFullName() : null)
+                    .accountName(transaction.getFromAccount().getUser() != null
+                            ? transaction.getFromAccount().getUser().getFullName()
+                            : null)
                     .balanceAfter(transaction.getFromAccount().getBalance())
                     .build();
         }
@@ -595,7 +610,9 @@ public class TransactionServiceImpl implements ITransactionService {
             toParty = TransactionHistoryResponse.TransactionParty.builder()
                     .accountId(transaction.getToAccount().getId())
                     .accountNumber(transaction.getToAccount().getAccountNumber())
-                    .accountName(transaction.getToAccount().getUser() != null ? transaction.getToAccount().getUser().getFullName() : null)
+                    .accountName(transaction.getToAccount().getUser() != null
+                            ? transaction.getToAccount().getUser().getFullName()
+                            : null)
                     .balanceAfter(transaction.getToAccount().getBalance())
                     .build();
         }
