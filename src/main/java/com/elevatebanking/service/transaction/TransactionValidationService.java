@@ -14,6 +14,7 @@ import com.elevatebanking.exception.TransactionProcessingException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.notification.NotificationService;
 import com.elevatebanking.service.transaction.config.TransactionLimitConfig;
+import com.elevatebanking.service.transaction.config.TransactionLockManager;
 import com.elevatebanking.util.SecurityUtils;
 import io.lettuce.core.RedisConnectionException;
 import lombok.RequiredArgsConstructor;
@@ -325,39 +326,38 @@ public class TransactionValidationService {
     private void validateFrequencyWithRedis(String userId, TransactionLimitConfig.TierLimit limits) {
         String dayKey = KEY_PREFIX + userId + ":" + LocalDate.now();
 
-        if (!isRedisAvailable()) {
-            log.warn("Redis is not available, falling back to DB validation");
-            validateTransactionFrequencyFromDB(userId, limits);
-            return;
-        }
+        // Dùng lockKey để đảm bảo atomic operation
+        String lockKey = "transaction_frequency:" + userId;
 
-        try {
+        try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, this)) {
+            if (!lockManager.acquireLock()) {
+                log.warn("Cannot acquire lock for key: {}", lockKey);
+                validateTransactionFrequencyFromDB(userId, limits);
+                return;
+            }
+
             executeWithRetry(() -> {
                 redisTemplate.execute(new SessionCallback<List<Object>>() {
                     @Override
                     public List<Object> execute(RedisOperations operations) throws DataAccessException {
                         try {
-                            // watch key before starting transaction
                             operations.watch(dayKey.getBytes());
-                            // start transaction
                             operations.multi();
-                            // increment counter
+
                             String countStr = (String) operations.opsForValue().get(dayKey);
                             long count = (countStr != null) ? Long.parseLong(countStr) : 0;
                             count++;
 
-                            // check limit
                             if (count > limits.getMaxTransactionsPerDay()) {
-                                // discard transaction if limit exceeded
                                 operations.discard();
                                 throw new TransactionLimitExceededException(
                                         String.format("Exceeded maximum transactions per day of %d",
                                                 limits.getMaxTransactionsPerDay()));
                             }
+
                             operations.opsForValue().set(dayKey, String.valueOf(count));
                             operations.expire(dayKey, 1, TimeUnit.DAYS);
                             return operations.exec();
-
                         } catch (Exception e) {
                             operations.discard();
                             throw e;
@@ -366,6 +366,7 @@ public class TransactionValidationService {
                 });
                 return null;
             }, "validateFrequencyWithRedis");
+
         } catch (Exception e) {
             log.error("Error in Redis transaction frequency validation", e);
             validateTransactionFrequencyFromDB(userId, limits);

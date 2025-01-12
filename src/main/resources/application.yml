@@ -68,17 +68,17 @@ spring:
       port: 6379
       database: 0
       #      timeout: 60000
-      timeout: 10000
-      connect-timeout: 60000
+      timeout: 2000
+      connect-timeout: 2000
       retry:
         max-attempts: 3
         initial-interval: 100
         multiplier: 2
       lettuce:
         pool:
-          max-active: 8
+          max-active: 16
           max-idle: 8
-          min-idle: 2
+          min-idle: 4
           max-wait: 1000ms
     #          max-wait: -1ms
     jpa:
