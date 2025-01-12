@@ -342,26 +342,21 @@ public class TransactionValidationService {
                             // start transaction
                             operations.multi();
                             // increment counter
-                            Long count = operations.opsForValue().increment(dayKey);
-                            // set expiry for new key
-                            if (count != null && count == 1) {
-                                operations.expire(dayKey, 1, TimeUnit.DAYS);
-                            }
+                            String countStr = (String) operations.opsForValue().get(dayKey);
+                            long count = (countStr != null) ? Long.parseLong(countStr) : 0;
+                            count++;
+
                             // check limit
-                            if (count != null && count > limits.getMaxTransactionsPerDay()) {
+                            if (count > limits.getMaxTransactionsPerDay()) {
                                 // discard transaction if limit exceeded
                                 operations.discard();
                                 throw new TransactionLimitExceededException(
                                         String.format("Exceeded maximum transactions per day of %d",
                                                 limits.getMaxTransactionsPerDay()));
                             }
-                            // commit transaction
-                            List<Object> results = operations.exec();
-                            if (results == null || results.isEmpty()) {
-                                // Transaction failed, key was modified
-                                throw new OptimisticLockingFailureException("Transaction failed - key was modified");
-                            }
-                            return results;
+                            operations.opsForValue().set(dayKey, String.valueOf(count));
+                            operations.expire(dayKey, 1, TimeUnit.DAYS);
+                            return operations.exec();
 
                         } catch (Exception e) {
                             operations.discard();
