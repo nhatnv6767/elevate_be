@@ -86,7 +86,7 @@ public class ATMController {
                 throw new InvalidOperationException("Withdrawal amount must be at least $" + MAX_WITHDRAWAL_AMOUNT + " and in multiples of $" + MIN_WITHDRAWAL_AMOUNT);
             }
 
-            TransactionResponse response = transactionService.withdraw(request);
+            WithdrawalResponse response = transactionService.withdraw(request);
             // log successful withdrawal
             auditLogService.logEvent(
                     userId,

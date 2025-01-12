@@ -85,6 +85,20 @@ public class TransactionDTOs {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class WithdrawalResponse {
+        private String transactionId;
+        private String type;
+        private BigDecimal amount;
+        private String status;
+        private String fromAccount;
+        private String description;
+        private LocalDateTime timestamp;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class TransactionHistoryResponse {
         private String transactionId;
         private String type;

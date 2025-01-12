@@ -206,6 +206,16 @@ dependencies {
     implementation 'org.springframework.integration:spring-integration-redis:6.2.2'
 
 
+    // more
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-core'
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.14.1'
+    // Support observation API (for Spring Boot 3.x)
+    implementation 'io.micrometer:micrometer-observation'
+    // if wanna use Micrometer Tracing
+    implementation 'io.micrometer:micrometer-tracing'
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+
 }
 
 sourceSets {

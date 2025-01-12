@@ -35,7 +35,7 @@ public interface ITransactionService {
 
     TransactionResponse deposit(DepositRequest request) throws InterruptedException;
 
-    TransactionResponse withdraw(WithdrawRequest request) throws InterruptedException;
+    WithdrawalResponse withdraw(WithdrawRequest request) throws InterruptedException;
 
     TransactionResponse getTransaction(String id);
 

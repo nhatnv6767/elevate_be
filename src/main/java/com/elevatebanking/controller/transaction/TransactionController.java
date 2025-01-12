@@ -65,7 +65,7 @@ public class TransactionController {
     @Operation(summary = "Process a new withdrawal from an account")
     @PostMapping("/withdraw")
     @PreAuthorize("hasRole('USER') or hasRole('TELLER')")
-    public ResponseEntity<TransactionResponse> withdraw(@Valid @RequestBody WithdrawRequest request) throws InterruptedException {
+    public ResponseEntity<WithdrawalResponse> withdraw(@Valid @RequestBody WithdrawRequest request) throws InterruptedException {
         String userId = securityUtils.getCurrentUserId();
 
         // get the account by number instead of id

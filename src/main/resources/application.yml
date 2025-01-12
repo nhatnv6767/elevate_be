@@ -225,6 +225,36 @@ jwt:
   expiration: 2592000000
   refresh-expiration: 86400000000
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"  # Expose all actuator endpoints
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        all: true  # Enable histogram metrics for all measurements
+    enable:
+      all: true  # Enable all metrics
+
+  # Prometheus configuration
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+        descriptions: true
+        step: 1m
+
+# Logging configuration for tracing
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
 transaction:
   limits:
     tiers:

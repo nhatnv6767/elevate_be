@@ -470,7 +470,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     @Override
-    public TransactionResponse withdraw(WithdrawRequest request) throws InterruptedException {
+    public WithdrawalResponse withdraw(WithdrawRequest request) throws InterruptedException {
 
         log.info("Processing withdrawal request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
         // validateTransactionAmount(request.getAmount());
@@ -505,7 +505,7 @@ public class TransactionServiceImpl implements ITransactionService {
             }
             throw new RuntimeException("Error processing withdrawal");
         }
-        return mapToTransactionResponse(transaction);
+        return mapToWithdrawalResponse(transaction);
     }
 
     @Override
@@ -560,6 +560,19 @@ public class TransactionServiceImpl implements ITransactionService {
                 .fromAccount(
                         transaction.getFromAccount() != null ? transaction.getFromAccount().getAccountNumber() : null)
                 .toAccount(transaction.getToAccount() != null ? transaction.getToAccount().getAccountNumber() : null)
+                .description(transaction.getDescription())
+                .timestamp(transaction.getCreatedAt())
+                .build();
+    }
+
+    private WithdrawalResponse mapToWithdrawalResponse(Transaction transaction) {
+        return WithdrawalResponse.builder()
+                .transactionId(transaction.getId())
+                .type(transaction.getType().name())
+                .amount(transaction.getAmount())
+                .status(transaction.getStatus().name())
+                .fromAccount(
+                        transaction.getFromAccount() != null ? transaction.getFromAccount().getAccountNumber() : null)
                 .description(transaction.getDescription())
                 .timestamp(transaction.getCreatedAt())
                 .build();
