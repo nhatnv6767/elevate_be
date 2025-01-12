@@ -652,13 +652,15 @@ public class TransactionValidationService {
     public boolean acquireLock(String lockValue, String lockKey) {
         try {
             Boolean acquired = redisTemplate.opsForValue()
-                    .setIfAbsent(lockKey, lockValue, LOCK_TIMEOUT, TimeUnit.SECONDS);
+                    .setIfAbsent(lockKey, lockValue, LOCK_TIMEOUT * 2, TimeUnit.SECONDS);
 
             if (Boolean.TRUE.equals(acquired)) {
                 log.info("Lock acquired successfully for value: {}, key: {}", lockValue, lockKey);
                 return true;
             }
-            return false;
+            Thread.sleep(100);
+            return Boolean.TRUE.equals(redisTemplate.opsForValue()
+                    .setIfAbsent(lockKey, lockValue, LOCK_TIMEOUT * 2, TimeUnit.SECONDS));
 
         } catch (Exception e) {
             log.error("Error while trying to acquire lock: {}", e.getMessage());

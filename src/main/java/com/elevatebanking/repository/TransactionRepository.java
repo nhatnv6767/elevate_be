@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -112,8 +113,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
             "left join fetch t.toAccount ta left join fetch ta.user where t.id = :id")
     Optional<Transaction> findByIdForUpdate(@Param("id") String id);
 
+    @Modifying
     @Query("UPDATE Transaction t SET t.status = :status WHERE t.id = :transactionId")
-    void updateStatus(String transactionId, TransactionStatus status);
+    void updateStatus(@Param("transactionId") String transactionId, @Param("status") TransactionStatus status);
 
     @Query("SELECT count(t) FROM Transaction t WHERE t.fromAccount.user.id = :userId AND t.createdAt >= :startOfDay AND t.createdAt <= :now AND t.status = 'COMPLETED'")
     Long countCompletedTransactionsByUserAndDateRange(String userId, LocalDateTime startOfDay, LocalDateTime now);

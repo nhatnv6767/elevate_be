@@ -71,8 +71,8 @@ spring:
       timeout: 2000
       connect-timeout: 2000
       retry:
-        max-attempts: 3
-        initial-interval: 100
+        max-attempts: 5
+        initial-interval: 200
         multiplier: 2
       lettuce:
         pool:
