@@ -39,6 +39,13 @@ public class TransactionLimitService {
     RedisTemplate<String, String> redisTemplate;
     SecurityUtils securityUtils;
 
+    private static final int MAX_TRANSACTIONS_PER_DAY = 100;
+    private static final int MAX_TRANSACTIONS_PER_MINUTE = 3;
+    private static final BigDecimal MIN_TRANSFER_AMOUNT = new BigDecimal("0.1"); // 0.1$
+    private static final BigDecimal DAILY_TRANSFER_LIMIT = new BigDecimal(5000000); // 5,000,000$
+    private static final BigDecimal MONTHLY_TRANSFER_LIMIT = new BigDecimal(50000000); // 50,000,000$
+    private static final BigDecimal SINGLE_TRANSFER_LIMIT = new BigDecimal(1000000); // 1,000,000$
+
 
     @Transactional(readOnly = true)
     public TransactionLimit getUserLimit(String userId) {
@@ -234,11 +241,11 @@ public class TransactionLimitService {
     TransactionLimit createDefaultLimit(String userId) {
         TransactionLimit limit = new TransactionLimit();
         limit.setId(userId);
-        limit.setSingleTransactionLimit(new BigDecimal("1000000"));
-        limit.setDailyLimit(new BigDecimal("5000000"));
-        limit.setMonthlyLimit(new BigDecimal("50000000"));
-        limit.setMaxTransactionsPerMinute(3);
-        limit.setMaxTransactionsPerDay(20);
+        limit.setSingleTransactionLimit(SINGLE_TRANSFER_LIMIT);
+        limit.setDailyLimit(DAILY_TRANSFER_LIMIT);
+        limit.setMonthlyLimit(MONTHLY_TRANSFER_LIMIT);
+        limit.setMaxTransactionsPerMinute(MAX_TRANSACTIONS_PER_MINUTE);
+        limit.setMaxTransactionsPerDay(MAX_TRANSACTIONS_PER_DAY);
 
         createLimitHistory(limit, "CREATE", null, limit.toString());
         return limitRepository.save(limit);

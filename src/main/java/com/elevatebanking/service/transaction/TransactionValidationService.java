@@ -3,6 +3,7 @@ package com.elevatebanking.service.transaction;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
 import com.elevatebanking.entity.enums.TransactionStatus;
+import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.enums.UserTier;
 import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.entity.user.User;
@@ -30,7 +31,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -58,10 +58,11 @@ public class TransactionValidationService {
 
     private static final String KEY_PREFIX = "tx_count:";
 
-    private static final int MAX_TRANSACTIONS_PER_DAY = 20;
+    private static final int MAX_TRANSACTIONS_PER_DAY = 100;
     private static final int MAX_TRANSACTIONS_PER_MINUTE = 3;
     private static final BigDecimal MIN_TRANSFER_AMOUNT = new BigDecimal("0.1"); // 0.1$
     private static final BigDecimal DAILY_TRANSFER_LIMIT = new BigDecimal(5000000); // 5,000,000$
+    private static final BigDecimal MONTHLY_TRANSFER_LIMIT = new BigDecimal(50000000); // 50,000,000$
     private static final BigDecimal SINGLE_TRANSFER_LIMIT = new BigDecimal(1000000); // 1,000,000$
 
     private static final int MAX_RETRIES = 5;
@@ -69,20 +70,45 @@ public class TransactionValidationService {
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final long LOCK_TIMEOUT = 5; // seconds
 
-    public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount)
-            throws InterruptedException {
-        validateBasicRules(fromAccount, toAccount, amount);
-        validateLimits(fromAccount, amount);
-    }
+    private static final ThreadLocal<TransactionType> currentTransactionType = new ThreadLocal<>();
 
     public void validateWithdrawalTransaction(Account account, BigDecimal amount) throws InterruptedException {
-        validateBasicRules(account, account, amount);
-        validateLimits(account, amount);
+        try {
+            setCurrentTransactionType(TransactionType.WITHDRAWAL);
+            validateBasicWithdrawalRules(account, amount);
+            validateWithdrawalLimits(account, amount);
+        } finally {
+            currentTransactionType.remove();
+        }
+    }
+
+    public void validateTransferTransaction(Account fromAccount, Account toAccount, BigDecimal amount)
+            throws InterruptedException {
+        try {
+            setCurrentTransactionType(TransactionType.TRANSFER);
+
+            validateBasicRules(fromAccount, toAccount, amount);
+            validateTransferLimits(fromAccount, amount);
+        } finally {
+            currentTransactionType.remove();
+        }
+    }
+
+
+    private void validateBasicWithdrawalRules(Account account, BigDecimal amount) {
+        validateAccountStatus(account);
+        validateTransactionAmount(amount);
+        validateSufficientBalance(account, amount);
     }
 
     public void validateDepositTransaction(Account account, BigDecimal amount) throws InterruptedException {
-        validateBasicRules(account, account, amount);
-        validateLimits(account, amount);
+        try {
+            setCurrentTransactionType(TransactionType.DEPOSIT);
+            validateBasicRules(account, account, amount);
+            validateTransferLimits(account, amount);
+        } finally {
+            currentTransactionType.remove();
+        }
     }
 
     private void validateBasicRules(Account fromAccount, Account toAccount, BigDecimal amount) {
@@ -93,7 +119,14 @@ public class TransactionValidationService {
         validateSameAccount(fromAccount, toAccount);
     }
 
-    private void validateLimits(Account account, BigDecimal amount) throws InterruptedException {
+    private void validateWithdrawalLimits(Account account, BigDecimal amount) throws InterruptedException {
+        String userId = account.getUser().getId();
+        TransactionLimitConfig.TierLimit limits = getLimitsForUser(account.getUser());
+        validateSingleTransactionLimit(amount, limits);
+        validateTransactionFrequency(userId, limits);
+    }
+
+    private void validateTransferLimits(Account account, BigDecimal amount) throws InterruptedException {
         String userId = account.getUser().getId();
         TransactionLimitConfig.TierLimit limits = getLimitsForUser(account.getUser());
 
@@ -151,7 +184,7 @@ public class TransactionValidationService {
             List<Transaction> dailyTransactions = transactionRepository
                     .findTransactionsByUserAndDateRange(userId, startOfDay, LocalDateTime.now());
             BigDecimal total = dailyTransactions.stream()
-                    .filter(transaction -> transaction.getStatus() == TransactionStatus.COMPLETED)
+                    .filter(transaction -> (transaction.getStatus() == TransactionStatus.COMPLETED && transaction.getType() == TransactionType.TRANSFER))
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             log.debug("Calculated daily total for user {}: {}", userId, total);
@@ -172,7 +205,7 @@ public class TransactionValidationService {
             List<Transaction> monthlyTransactions = transactionRepository
                     .findTransactionsByUserAndDateRange(userId, startOfMonth, LocalDateTime.now());
             return monthlyTransactions.stream()
-                    .filter(transaction -> transaction.getStatus() == TransactionStatus.COMPLETED)
+                    .filter(transaction -> (transaction.getStatus() == TransactionStatus.COMPLETED && transaction.getType() == TransactionType.TRANSFER))
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         } catch (Exception e) {
@@ -241,11 +274,42 @@ public class TransactionValidationService {
             // Fall back to database validation if Redis fails
             validateTransactionFrequencyFromDB(userId, limits);
         }
+    }
 
-
+    private Long getTransactionCountFromDB(String userId) {
+        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+        return transactionRepository.countCompletedTransactionsByUserAndDateRange(
+                userId, startOfDay, LocalDateTime.now());
     }
 
     private void validateFrequencyWithRedis(String userId, TransactionLimitConfig.TierLimit limits) {
+        String dayKey = KEY_PREFIX + userId + ":" + LocalDate.now();
+
+        try {
+            Long newCount = redisTemplate.opsForValue().increment(dayKey);
+
+            if (newCount > limits.getMaxTransactionsPerDay()) {
+                // decrement the count
+                redisTemplate.opsForValue().decrement(dayKey);
+                throw new TransactionLimitExceededException(
+                        String.format("Exceeded maximum transaction per day of %d",
+                                limits.getMaxTransactionsPerDay()));
+            }
+            if (newCount == 1) {
+                redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
+            }
+
+
+        } catch (RedisConnectionException e) {
+            log.error("Error in Redis transaction frequency validation", e);
+            validateTransactionFrequencyFromDB(userId, limits);
+        } catch (Exception e) {
+            log.error("Error in Redis transaction frequency validation", e);
+            validateTransactionFrequencyFromDB(userId, limits);
+        }
+    }
+
+    private void validateFrequencyWithRedis_BACKUP(String userId, TransactionLimitConfig.TierLimit limits) {
         String minuteKey = "tx_count_minute:" + userId;
         String dayKey = "tx_count_day:" + userId;
 
@@ -255,6 +319,7 @@ public class TransactionValidationService {
                 validateTransactionFrequencyFromDB(userId, limits);
                 return;
             }
+
             Long txPerMinute = redisTemplate.execute((RedisCallback<Long>) connection -> {
                 try {
                     return connection.stringCommands().incr(minuteKey.getBytes());
@@ -322,14 +387,29 @@ public class TransactionValidationService {
                     limits.getMaxTransactionsPerMinute()));
         }
 
-        LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        Long txPerDay = transactionRepository.countTransactionsByUserInTimeRange(userId, startOfDay,
-                LocalDateTime.now());
-        if (txPerDay >= limits.getMaxTransactionsPerDay()) {
-            throw new TransactionLimitExceededException(
-                    String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay()));
+        if (isTransferTransaction()) {
+            LocalDateTime startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+            Long txPerDay = transactionRepository.countTransactionsByUserInTimeRange(userId, startOfDay,
+                    LocalDateTime.now());
+            if (txPerDay >= limits.getMaxTransactionsPerDay()) {
+                throw new TransactionLimitExceededException(
+                        String.format("Exceeded maximum transaction per day of %d", limits.getMaxTransactionsPerDay()));
+            }
         }
     }
+
+    private boolean isTransferTransaction() {
+        return TransactionType.TRANSFER.equals(getCurrentTransactionType());
+    }
+
+    public void setCurrentTransactionType(TransactionType type) {
+        currentTransactionType.set(type);
+    }
+
+    private TransactionType getCurrentTransactionType() {
+        return currentTransactionType.get();
+    }
+
 
     private void validateLimit(Long current, Long max, String period) {
         if (current > max) {
@@ -415,11 +495,11 @@ public class TransactionValidationService {
 
     private TransactionLimitConfig.TierLimit getDefaultLimits() {
         return TransactionLimitConfig.TierLimit.builder()
-                .singleTransactionLimit(new BigDecimal("1000000"))
-                .dailyLimit(new BigDecimal("5000000"))
-                .monthlyLimit(new BigDecimal("50000000"))
-                .maxTransactionsPerMinute(3)
-                .maxTransactionsPerDay(20)
+                .singleTransactionLimit(SINGLE_TRANSFER_LIMIT)
+                .dailyLimit(DAILY_TRANSFER_LIMIT)
+                .monthlyLimit(MONTHLY_TRANSFER_LIMIT)
+                .maxTransactionsPerMinute(MAX_TRANSACTIONS_PER_MINUTE)
+                .maxTransactionsPerDay(MAX_TRANSACTIONS_PER_DAY)
                 .build();
     }
 

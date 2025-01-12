@@ -214,12 +214,14 @@ springdoc:
       paths-to-match: /api/v1/transfers/**
     - group: health
       paths-to-match: /api/v1/health/**
+    - group: atm
+      paths-to-match: /api/v1/atm/**
 
 
 # JWT Configuration
 jwt:
   #  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
-  secret: Zc8xS9lJIZBYUwyi8MiGi6dj1XBVp2rhA8SSNPhkPG8=
+  secret: 4Ube4ZBG8kOi58ykfh2VzXQpNsFgAyxQ
   expiration: 2592000000
   refresh-expiration: 86400000000
 

@@ -75,7 +75,7 @@ public class JwtTokenProvider {
                         .map(Role::getName)
                         .collect(Collectors.toList())
                 )
-                .signWith(getSigningKey())
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -91,7 +91,7 @@ public class JwtTokenProvider {
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
                 .claim("tokenType", "REFRESH")
-                .signWith(getSigningKey())
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
 

@@ -114,4 +114,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
     @Query("UPDATE Transaction t SET t.status = :status WHERE t.id = :transactionId")
     void updateStatus(String transactionId, TransactionStatus status);
+
+    @Query("SELECT count(t) FROM Transaction t WHERE t.fromAccount.user.id = :userId AND t.createdAt >= :startOfDay AND t.createdAt <= :now AND t.status = 'COMPLETED'")
+    Long countCompletedTransactionsByUserAndDateRange(String userId, LocalDateTime startOfDay, LocalDateTime now);
 }

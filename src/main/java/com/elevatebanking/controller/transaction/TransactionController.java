@@ -1,4 +1,4 @@
-package com.elevatebanking.controller;
+package com.elevatebanking.controller.transaction;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
@@ -19,11 +19,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/transactions")
