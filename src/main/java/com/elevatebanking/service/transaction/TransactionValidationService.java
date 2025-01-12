@@ -218,19 +218,29 @@ public class TransactionValidationService {
     private void validateDailyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
         LocalDate today = LocalDate.now();
         String cacheKey = String.format("daily_total:%s:%s", userId, today);
-        BigDecimal dailyTotal = getCachedOrCalculateTotal(
-                cacheKey,
-                () -> calculateDailyTotal(userId),
-                1,
-                TimeUnit.DAYS);
-        BigDecimal newTotal = dailyTotal.add(amount);
+        try {
+            BigDecimal dailyTotal = getCachedOrCalculateTotal(
+                    cacheKey,
+                    () -> calculateDailyTotal(userId),
+                    1,
+                    TimeUnit.DAYS);
+            BigDecimal newTotal = dailyTotal.add(amount);
 
-        if (dailyTotal.add(amount).compareTo(limits.getDailyLimit()) > 0) {
-            throw new TransactionLimitExceededException(
-                    String.format("Daily transfer limit exceeded. Current limit: %s", limits.getDailyLimit()));
+            if (dailyTotal.add(amount).compareTo(limits.getDailyLimit()) > 0) {
+                throw new TransactionLimitExceededException(
+                        String.format("Daily transfer limit exceeded. Current limit: %s", limits.getDailyLimit()));
+            }
+
+            executeWithRetry(() -> {
+                redisTemplate.opsForValue().set(cacheKey, newTotal.toString(), 1, TimeUnit.DAYS);
+                return null;
+            }, "updateDailyTotal");
+        } catch (TransactionLimitExceededException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error validating daily limit", e);
+            throw new TransactionProcessingException("Failed to validate daily limit", e.getMessage(), true);
         }
-
-        redisTemplate.opsForValue().set(cacheKey, newTotal.toString(), 1, TimeUnit.DAYS);
     }
 
     private void validateMonthlyLimit(String userId, BigDecimal amount, TransactionLimitConfig.TierLimit limits) {
@@ -254,16 +264,24 @@ public class TransactionValidationService {
     private BigDecimal getCachedOrCalculateTotal(String fullCacheKey, Supplier<BigDecimal> calculator,
                                                  long duration, TimeUnit timeUnit) {
 
-        String cachedValue = redisTemplate.opsForValue().get(fullCacheKey);
-        if (cachedValue != null) {
-            BigDecimal currentTotal = new BigDecimal(cachedValue);
-            log.debug("Found cache total for key {}: {}", fullCacheKey, currentTotal);
-            return currentTotal;
+        try {
+            String cachedValue = executeWithRetry(() -> redisTemplate.opsForValue().get(fullCacheKey), "cachedValue");
+            if (cachedValue != null) {
+                BigDecimal currentTotal = new BigDecimal(cachedValue);
+                log.debug("Found cache total for key {}: {}", fullCacheKey, currentTotal);
+                return currentTotal;
+            }
+            BigDecimal calculated = calculator.get();
+            executeWithRetry(() -> {
+                redisTemplate.opsForValue().set(fullCacheKey, calculated.toString(), duration, timeUnit);
+                return null;
+            }, "setCacheValue");
+            log.debug("Calculated total for key {}: {}", fullCacheKey, calculated);
+            return calculated;
+        } catch (Exception e) {
+            log.error("Error in cache operation for key {}", fullCacheKey, e);
+            return calculator.get();
         }
-        BigDecimal calculated = calculator.get();
-        redisTemplate.opsForValue().set(fullCacheKey, calculated.toString(), duration, timeUnit);
-        log.debug("Calculated total for key {}: {}", fullCacheKey, calculated);
-        return calculated;
     }
 
     private void validateTransactionFrequency(String userId, TransactionLimitConfig.TierLimit limits)
@@ -293,31 +311,49 @@ public class TransactionValidationService {
         }
 
         try {
-
-            // use redis transaction for atomic operations
             RedisAtomicLong counter = new RedisAtomicLong(dayKey, Objects.requireNonNull(redisTemplate.getConnectionFactory()));
+            executeWithRetry(() -> {
+                List<Object> results = redisTemplate.execute(new SessionCallback<List<Object>>() {
+                    @Override
+                    public List<Object> execute(RedisOperations operations) throws DataAccessException {
+                        try {
+                            operations.multi();
 
-            Long newCount = counter.incrementAndGet();
-            if (newCount == null) {
-                throw new TransactionProcessingException("Failed to process transaction", null, false);
-            }
+                            // increment counter
+                            Long newCount = counter.incrementAndGet();
 
-            if (newCount == 1) {
-                redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
-            }
-
-            if (newCount > limits.getMaxTransactionsPerDay()) {
-                // decrement the count
-                counter.decrementAndGet();
-                throw new TransactionLimitExceededException(
-                        String.format("Exceeded maximum transaction per day of %d",
-                                limits.getMaxTransactionsPerDay()));
-            }
-
+                            if (newCount == 1) {
+                                operations.expire(dayKey, 1, TimeUnit.DAYS);
+                            }
+                            List<Object> txResults = operations.exec();
+                            if (txResults != null && !txResults.isEmpty()) {
+                                Long finalCount = (Long) txResults.get(0);
+                                if (finalCount > limits.getMaxTransactionsPerDay()) {
+                                    // rollback by decrementing
+                                    counter.decrementAndGet();
+                                    throw new TransactionLimitExceededException(
+                                            String.format("Exceeded maximum transactions per day of %d", limits.getMaxTransactionsPerDay()));
+                                }
+                            }
+                            return txResults;
+                        } catch (Exception e) {
+                            operations.discard();
+                            throw e;
+                        }
+                    }
+                });
+                if (results == null || results.isEmpty()) {
+                    log.error("Error processing Redis transaction");
+                    validateTransactionFrequencyFromDB(userId, limits);
+                }
+                return results;
+            }, "validateFrequencyWithRedis");
 
         } catch (RedisConnectionException e) {
             log.error("Error in Redis transaction frequency validation", e);
             validateTransactionFrequencyFromDB(userId, limits);
+        } catch (TransactionLimitExceededException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error in Redis transaction frequency validation", e);
             validateTransactionFrequencyFromDB(userId, limits);
@@ -552,10 +588,15 @@ public class TransactionValidationService {
 
     private boolean isRedisAvailable() {
         try {
-            RedisConnection connection = redisTemplate.getConnectionFactory().getConnection();
-            connection.ping();
-            connection.close();
-            return true;
+            RedisConnection connection = null;
+            try {
+                connection = redisTemplate.getConnectionFactory().getConnection();
+                return connection.ping().equalsIgnoreCase("PONG");
+            } finally {
+                if (connection != null) {
+                    connection.close();
+                }
+            }
         } catch (Exception e) {
             log.warn("Redis health check failed: {}", e.getMessage());
             return false;
@@ -708,6 +749,49 @@ public class TransactionValidationService {
         } catch (Exception e) {
             log.error("Error in scheduled total verification: {}", e.getMessage());
         }
+    }
+
+    @Scheduled(fixedRate = 300000)
+    public void cleanupExpiredKeys() {
+        try {
+            String pattern = KEY_PREFIX + "*";
+            Set<String> keys = redisTemplate.keys(pattern);
+            if (keys != null) {
+                for (String key : keys) {
+                    Long ttl = redisTemplate.getExpire(key);
+                    if (ttl != null && ttl <= 0) {
+                        redisTemplate.delete(key);
+                        log.debug("Deleted expired key: {}", key);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error during expired keys cleanup: {}", e.getMessage());
+        }
+    }
+
+    private <T> T executeWithRetry(Supplier<T> operation, String operationName) {
+        int attempts = 0;
+        long retryDelay = initialInterval;
+        while (attempts < maxRetries) {
+            try {
+                return operation.get();
+            } catch (RedisConnectionException e) {
+                attempts++;
+                if (attempts == maxRetries) {
+                    log.error("Failed to execute {} after {} attempts", operationName, attempts);
+                    throw e;
+                }
+                log.warn("Retry attempt {} for operation {}", attempts, operationName);
+                try {
+                    Thread.sleep((long) (retryDelay * Math.pow(multiplier, attempts - 1)));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted while waiting for retry", ie);
+                }
+            }
+        }
+        throw new RuntimeException("Failed to execute " + operationName + " after " + maxRetries + " attempts");
     }
 
 }
