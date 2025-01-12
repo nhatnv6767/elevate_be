@@ -233,7 +233,7 @@ transaction:
         daily-limit: 5000000
         monthly-limit: 50000000
         max-transactions-per-minute: 3
-        max-transactions-per-day: 20
+        max-transactions-per-day: 100
       premium:
         single-transaction-limit: 5000000
         daily-limit: 25000000
