@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -70,6 +71,11 @@ public class TransactionEventProcessor {
                 event.getTransactionId(), event.getStatus());
         String lockKey = "tx:" + event.getTransactionId();
         Lock lock = lockRegistry.obtain(lockKey);
+        try {
+            Thread.sleep(100); // Small delay to ensure transaction is committed
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         if (lock.tryLock()) {
             try {
                 event.addProcessStep("EVENT_RECEIVED");
@@ -267,14 +273,16 @@ public class TransactionEventProcessor {
         updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
         sendNotificationEvent(event, buildCompletedMessage(event));
 
-        Map<String, Object> data = Map.of(
-                "transactionId", event.getTransactionId(),
-                "amount", event.getAmount(),
-                "fromAccount", event.getFromAccount(),
-                "toAccount", event.getToAccount(),
-                "timestamp", event.getTimestamp()
-
-        );
+        Map<String, Object> data = new HashMap<>();
+        data.put("transactionId", event.getTransactionId());
+        data.put("amount", event.getAmount());
+        if (event.getFromAccount() != null) {
+            data.put("fromAccount", event.getFromAccount());
+        }
+        if (event.getToAccount() != null) {
+            data.put("toAccount", event.getToAccount());
+        }
+        data.put("timestamp", event.getTimestamp());
         notificationDeliveryService.sendNotification(event.getUserId(), "TRANSACTION_COMPLETED", data);
     }
 
