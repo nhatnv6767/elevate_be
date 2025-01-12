@@ -26,6 +26,7 @@ import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.support.atomic.RedisAtomicLong;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -285,18 +286,32 @@ public class TransactionValidationService {
     private void validateFrequencyWithRedis(String userId, TransactionLimitConfig.TierLimit limits) {
         String dayKey = KEY_PREFIX + userId + ":" + LocalDate.now();
 
+        if (!isRedisAvailable()) {
+            log.warn("Redis is not available, falling back to DB validation");
+            validateTransactionFrequencyFromDB(userId, limits);
+            return;
+        }
+
         try {
-            Long newCount = redisTemplate.opsForValue().increment(dayKey);
+
+            // use redis transaction for atomic operations
+            RedisAtomicLong counter = new RedisAtomicLong(dayKey, Objects.requireNonNull(redisTemplate.getConnectionFactory()));
+
+            Long newCount = counter.incrementAndGet();
+            if (newCount == null) {
+                throw new TransactionProcessingException("Failed to process transaction", null, false);
+            }
+
+            if (newCount == 1) {
+                redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
+            }
 
             if (newCount > limits.getMaxTransactionsPerDay()) {
                 // decrement the count
-                redisTemplate.opsForValue().decrement(dayKey);
+                counter.decrementAndGet();
                 throw new TransactionLimitExceededException(
                         String.format("Exceeded maximum transaction per day of %d",
                                 limits.getMaxTransactionsPerDay()));
-            }
-            if (newCount == 1) {
-                redisTemplate.expire(dayKey, 1, TimeUnit.DAYS);
             }
 
 

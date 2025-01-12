@@ -100,7 +100,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
                 SELECT COUNT(t) FROM Transaction t
                 WHERE (t.fromAccount.user.id = :userId)
                 AND t.createdAt BETWEEN :startTime AND :endTime
-                AND t.status = 'COMPLETED'
+                AND t.status = 'COMPLETED' and t.type = 'TRANSFER'
             """)
     Long countTransactionsByUserInTimeRange(
             @Param("userId") String userId,
