@@ -18,6 +18,7 @@ import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -33,6 +34,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,6 +51,7 @@ public class TransactionServiceImpl implements ITransactionService {
     private final TransactionMonitoringService monitoringService;
     private final TransactionRecoveryService recoveryService;
     private final SecurityUtils securityUtils;
+    private final RedisTemplate<String, String> redisTemplate;
 
     @Override
     public Transaction createTransaction(Transaction transaction) throws InterruptedException {
@@ -261,15 +264,28 @@ public class TransactionServiceImpl implements ITransactionService {
 
         try {
             TransactionEvent event = new TransactionEvent(transaction, eventType);
-            kafkaTemplate.send("elevate.transactions", eventType, event)
-                    .thenAccept(result -> log.info("Transaction event sent successfully: {}", event.getTransactionId()))
-                    .exceptionally(ex -> {
-                        log.error("Failed to send transaction event: {}", ex.getMessage());
-                        throw new RuntimeException("Failed to publish transaction event", ex);
-                    });
+            if (transaction.getStatus() == TransactionStatus.COMPLETED ||
+                    transaction.getStatus() == TransactionStatus.FAILED) {
+
+                // Thêm deduplication key để tránh gửi trùng
+                String deduplicationKey = "notification:" + transaction.getId() + ":" + transaction.getStatus();
+                Boolean isFirstNotification = redisTemplate.opsForValue()
+                        .setIfAbsent(deduplicationKey, "1", 3, TimeUnit.MINUTES);
+
+                if (Boolean.TRUE.equals(isFirstNotification)) {
+                    kafkaTemplate.send("elevate.transactions", eventType, event)
+                            .thenAccept(result -> log.info("Transaction event sent successfully: {}", event.getTransactionId()))
+                            .exceptionally(ex -> {
+                                log.error("Failed to send transaction event: {}", ex.getMessage());
+                                return null; // Không throw exception để tránh rollback transaction
+                            });
+                } else {
+                    log.info("Duplicate notification prevented for transaction: {}", transaction.getId());
+                }
+            }
         } catch (Exception e) {
             log.error("Error publishing transaction event: {}", e.getMessage());
-            throw new RuntimeException("Failed to publish transaction event", e);
+//            throw new RuntimeException("Failed to publish transaction event", e);
         }
     }
 
