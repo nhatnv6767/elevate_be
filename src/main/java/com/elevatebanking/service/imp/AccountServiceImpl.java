@@ -3,6 +3,7 @@ package com.elevatebanking.service.imp;
 import com.elevatebanking.dto.accounts.AccountDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.entity.enums.BankType;
 import com.elevatebanking.entity.enums.UserStatus;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.exception.InsufficientBalanceException;
@@ -51,7 +52,7 @@ public class AccountServiceImpl implements IAccountService {
     @Override
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
     @Transactional
-    public Account createAccount(String userId, BigDecimal initialBalance) {
+    public Account createAccount(String userId, BigDecimal initialBalance, BankType bankType) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (user.getStatus() != UserStatus.ACTIVE) {
@@ -67,9 +68,10 @@ public class AccountServiceImpl implements IAccountService {
 
         Account account = new Account();
         account.setUser(user);
-        account.setAccountNumber(accountNumberGenerator.generate());
+        account.setAccountNumber(accountNumberGenerator.generate(bankType));
         account.setBalance(initialBalance != null ? initialBalance : BigDecimal.ZERO);
         account.setStatus(AccountStatus.ACTIVE);
+        account.setBankType(bankType);
 
         Account savedAccount = accountRepository.save(account);
         log.info("Created new account {} for user {}", account.getAccountNumber(), user.getUsername());

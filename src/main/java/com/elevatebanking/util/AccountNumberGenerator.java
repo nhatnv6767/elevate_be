@@ -1,5 +1,6 @@
 package com.elevatebanking.util;
 
+import com.elevatebanking.entity.enums.BankType;
 import com.elevatebanking.repository.AccountRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +14,8 @@ import java.util.Random;
 @Component
 @Slf4j
 public class AccountNumberGenerator {
-    private static final String BRANCH_CODE = "001";
+
+    //    private static final String BRANCH_CODE = "001";
     private final Random random = new Random();
     private final AccountRepository accountRepository;
 
@@ -23,7 +25,7 @@ public class AccountNumberGenerator {
     }
 
     @Transactional
-    public String generate() {
+    public String generate(BankType bankType) {
         String accountNumber;
         int maxAttempts = 5;
         int attempts = 0;
@@ -31,7 +33,7 @@ public class AccountNumberGenerator {
         do {
             String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
             String randomStr = String.format("%05d", random.nextInt(100000));
-            accountNumber = BRANCH_CODE + dateStr + randomStr;
+            accountNumber = bankType.getBranchCode() + dateStr + randomStr;
             attempts++;
 
             if (attempts >= maxAttempts) {

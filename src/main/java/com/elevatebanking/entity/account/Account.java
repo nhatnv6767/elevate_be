@@ -5,6 +5,7 @@ import com.elevatebanking.entity.base.EntityConstants;
 import com.elevatebanking.entity.base.interfaces.Status;
 import com.elevatebanking.entity.base.interfaces.Statusable;
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.entity.enums.BankType;
 import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.entity.user.User;
 import jakarta.persistence.*;
@@ -48,6 +49,10 @@ public class Account extends BaseEntity implements Statusable {
     @Column(nullable = false)
     private AccountStatus status = AccountStatus.ACTIVE;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "bank_type", nullable = false, length = 20)
+    private BankType bankType;
+
     @OneToMany(mappedBy = "fromAccount", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Transaction> outgoingTransactions = new HashSet<>();
 
@@ -72,17 +77,17 @@ public class Account extends BaseEntity implements Statusable {
         outgoingTransactions.add(transaction);
         transaction.setFromAccount(this);
     }
-    
+
     public void removeOutgoingTransaction(Transaction transaction) {
         outgoingTransactions.remove(transaction);
         transaction.setFromAccount(null);
     }
-    
+
     public void addIncomingTransaction(Transaction transaction) {
         incomingTransactions.add(transaction);
         transaction.setToAccount(this);
     }
-    
+
     public void removeIncomingTransaction(Transaction transaction) {
         incomingTransactions.remove(transaction);
         transaction.setToAccount(null);

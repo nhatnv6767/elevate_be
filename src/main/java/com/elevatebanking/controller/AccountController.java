@@ -61,13 +61,13 @@ public class AccountController {
     @PreAuthorize("hasRole('ADMIN') or hasRole('TELLER')")
     @PostMapping
     public ResponseEntity<?> createAccount(@Valid @RequestBody CreateAccountRequest request) {
-        if (request == null || request.getUserId() == null) {
+        if (request == null || request.getUserId() == null || request.getBankType() == null) {
             return ResponseEntity.badRequest().body(
                     Map.of("message", "Missing required fields body"));
         }
 
         try {
-            Account newAccount = accountService.createAccount(request.getUserId(), request.getInitialBalance());
+            Account newAccount = accountService.createAccount(request.getUserId(), request.getInitialBalance(), request.getBankType());
             AccountResponse response = accountMapper.accountToAccountResponse(newAccount);
 
             return ResponseEntity.ok(Map.of("message", "Account created successfully", "account", response));

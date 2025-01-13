@@ -3,13 +3,14 @@ package com.elevatebanking.service;
 import com.elevatebanking.dto.accounts.AccountDTOs;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.AccountStatus;
+import com.elevatebanking.entity.enums.BankType;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 public interface IAccountService {
-    Account createAccount(String userId, BigDecimal initialBalance);
+    Account createAccount(String userId, BigDecimal initialBalance, BankType bankType);
 
     Optional<Account> getAccountById(String id);
 
