@@ -1,4 +1,24 @@
 spring:
+  cassandra:
+    contact-points: 192.168.1.128
+    port: 9042
+    keyspace-name: elevate_banking
+    local-datacenter: datacenter1
+    username: root
+    password: 123456
+    security:
+      enable: true
+    schema-action: CREATE_IF_NOT_EXISTS
+    request:
+      timeout: 30s
+    connection:
+      connect-timeout: 30s
+      init-query-timeout: 30s
+
+    retry-policy:
+      max-attempts: 5
+
+  
   redis:
     key-prefix: "email_dedupe:"
     key-ttl: 300 # 5 minutes TTL

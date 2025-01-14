@@ -1,5 +1,8 @@
 package com.elevatebanking.config;
 
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectVolumeResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
@@ -27,6 +30,8 @@ import org.springframework.core.annotation.Order;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 
+import java.io.IOException;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.sql.Connection;
@@ -51,6 +56,7 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DockerConfig {
 
+
     private static final String POSTGRES_VOLUME = "elevate-banking-postgres-data";
     private static final String KAFKA_VOLUME = "elevate-banking-kafka-data";
     private static final String KAFKA_SECRETS_VOLUME = "elevate-banking-kafka-secrets";
@@ -58,7 +64,9 @@ public class DockerConfig {
     private static final String ZOOKEEPER_VOLUME = "elevate-banking-zookeeper-data";
     private static final String ZOOKEEPER_LOG_VOLUME = "elevate-banking-zookeeper-log";
     private static final String ZOOKEEPER_SECRETS_VOLUME = "elevate-banking-zookeeper-secrets";
+    private static final String CASSANDRA_VOLUME = "elevate-banking-cassandra-data";
 
+    private static final String CASSANDRA_CONTAINER = "elevate-banking-cassandra";
     private static final String POSTGRES_CONTAINER = "elevate-banking-postgres";
     private static final String KAFKA_CONTAINER = "elevate-banking-kafka";
     private static final String REDIS_CONTAINER = "elevate-banking-redis";
@@ -156,7 +164,8 @@ public class DockerConfig {
             return isServiceRunningAndAccessible(POSTGRES_CONTAINER, 5432) &&
                     isServiceRunningAndAccessible(REDIS_CONTAINER, 6379) &&
                     isServiceRunningAndAccessible(ZOOKEEPER_CONTAINER, 2181) &&
-                    isServiceRunningAndAccessible(KAFKA_CONTAINER, 9092);
+                    isServiceRunningAndAccessible(KAFKA_CONTAINER, 9092) &&
+                    isServiceRunningAndAccessible(CASSANDRA_CONTAINER, 9042);
         } catch (Exception e) {
             log.warn("Failed to check if all services are running - {}", e.getMessage());
             return false;
@@ -211,7 +220,7 @@ public class DockerConfig {
             case "postgres":
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
-                        .withPortBindings(PortBinding.parse("5432:5432")) // Thêm port mapping
+                        .withPortBindings(PortBinding.parse("5432:5432"))
                         .withBinds(new Bind(POSTGRES_VOLUME, new Volume("/var/lib/postgresql/data")));
             case "redis":
                 return HostConfig.newHostConfig()
@@ -236,6 +245,20 @@ public class DockerConfig {
                         .withBinds(new Bind(KAFKA_VOLUME, new Volume("/var/lib/kafka/data")),
                                 new Bind(KAFKA_SECRETS_VOLUME, new Volume("/etc/kafka/secrets")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
+
+            case "cassandra":
+                return HostConfig.newHostConfig()
+                        .withNetworkMode(NETWORK_NAME)
+                        .withPortBindings(
+                                PortBinding.parse("9042:9042"),   // CQL native
+                                PortBinding.parse("7000:7000"),   // Internode
+                                PortBinding.parse("7001:7001"),   // TLS Internode
+                                PortBinding.parse("7199:7199")    // JMX
+                        )
+                        .withBinds(new Bind(CASSANDRA_VOLUME, new Volume("/var/lib/cassandra")))
+                        .withExtraHosts("cassandra:192.168.1.128")
+                        .withPublishAllPorts(true);
+
 
             default:
                 return HostConfig.newHostConfig()
@@ -330,12 +353,17 @@ public class DockerConfig {
         throw new RuntimeException("Port " + port + " not available after " + maxAttempts + " attempts");
     }
 
+
     public void initializeDockerServices() throws Exception {
         log.info("Initializing Docker services...");
 
         try {
             cleanupOrphanedVolumes();
             initializeVolumes();
+
+            handleExistingContainer(CASSANDRA_CONTAINER, "cassandra", 9042);
+            waitForServiceToBeReady("cassandra");
+            Thread.sleep(10000);
 
             // 1. Kiểm tra và khởi động PostgreSQL
             handleExistingContainer(POSTGRES_CONTAINER, "postgres", 5432);
@@ -360,6 +388,7 @@ public class DockerConfig {
             log.info("Kafka is ready");
             Thread.sleep(2000);
 
+
         } catch (Exception e) {
             log.error("Failed to initialize Docker services", e);
             throw e;
@@ -370,7 +399,7 @@ public class DockerConfig {
         List<String> volumes = Arrays.asList(
                 POSTGRES_VOLUME, REDIS_VOLUME, KAFKA_VOLUME,
                 KAFKA_SECRETS_VOLUME, ZOOKEEPER_VOLUME, ZOOKEEPER_LOG_VOLUME,
-                ZOOKEEPER_SECRETS_VOLUME);
+                ZOOKEEPER_SECRETS_VOLUME, CASSANDRA_VOLUME);
         volumes.forEach(this::createVolumeIfNotExists);
     }
 
@@ -521,6 +550,28 @@ public class DockerConfig {
                         "REDIS_PASSWORD=",
                         "ALLOW_EMPTY_PASSWORD=yes",
                         "REDIS_BIND=0.0.0.0");
+            case "cassandra":
+                return Arrays.asList(
+                        "CASSANDRA_CLUSTER_NAME=elevate_banking",
+                        "CASSANDRA_DC=datacenter1",
+                        "CASSANDRA_RACK=rack1",
+                        "CASSANDRA_ENDPOINT_SNITCH=SimpleSnitch",
+                        // Để Cassandra bind vào tất cả các interface trong container
+                        "CASSANDRA_LISTEN_ADDRESS=0.0.0.0",
+                        // Địa chỉ broadcast là địa chỉ thật của máy host
+                        "CASSANDRA_BROADCAST_ADDRESS=192.168.1.128",
+                        "CASSANDRA_START_RPC=true",
+                        // RPC address cũng bind vào tất cả các interface
+                        "CASSANDRA_RPC_ADDRESS=0.0.0.0",
+                        "CASSANDRA_BROADCAST_RPC_ADDRESS=192.168.1.128",
+                        "CASSANDRA_SEEDS=192.168.1.128",
+                        // Cấu hình authentication
+                        "CASSANDRA_AUTHENTICATOR=PasswordAuthenticator",
+                        "CASSANDRA_AUTHORIZER=CassandraAuthorizer",
+                        // Credentials
+                        "CASSANDRA_USER=root",
+                        "CASSANDRA_PASSWORD=123456"
+                );
             case "redisBACK":
                 return Arrays.asList(
                         // Basic configuration
@@ -554,36 +605,49 @@ public class DockerConfig {
     }
 
     private void waitForServiceToBeReady(String service) {
-        int maxRetries = 5;
-        int retryDelay = 500;
+        int maxRetries = service.equals("cassandra") ? 60 : 5;
+        int retryDelay = service.equals("cassandra") ? 5000 : 500;
         int attempt = 0;
+        String host = service.equals("cassandra") ? "127.0.0.1" : SERVER_HOST; // Use 127.0.0.1 for Cassandra
 
         while (attempt < maxRetries) {
             try {
                 switch (service) {
                     case "postgres":
-                        if (isPortAccesible(SERVER_HOST, 5432)) {
+                        if (isPortAccesible(host, 5432)) {
                             checkPostgresConnection();
                             return;
                         }
                         break;
                     case "redis":
-                        if (isPortAccesible(SERVER_HOST, 6379)) {
+                        if (isPortAccesible(host, 6379)) {
                             checkRedisConnection();
                             return;
                         }
                         break;
                     case "zookeeper":
-                        if (checkZookeeperConnection() && isPortAccesible(SERVER_HOST, 2181)) {
+                        if (checkZookeeperConnection() && isPortAccesible(host, 2181)) {
                             log.info("Successfully connected to Zookeeper");
                             return;
                         }
                         break;
                     case "kafka":
                         waitForPort(9092);
-                        if (isPortAccesible(SERVER_HOST, 9092)) {
+                        if (isPortAccesible(host, 9092)) {
                             checkKafkaConnection();
                             return;
+                        }
+                        break;
+                    case "cassandra":
+                        if (isPortAccesible(host, 9042)) {
+                            try {
+                                checkCassandraConnection(host);
+                                log.info("Successfully connected to Cassandra");
+                                return;
+                            } catch (Exception e) {
+                                log.error("Failed to connect to Cassandra: {}", e.getMessage(), e);
+//                                throw e;
+                            }
                         }
                         break;
                 }
@@ -619,6 +683,8 @@ public class DockerConfig {
                 return "confluentinc/cp-zookeeper:latest";
             case "kafka":
                 return "confluentinc/cp-kafka:latest";
+            case "cassandra":
+                return "cassandra:latest";
             default:
                 throw new IllegalArgumentException("Unknown service: " + service);
         }
@@ -640,6 +706,37 @@ public class DockerConfig {
             throw new RuntimeException("Failed to connect to PostgreSQL");
         } catch (Exception e) {
             throw new RuntimeException("Failed to connect to PostgreSQL", e);
+        }
+    }
+
+    private void checkCassandraConnection(String host) {
+        try (Socket socket = new Socket()) {
+            // First check if port is accessible
+            socket.connect(new InetSocketAddress(host, 9042), 5000);
+
+            // Use Cassandra driver to check connection
+            try (CqlSession session = CqlSession.builder()
+                    .addContactPoint(new InetSocketAddress(host, 9042))
+                    .withLocalDatacenter("datacenter1")
+                    .withAuthCredentials("root", "123456")
+//                    .withKeyspace("elevate_banking")
+                    .build()) {
+
+                // Execute a simple query to verify connection
+                session.execute("CREATE KEYSPACE IF NOT EXISTS elevate_banking " +
+                        "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
+                ResultSet rs = session.execute("SELECT now() FROM system.local");
+                Row row = rs.one();
+                if (row != null) {
+                    log.info("Successfully connected to Cassandra...");
+                    return;
+                }
+                throw new RuntimeException("Failed to verify Cassandra connection");
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to connect to Cassandra using driver", e);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to connect to Cassandra port", e);
         }
     }
 
@@ -756,43 +853,6 @@ public class DockerConfig {
                 " attempts. Last error: " + lastException.getMessage(), lastException);
     }
 
-    private boolean isContainerRunning(String containerName) {
-        try {
-            List<Container> containers = dockerClient.listContainersCmd()
-                    .withNameFilter(Collections.singleton(containerName))
-                    .withShowAll(true)
-                    .exec();
-            return !containers.isEmpty() && "running".equalsIgnoreCase(containers.get(0).getState());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private void initializeDatabaseSchema() {
-        try {
-            // Đợi một chút để đảm bảo PostgreSQL hoàn toàn sẵn sàng
-            Thread.sleep(2000);
-
-            EntityManager em = entityManagerFactory.createEntityManager();
-            try {
-                em.getTransaction().begin();
-
-                // JPA sẽ tự động tạo các bảng dựa trên các entity
-                em.createNativeQuery("SELECT 1").getSingleResult();
-
-                em.getTransaction().commit();
-                log.info("Database schema created successfully");
-
-            } finally {
-                if (em != null && em.isOpen()) {
-                    em.close();
-                }
-            }
-        } catch (Exception e) {
-            log.error("Failed to initialize database schema", e);
-            throw new RuntimeException("Database schema initialization failed", e);
-        }
-    }
 
     private void createVolumeIfNotExists(String volumeName) {
         try {
