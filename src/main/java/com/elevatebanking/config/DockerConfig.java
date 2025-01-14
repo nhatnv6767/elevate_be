@@ -250,7 +250,7 @@ public class DockerConfig {
                 return HostConfig.newHostConfig()
                         .withNetworkMode(NETWORK_NAME)
                         .withPortBindings(
-                                PortBinding.parse("9042:9042"),   // CQL native
+                                PortBinding.parse("9042:9042"),
                                 PortBinding.parse("7000:7000"),   // Internode
                                 PortBinding.parse("7001:7001"),   // TLS Internode
                                 PortBinding.parse("7199:7199")    // JMX
