@@ -4,8 +4,8 @@ spring:
     port: 9042
     keyspace-name: elevate_banking
     local-datacenter: datacenter1
-    username: root
-    password: 123456
+    username: cassandra
+    password: cassandra
     security:
       enable: true
     schema-action: CREATE_IF_NOT_EXISTS
@@ -14,9 +14,11 @@ spring:
     connection:
       connect-timeout: 30s
       init-query-timeout: 30s
-
-    retry-policy:
-      max-attempts: 5
+    controlconnection:
+      timeout: 30s
+    pool:
+      heartbeat-interval: 30s
+      idle-timeout: 120s
 
   
   redis:
