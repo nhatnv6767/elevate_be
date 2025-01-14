@@ -1,10 +1,11 @@
 package com.elevatebanking.config;
 
-import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
-import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.oss.driver.api.core.cql.Row;
+//import com.datastax.oss.driver.api.core.CqlSession;
+//import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
+//import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+//import com.datastax.oss.driver.api.core.cql.ResultSet;
+//import com.datastax.oss.driver.api.core.cql.Row;
+
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectVolumeResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
@@ -58,7 +59,6 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DockerConfig {
 
-
     private static final String POSTGRES_VOLUME = "elevate-banking-postgres-data";
     private static final String KAFKA_VOLUME = "elevate-banking-kafka-data";
     private static final String KAFKA_SECRETS_VOLUME = "elevate-banking-kafka-secrets";
@@ -79,8 +79,7 @@ public class DockerConfig {
     private static final String NETWORK_NAME = "elevate-banking-network";
     private static final List<String> PROTECTED_VOLUMES = Arrays.asList(
             "portainer_data",
-            "portainer-data"
-    );
+            "portainer-data");
 
     @Value("${docker.host:tcp://192.168.1.128:2375}")
     private String dockerHost;
@@ -248,12 +247,19 @@ public class DockerConfig {
                                 new Bind(KAFKA_SECRETS_VOLUME, new Volume("/etc/kafka/secrets")))
                         .withLinks(new Link("elevate-banking-zookeeper", "zookeeper"));
 
-            case "cassandra":
-                return HostConfig.newHostConfig()
-                        .withNetworkMode("host")  // Change to host network mode
-                        .withBinds(new Bind(CASSANDRA_VOLUME, new Volume("/var/lib/cassandra")))
-                        .withPrivileged(true);
-
+//            case "cassandra":
+//                return HostConfig.newHostConfig()
+//                        .withNetworkMode(NETWORK_NAME)
+//                        .withPortBindings(
+//                                PortBinding.parse("9042:9042"),  // CQL native port
+//                                PortBinding.parse("7000:7000"),  // Internode communication
+//                                PortBinding.parse("7001:7001"),  // TLS internode
+//                                PortBinding.parse("7199:7199")   // JMX
+//                        )
+//                        .withBinds(new Bind(CASSANDRA_VOLUME, new Volume("/var/lib/cassandra")))
+//                        .withPrivileged(true)
+//                        .withCapAdd(Capability.IPC_LOCK)    // Sửa lại cách thêm capability
+//                        .withNetworkMode("host");
 
             default:
                 return HostConfig.newHostConfig()
@@ -348,17 +354,12 @@ public class DockerConfig {
         throw new RuntimeException("Port " + port + " not available after " + maxAttempts + " attempts");
     }
 
-
     public void initializeDockerServices() throws Exception {
         log.info("Initializing Docker services...");
 
         try {
             cleanupOrphanedVolumes();
             initializeVolumes();
-
-            handleExistingContainer(CASSANDRA_CONTAINER, "cassandra", 9042);
-            waitForServiceToBeReady("cassandra");
-            Thread.sleep(10000);
 
             // 1. Kiểm tra và khởi động PostgreSQL
             handleExistingContainer(POSTGRES_CONTAINER, "postgres", 5432);
@@ -383,6 +384,9 @@ public class DockerConfig {
             log.info("Kafka is ready");
             Thread.sleep(2000);
 
+//            handleExistingContainer(CASSANDRA_CONTAINER, "cassandra", 9042);
+//            waitForServiceToBeReady("cassandra");
+//            Thread.sleep(10000);
 
         } catch (Exception e) {
             log.error("Failed to initialize Docker services", e);
@@ -547,22 +551,32 @@ public class DockerConfig {
                         "REDIS_BIND=0.0.0.0");
             case "cassandra":
                 return Arrays.asList(
-                        "CASSANDRA_BROADCAST_ADDRESS=" + SERVER_HOST,
-                        "CASSANDRA_LISTEN_ADDRESS=" + SERVER_HOST,
-                        "CASSANDRA_RPC_ADDRESS=0.0.0.0",
-                        "CASSANDRA_BROADCAST_RPC_ADDRESS=" + SERVER_HOST,
-                        "CASSANDRA_SEEDS=" + SERVER_HOST,
+                        // Network configuration - FIX HERE
+                        "CASSANDRA_LISTEN_ADDRESS=0.0.0.0",           // Change to 0.0.0.0 for Docker
+                        "CASSANDRA_BROADCAST_ADDRESS=192.168.1.128",  // Keep this as host IP
+                        "CASSANDRA_RPC_ADDRESS=0.0.0.0",             // Change to 0.0.0.0 for Docker
+                        "CASSANDRA_BROADCAST_RPC_ADDRESS=192.168.1.128", // Keep this as host IP
                         "CASSANDRA_START_RPC=true",
+                        "CASSANDRA_SEEDS=192.168.1.128",
+
+                        // Cluster configuration
                         "CASSANDRA_CLUSTER_NAME=elevate_banking",
                         "CASSANDRA_DC=datacenter1",
                         "CASSANDRA_RACK=rack1",
                         "CASSANDRA_ENDPOINT_SNITCH=SimpleSnitch",
-                        "MAX_HEAP_SIZE=512M",
-                        "HEAP_NEWSIZE=128M",
-                        "LOCAL_JMX=no",
+
+                        // Authentication
                         "CASSANDRA_AUTHENTICATOR=PasswordAuthenticator",
                         "CASSANDRA_AUTHORIZER=CassandraAuthorizer",
-                        "JVM_EXTRA_OPTS=-Dcassandra.allow_unsafe_join=true -Dcassandra.skip_wait_for_gossip_to_settle=0 -Dcassandra.load_ring_state=false"
+                        "CASSANDRA_ROLE_MANAGER=CassandraRoleManager",
+
+                        // Performance settings
+                        "MAX_HEAP_SIZE=512M",
+                        "HEAP_NEWSIZE=128M",
+
+                        // Extra network settings - ADD THESE
+                        "LOCAL_JMX=no",
+                        "JVM_EXTRA_OPTS=-Dcassandra.allow_unsafe_join=true"
                 );
             case "redisBACK":
                 return Arrays.asList(
@@ -597,10 +611,10 @@ public class DockerConfig {
     }
 
     private void waitForServiceToBeReady(String service) {
-        int maxRetries = service.equals("cassandra") ? 60 : 5;
+        int maxRetries = service.equals("cassandra") ? 120 : 5;
         int retryDelay = service.equals("cassandra") ? 5000 : 500;
         int attempt = 0;
-        String host = service.equals("cassandra") ? "127.0.0.1" : SERVER_HOST; // Use 127.0.0.1 for Cassandra
+        String host = service.equals("cassandra") ? "192.168.1.128" : SERVER_HOST; // Use 127.0.0.1 for Cassandra
 
         while (attempt < maxRetries) {
             try {
@@ -630,18 +644,18 @@ public class DockerConfig {
                             return;
                         }
                         break;
-                    case "cassandra":
-                        if (isPortAccesible(host, 9042)) {
-                            try {
-                                checkCassandraConnection(host);
-                                log.info("Successfully connected to Cassandra");
-                                return;
-                            } catch (Exception e) {
-                                log.error("Failed to connect to Cassandra: {}", e.getMessage(), e);
-//                                throw e;
-                            }
-                        }
-                        break;
+//                    case "cassandra":
+//                        if (isPortAccesible(host, 9042)) {
+//                            try {
+//                                checkCassandraConnection(host);
+//                                log.info("Successfully connected to Cassandra");
+//                                return;
+//                            } catch (Exception e) {
+//                                log.error("Failed to connect to Cassandra: {}", e.getMessage(), e);
+//                                // throw e;
+//                            }
+//                        }
+//                        break;
                 }
                 attempt++;
                 if (attempt < maxRetries) {
@@ -701,52 +715,79 @@ public class DockerConfig {
         }
     }
 
-    private void checkCassandraConnection(String host) {
-        int maxRetries = 10;
-        int retryCount = 0;
-        int waitTime = 10000; // 10 seconds between retries
-
-        while (retryCount < maxRetries) {
-            try {
-                DriverConfigLoader loader = DriverConfigLoader.programmaticBuilder()
-                        .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(30))
-                        .withDuration(DefaultDriverOption.CONNECTION_CONNECT_TIMEOUT, Duration.ofSeconds(30))
-                        .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
-                        .build();
-
-                try (CqlSession session = CqlSession.builder()
-                        .addContactPoint(new InetSocketAddress(host, 9042))
-                        .withLocalDatacenter("datacenter1")
-                        .withAuthCredentials("cassandra", "cassandra")
-                        .withConfigLoader(loader)
-                        .build()) {
-
-                    ResultSet rs = session.execute("SELECT now() FROM system.local");
-                    if (rs.one() != null) {
-                        session.execute("CREATE KEYSPACE IF NOT EXISTS elevate_banking " +
-                                "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
-                        log.info("Successfully connected to Cassandra and created keyspace");
-                        return;
-                    }
-                }
-            } catch (Exception e) {
-                retryCount++;
-                if (retryCount < maxRetries) {
-                    log.warn("Failed to connect to Cassandra (attempt {}/{}). Retrying in {} seconds...",
-                            retryCount, maxRetries, waitTime / 1000);
-                    try {
-                        Thread.sleep(waitTime);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                } else {
-                    log.error("Failed to connect to Cassandra after {} attempts", maxRetries);
-                    throw new RuntimeException("Failed to connect to Cassandra", e);
-                }
-            }
-        }
-    }
+//    private void checkCassandraConnection(String host) {
+//        int maxRetries = 30;
+//        int retryCount = 0;
+//        int waitTime = 10000;
+//
+//        while (retryCount < maxRetries) {
+//            try {
+//                // First check if port is accessible
+//                try (Socket socket = new Socket()) {
+//                    socket.connect(new InetSocketAddress(host, 9042), 5000);
+//                    log.info("Cassandra port 9042 is accessible");
+//                }
+//
+//                // Wait for Cassandra to initialize
+//                Thread.sleep(10000);
+//
+//                // Create driver configuration with longer timeouts
+//                DriverConfigLoader loader = DriverConfigLoader.programmaticBuilder()
+//                        .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(30))
+//                        .withDuration(DefaultDriverOption.CONNECTION_CONNECT_TIMEOUT, Duration.ofSeconds(30))
+//                        .withDuration(DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(30))
+//                        .withDuration(DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofSeconds(30))
+//                        .build();
+//
+//                // Try to connect with default credentials first
+//                try (CqlSession session = CqlSession.builder()
+//                        .addContactPoint(new InetSocketAddress(host, 9042))
+//                        .withLocalDatacenter("datacenter1")
+//                        .withAuthCredentials("cassandra", "cassandra")
+//                        .withConfigLoader(loader)
+//                        .build()) {
+//
+//                    // Create root user
+//                    session.execute("CREATE ROLE IF NOT EXISTS root WITH SUPERUSER = true AND LOGIN = true AND PASSWORD = '123456'");
+//
+//                    // Update cassandra user password
+//                    session.execute("ALTER ROLE cassandra WITH PASSWORD = '123456'");
+//
+//                    log.info("Successfully set up Cassandra authentication");
+//                }
+//
+//                // Test connection with new credentials
+//                try (CqlSession session = CqlSession.builder()
+//                        .addContactPoint(new InetSocketAddress(host, 9042))
+//                        .withLocalDatacenter("datacenter1")
+//                        .withAuthCredentials("root", "123456")
+//                        .withConfigLoader(loader)
+//                        .build()) {
+//
+//                    // Create keyspace
+//                    session.execute("CREATE KEYSPACE IF NOT EXISTS elevate_banking " +
+//                            "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
+//
+//                    log.info("Successfully connected to Cassandra with root user");
+//                    return;
+//                }
+//            } catch (Exception e) {
+//                retryCount++;
+//                if (retryCount < maxRetries) {
+//                    log.warn("Failed to connect to Cassandra (attempt {}/{}): {}. Retrying in {} ms...",
+//                            retryCount, maxRetries, e.getMessage(), waitTime);
+//                    try {
+//                        Thread.sleep(waitTime);
+//                    } catch (InterruptedException ie) {
+//                        Thread.currentThread().interrupt();
+//                        break;
+//                    }
+//                } else {
+//                    throw new RuntimeException("Failed to connect to Cassandra after " + maxRetries + " attempts", e);
+//                }
+//            }
+//        }
+//    }
 
     private void checkRedisConnection() {
         try {
@@ -861,7 +902,6 @@ public class DockerConfig {
                 " attempts. Last error: " + lastException.getMessage(), lastException);
     }
 
-
     private void createVolumeIfNotExists(String volumeName) {
         try {
             dockerClient.inspectVolumeCmd(volumeName).exec();
@@ -902,8 +942,7 @@ public class DockerConfig {
                 String volumeName = volume.getName();
                 if (!volumeName.startsWith("elevate-banking-") &&
                         !usedVolumes.contains(volumeName) &&
-                        !PROTECTED_VOLUMES.contains(volumeName)
-                ) {
+                        !PROTECTED_VOLUMES.contains(volumeName)) {
                     try {
                         dockerClient.removeVolumeCmd(volumeName).exec();
                         log.info("Removed orphaned volume : {}", volumeName);
