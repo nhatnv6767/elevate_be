@@ -1,19 +1,19 @@
 spring:
-  #  cassandra:
-  #    contact-points: 192.168.1.128
-  #    port: 9042
-  #    keyspace-name: elevate_banking
-  #    local-datacenter: datacenter1
-  #    username: cassandra
-  #    password: 123456
-  #    schema-action: CREATE_IF_NOT_EXISTS
-  #    request:
-  #      timeout: 60s
-  #    connection:
-  #      connect-timeout: 60s
-  #      init-query-timeout: 60s
-  #    controlconnection:
-  #      timeout: 60s
+  cassandra:
+    contact-points: ${SPRING_CASSANDRA_CONTACT_POINTS}
+    port: ${SPRING_CASSANDRA_PORT}
+    keyspace-name: ${SPRING_CASSANDRA_KEYSPACE_NAME}
+    local-datacenter: ${SPRING_CASSANDRA_LOCAL_DATACENTER}
+    username: ${SPRING_CASSANDRA_USERNAME}
+    password: ${SPRING_CASSANDRA_PASSWORD}
+    schema-action: ${SPRING_CASSANDRA_SCHEMA_ACTION}
+    request:
+      timeout: ${SPRING_CASSANDRA_REQUEST_TIMEOUT}
+    connection:
+      connect-timeout: ${SPRING_CASSANDRA_CONNECTION_CONNECT_TIMEOUT}
+      init-query-timeout: ${SPRING_CASSANDRA_CONNECTION_INIT_QUERY_TIMEOUT}
+    controlconnection:
+      timeout: ${SPRING_CASSANDRA_CONTROLCONNECTION_TIMEOUT}
 
   
   redis:
