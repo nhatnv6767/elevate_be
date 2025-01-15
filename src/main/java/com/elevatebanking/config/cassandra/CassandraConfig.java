@@ -10,6 +10,9 @@ import org.springframework.data.cassandra.config.SchemaAction;
 import org.springframework.data.cassandra.core.CassandraTemplate;
 import org.springframework.data.cassandra.repository.config.EnableCassandraRepositories;
 
+import java.util.Collections;
+import java.util.List;
+
 @Configuration
 @EnableCassandraRepositories(basePackages = "com.elevatebanking.repository.cassandra")
 public class CassandraConfig extends AbstractCassandraConfiguration {

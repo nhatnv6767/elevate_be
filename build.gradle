@@ -97,7 +97,7 @@ dependencies {
     implementation group: 'org.apache.kafka', name: 'kafka-clients', version: '3.9.0'
     implementation 'org.springframework.boot:spring-boot-starter-data-cassandra'
 //
-//    implementation("com.datastax.oss:java-driver-core:4.17.0")
+    implementation("com.datastax.oss:java-driver-core:4.17.0")
 
 
     // Database

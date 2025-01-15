@@ -274,6 +274,9 @@ management:
 logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+  level:
+    org.springframework.data.cassandra: DEBUG
+    com.datastax.oss.driver: DEBUG
 
 transaction:
   limits:
