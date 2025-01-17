@@ -101,16 +101,17 @@ public class ATMController {
             // }
 
             // validate withdrawal amount
-            if (request.getAmount().compareTo(MIN_WITHDRAWAL_AMOUNT) < 0 ||
-                    request.getAmount().remainder(MIN_WITHDRAWAL_AMOUNT).compareTo(BigDecimal.ZERO) != 0) {
+            BigDecimal amount = request.getAmount();
+            BigDecimal remainder = amount.remainder(MIN_WITHDRAWAL_AMOUNT);
+            boolean isNotMultipleOfMinAmount = remainder.compareTo(BigDecimal.ZERO) != 0;
+
+            if (amount.compareTo(MIN_WITHDRAWAL_AMOUNT) < 0 || isNotMultipleOfMinAmount) {
                 throw new InvalidOperationException("Withdrawal amount must be at least $" + MIN_WITHDRAWAL_AMOUNT
                         + " and in multiples of $" + MIN_WITHDRAWAL_AMOUNT);
             }
 
-            if (request.getAmount().compareTo(MAX_WITHDRAWAL_AMOUNT) > 0
-                    || request.getAmount().remainder(MIN_WITHDRAWAL_AMOUNT).compareTo(BigDecimal.ZERO) != 0) {
-                throw new InvalidOperationException("Withdrawal amount must be at most $" + MAX_WITHDRAWAL_AMOUNT
-                        + " and in multiples of $" + MIN_WITHDRAWAL_AMOUNT);
+            if (amount.compareTo(MAX_WITHDRAWAL_AMOUNT) > 0) {
+                throw new InvalidOperationException("Withdrawal amount must be at most $" + MAX_WITHDRAWAL_AMOUNT);
             }
 
             // calculate amount money user wants to withdraw

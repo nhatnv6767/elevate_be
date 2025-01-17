@@ -515,7 +515,7 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction.setAtmId(request.getAtmId());
         transaction.setDispensedDenominations(request.getRequestedDenominations());
 
-        transaction = transactionRepository.save(transaction);
+//        transaction = transactionRepository.save(transaction);
         publishTransactionEvent(transaction, "transaction.initiated");
 
         try {
