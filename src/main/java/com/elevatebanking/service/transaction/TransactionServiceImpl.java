@@ -506,8 +506,10 @@ public class TransactionServiceImpl implements ITransactionService {
         Transaction transaction = createWithdrawalTransaction(account, request);
 
         try {
-            processWithdrawal(account.getId(), request.getAmount());
+//            processWithdrawal(account.getId(), request.getAmount());
+            executeWithdrawal(account.getId(), request.getAmount());
             transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setCreatedAt(LocalDateTime.now());
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.completed");
             return mapToWithdrawalResponse(transaction);
@@ -525,6 +527,7 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction.setType(TransactionType.WITHDRAWAL);
         transaction.setStatus(TransactionStatus.PENDING);
         transaction.setAtmId(request.getAtmId());
+        transaction.setDescription(request.getDescription());
         transaction.setDispensedDenominations(request.getRequestedDenominations());
 
         return transactionRepository.save(transaction);
