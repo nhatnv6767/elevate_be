@@ -502,38 +502,32 @@ public class TransactionServiceImpl implements ITransactionService {
 
         Account account = accountService.getAccountByNumber(request.getAccountNumber())
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
-        // accountService.validateAccount(account.getId(), request.getAmount());
         validationService.validateWithdrawalTransaction(account, request.getAmount());
-
-        Transaction transaction = new Transaction();
-        transaction.setFromAccount(account);
-        transaction.setAmount(request.getAmount());
-        transaction.setType(TransactionType.WITHDRAWAL);
-        transaction.setDescription(request.getDescription());
-        transaction.setStatus(TransactionStatus.PENDING);
-        transaction.setCreatedAt(LocalDateTime.now());
-        transaction.setAtmId(request.getAtmId());
-        transaction.setDispensedDenominations(request.getRequestedDenominations());
-
-//        transaction = transactionRepository.save(transaction);
-        publishTransactionEvent(transaction, "transaction.initiated");
+        Transaction transaction = createWithdrawalTransaction(account, request);
 
         try {
             processWithdrawal(account.getId(), request.getAmount());
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.completed");
+            return mapToWithdrawalResponse(transaction);
 
         } catch (Exception e) {
-            log.error("Error processing withdrawal: {}", e.getMessage());
-            if (transaction != null) {
-                transaction.setStatus(TransactionStatus.FAILED);
-                transaction = transactionRepository.save(transaction);
-                publishTransactionEvent(transaction, "transaction.failed");
-            }
-            throw new RuntimeException("Error processing withdrawal");
+            handleTransactionError(transaction, e);
+            throw e;
         }
-        return mapToWithdrawalResponse(transaction);
+    }
+
+    private Transaction createWithdrawalTransaction(Account account, WithdrawRequest request) {
+        Transaction transaction = new Transaction();
+        transaction.setFromAccount(account);
+        transaction.setAmount(request.getAmount());
+        transaction.setType(TransactionType.WITHDRAWAL);
+        transaction.setStatus(TransactionStatus.PENDING);
+        transaction.setAtmId(request.getAtmId());
+        transaction.setDispensedDenominations(request.getRequestedDenominations());
+
+        return transactionRepository.save(transaction);
     }
 
     @Override

@@ -39,6 +39,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -80,7 +82,9 @@ public class TransactionValidationService {
         try {
             setCurrentTransactionType(TransactionType.WITHDRAWAL);
             validateBasicWithdrawalRules(account, amount);
-            validateWithdrawalLimits(account, amount);
+            validateWithdrawalLimitsAsync(account, amount).get();
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
         } finally {
             currentTransactionType.remove();
         }
@@ -128,6 +132,24 @@ public class TransactionValidationService {
         TransactionLimitConfig.TierLimit limits = getLimitsForUser(account.getUser());
         validateSingleTransactionLimit(amount, limits);
         validateTransactionFrequency(userId, limits);
+    }
+
+    private CompletableFuture<Void> validateWithdrawalLimitsAsync(Account account, BigDecimal amount) {
+        return CompletableFuture.runAsync(() -> {
+            String userId = account.getUser().getId();
+            String lockKey = "withdrawal_limit:" + userId;
+            try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, this)) {
+                if (!lockManager.acquireLock()) {
+                    throw new TransactionLimitExceededException("Unable to acquire lock for withdrawal limit");
+                }
+                TransactionLimitConfig.TierLimit limits = getLimitsForUser(account.getUser());
+                validateSingleTransactionLimit(amount, limits);
+                validateTransactionFrequency(userId, limits);
+            } catch (Exception e) {
+                log.error("Error validating withdrawal limits: {}", e.getMessage());
+                throw new TransactionLimitExceededException(e.getMessage());
+            }
+        });
     }
 
     private void validateTransferLimits(Account account, BigDecimal amount) throws InterruptedException {

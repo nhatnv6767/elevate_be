@@ -19,19 +19,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -54,14 +49,6 @@ public class ATMController {
     private static final BigDecimal MAX_DEPOSIT_AMOUNT = new BigDecimal("10000");
     private static final BigDecimal MIN_WITHDRAWAL_AMOUNT = new BigDecimal("1");
     private static final BigDecimal MIN_DEPOSIT_AMOUNT = new BigDecimal("5");
-
-    // @Getter
-    // @Setter
-    // @AllArgsConstructor
-    // private static class ErrorResponse {
-    // private String message;
-    // private String code;
-    // }
 
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Withdraw money from ATM")
