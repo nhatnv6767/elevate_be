@@ -14,6 +14,7 @@ import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.service.nonImp.EmailService;
 import com.elevatebanking.service.notification.NotificationDeliveryService;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -48,6 +49,7 @@ public class TransactionEventProcessor {
     private final TransactionRepository transactionRepository;
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
+    private final EmailService emailService;
     private final KafkaEventSender kafkaEventSender;
     private final NotificationDeliveryService notificationDeliveryService;
     private final Cache<String, TransactionEvent> processedEvents = CacheBuilder.newBuilder()
@@ -287,6 +289,22 @@ public class TransactionEventProcessor {
         updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
         log.info("Preparing to send notification for transaction: {}", event.getTransactionId());
         sendNotificationEvent(event, buildCompletedMessage(event));
+
+        try {
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+
+            // get email user from transaction
+            String subject = buildNotificationTitle(transaction.getType(), transaction.getStatus());
+            String content = buildCompletedMessage(event);
+
+            // get userId from transaction based on type
+            String userId = getUserIdFromTransaction(transaction);
+            emailService.sendTransactionEmail(userId, subject, content);
+            log.info("Email sent for transaction: {}", event.getTransactionId());
+
+        } catch (Exception e) {
+            log.error("Error sending email event: {}", e.getMessage());
+        }
 
 
         Map<String, Object> data = new HashMap<>();
