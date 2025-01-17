@@ -512,6 +512,8 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction.setDescription(request.getDescription());
         transaction.setStatus(TransactionStatus.PENDING);
         transaction.setCreatedAt(LocalDateTime.now());
+        transaction.setAtmId(request.getAtmId());
+        transaction.setDispensedDenominations(request.getRequestedDenominations());
 
         transaction = transactionRepository.save(transaction);
         publishTransactionEvent(transaction, "transaction.initiated");
@@ -604,6 +606,8 @@ public class TransactionServiceImpl implements ITransactionService {
                         transaction.getFromAccount() != null ? transaction.getFromAccount().getAccountNumber() : null)
                 .description(transaction.getDescription())
                 .timestamp(transaction.getCreatedAt())
+                .atmId(transaction.getAtmId())
+                .dispensedDenominations(transaction.getDispensedDenominations())
                 .build();
     }
 

@@ -187,67 +187,144 @@ public class AtmManagementService {
         return atmRepository.save(atm);
     }
 
-    /**
-     * Tính toán số lượng tờ tiền tối ưu cho một giao dịch rút tiền ATM.
-     * 
-     * Chi tiết nghiệp vụ:
-     * 1. Đầu vào:
+    /*
+     * Hàm calculateOptimalDenominations() tính toán số lượng tờ tiền tối ưu
+     * cho một giao dịch rút tiền ATM.
+     *
+     * Luồng xử lý chính:
+     *
+     * 1. Input parameters:
      * - atmId: ID của máy ATM
-     * - amount: Số tiền cần rút (dạng BigDecimal)
-     * 
-     * 2. Quy trình xử lý:
-     * - Lấy thông tin máy ATM và danh sách mệnh giá tiền hiện có
-     * - Chuyển đổi số tiền cần rút sang đơn vị cent (nhân 100) và làm tròn
+     * - amount: Số tiền cần rút
+     *
+     * 2. Kiểm tra điều kiện đầu vào:
+     * - Lấy thông tin ATM từ ID
+     * - Lấy danh sách mệnh giá tiền có trong ATM
+     * - Kiểm tra số tiền rút phải là số nguyên dương
+     *
+     * 3. Xử lý tính toán mệnh giá:
      * - Sắp xếp các mệnh giá theo thứ tự giảm dần
-     * - Với mỗi mệnh giá:
-     * + Kiểm tra số lượng tờ tiền có sẵn trong ATM
-     * + Tính số lượng tờ tiền cần thiết bằng cách chia số tiền còn lại cho mệnh giá
-     * + Chọn số lượng tờ tiền thực tế = min(số lượng cần, số lượng có sẵn)
+     * - Với mỗi mệnh giá, tính số lượng tờ cần thiết:
+     * + Số lượng tờ = Số tiền còn lại / mệnh giá
+     * + So sánh với số lượng tờ có sẵn trong ATM
+     * + Chọn số lượng tờ nhỏ hơn giữa 2 giá trị trên
      * + Cập nhật số tiền còn lại cần rút
-     * - Nếu còn tiền chưa rút được -> báo lỗi không đủ tiền
-     * 
-     * 3. Kết quả trả về:
-     * - Map<Integer, Integer> chứa cặp <mệnh giá, số lượng tờ tiền>
-     * - Ví dụ: {100: 5, 50: 1, 20: 2} nghĩa là 5 tờ 100$, 1 tờ 50$, 2 tờ 20$
+     *
+     * 4. Tối ưu hóa mệnh giá:
+     * - Nếu mệnh giá hiện tại > 50 và còn tiền chưa rút hết
+     * - Tính tổng các mệnh giá nhỏ hơn còn lại
+     * - Nếu tổng > 1/2 mệnh giá hiện tại
+     * - Thử rút thêm 1 tờ mệnh giá hiện tại
+     *
+     * 5. Kiểm tra điều kiện kết quả:
+     * - Đảm bảo rút hết được số tiền yêu cầu
+     * - Tổng số tờ tiền không vượt quá 50 tờ
+     *
+     * 6. Output:
+     * - Trả về Map<Integer, Integer> chứa:
+     * + Key: mệnh giá tiền
+     * + Value: số lượng tờ tương ứng
+     *
+     * 7. Exception handling:
+     * - Throw InvalidOperationException nếu:
+     * + Số tiền không hợp lệ
+     * + ATM không đủ tiền
+     * + Vượt quá giới hạn số tờ tiền
      */
+    @Transactional
     public Map<Integer, Integer> calculateOptimalDenominations(String atmId, BigDecimal amount) {
+        // Lấy thông tin ATM
         AtmMachine atm = getAtmById(atmId);
         Map<Integer, Integer> availableDenominations = atm.getDenominations();
         Map<Integer, Integer> result = new HashMap<>();
 
-        // Chuyển đổi số tiền sang cent và làm tròn đến 0 chữ số thập phân
-        int remainingAmount = amount
-                .multiply(new BigDecimal("100"))
-                .setScale(0, RoundingMode.HALF_UP)
-                .intValue();
+        // Kiểm tra số tiền phải là số nguyên
+        if (amount.remainder(BigDecimal.ONE).compareTo(BigDecimal.ZERO) != 0) {
+            throw new InvalidOperationException("Amount must be greater than 0");
+        }
 
+        int targetAmount = amount.intValue();
+        int remainingAmount = targetAmount;
+
+        // Sắp xếp mệnh giá giảm dần
         List<Integer> denominations = new ArrayList<>(availableDenominations.keySet());
         denominations.sort(Collections.reverseOrder());
 
-        for (Integer denom : denominations) {
+        // Xử lý từng mệnh giá
+        for (int i = 0; i < denominations.size(); i++) {
+            Integer denom = denominations.get(i);
             if (remainingAmount <= 0)
                 break;
 
-            int availableCount = availableDenominations.get(denom);
+            int availableCount = availableDenominations.getOrDefault(denom, 0);
+            if (availableCount <= 0)
+                continue;
 
-            // Sửa lại công thức tính số lượng tờ tiền cần thiết
-            // Vì remainingAmount đã là cent, chỉ cần chia cho denom
+            // Tính số lượng tờ cần thiết cho mệnh giá này
             int neededCount = remainingAmount / denom;
-
+            // Lấy số nhỏ hơn giữa số tờ cần và số tờ có sẵn
             int actualCount = Math.min(neededCount, availableCount);
 
             if (actualCount > 0) {
                 result.put(denom, actualCount);
-                // Cập nhật số tiền còn lại (vẫn tính bằng cent)
                 remainingAmount -= actualCount * denom;
+            }
+
+            // Tối ưu hóa với mệnh giá lớn
+            if (remainingAmount > 0 && i < denominations.size() - 1) {
+                // tinh xem co the rut duoc bao nhieu voi cac menh gia nho hon
+                int possibleWithSmaller = calculatePossibleAmount(
+                        denominations.subList(i + 1, denominations.size()),
+                        availableDenominations,
+                        remainingAmount
+                );
+
+                if (possibleWithSmaller < remainingAmount && actualCount < availableCount) {
+                    // thu them 1 to voi menh gia hien tai
+                    result.put(denom, actualCount + 1);
+                    remainingAmount = remainingAmount - denom;
+                }
             }
         }
 
-        // Nếu còn tiền chưa rút được -> không đủ tiền trong ATM
+
         if (remainingAmount > 0) {
             throw new InvalidOperationException("ATM doesn't have enough bills to process this withdrawal");
         }
 
+        int totalAmount = result.entrySet().stream()
+                .mapToInt(e -> e.getKey() * e.getValue())
+                .sum();
+        if (totalAmount != targetAmount) {
+            throw new InvalidOperationException("Internal error: Calculated amount doesn't match requested amount");
+        }
+
+        // kiem tra so luong to tien
+        int totalBills = result.values().stream().mapToInt(Integer::intValue).sum();
+        if (totalBills > 50) {
+            throw new InvalidOperationException(
+                    "Number of bills exceeds maximum limit. Please request a smaller amount or use different denominations.");
+        }
+
         return result;
+    }
+
+    
+    private int calculatePossibleAmount(List<Integer> denominations, Map<Integer, Integer> availableDenominations, int targetAmount) {
+        int possibleAmount = 0;
+        int remaining = targetAmount;
+
+        for (Integer denom : denominations) {
+            int availableCount = availableDenominations.getOrDefault(denom, 0);
+            if (availableCount <= 0) continue;
+
+            int neededCount = remaining / denom;
+            int actualCount = Math.min(neededCount, availableCount);
+
+            possibleAmount += actualCount * denom;
+            remaining -= actualCount * denom;
+        }
+
+        return possibleAmount;
     }
 }
