@@ -155,4 +155,30 @@ public class AtmManagementService {
         }
         return result;
     }
+
+    @Transactional
+    public AtmMachine addAtmDenominations(String atmId, Map<Integer, Integer> denominationsToAdd) {
+        AtmMachine atm = getAtmById(atmId);
+
+        // validate new denominations
+        validateDenominations(denominationsToAdd);
+        // merge existing and new denominations
+        Map<Integer, Integer> updatedDenominations = new HashMap<>(atm.getDenominations());
+        for (Map.Entry<Integer, Integer> entry : denominationsToAdd.entrySet()) {
+            Integer denom = entry.getKey();
+            Integer additionalCount = entry.getValue();
+
+            // add new amount to existing amount (or 0 if denomination didn't exist)
+            updatedDenominations.merge(denom, additionalCount, Integer::sum);
+        }
+        // calculate new total
+        BigDecimal newTotal = calculateTotal(updatedDenominations);
+        // update atm
+        atm.setDenominations(updatedDenominations);
+        atm.setTotalAmount(newTotal);
+        atm.setLastUpdated(LocalDateTime.now());
+
+        updateAtmCache(atm);
+        return atmRepository.save(atm);
+    }
 }

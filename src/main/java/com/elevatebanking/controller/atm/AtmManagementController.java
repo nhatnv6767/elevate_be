@@ -49,4 +49,71 @@ public class AtmManagementController {
                 .collect(Collectors.toList()));
 
     }
+
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/atms/{atmId}/denominations")
+    public ResponseEntity<?> updateAtmDenominations(
+            @PathVariable String atmId,
+            @RequestBody Map<Integer, Integer> denominations
+    ) {
+        log.info("Updating denominations for ATM: {}", atmId);
+        try {
+            AtmMachine atm = atmManagementService.updateAtmDenominations(atmId, denominations);
+            return ResponseEntity.ok(AtmResponse.from(atm));
+        } catch (Exception e) {
+            log.error("Error updating ATM denominations: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Failed to update ATM denominations",
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/atms/{atmId}")
+    public ResponseEntity<?> getAtm(@PathVariable String atmId) {
+        try {
+            AtmMachine atm = atmManagementService.getAtmById(atmId);
+            return ResponseEntity.ok(AtmResponse.from(atm));
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/atms/{atmId}/status")
+    public ResponseEntity<?> updateAtmStatus(
+            @PathVariable String atmId,
+            @RequestParam String status
+    ) {
+        try {
+            AtmMachine atm = atmManagementService.updateAtmStatus(atmId, status);
+            return ResponseEntity.ok(AtmResponse.from(atm));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Failed to update ATM status",
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/atms/{atmId}/denominations/add")
+    public ResponseEntity<?> addAtmDenominations(
+            @PathVariable String atmId,
+            @RequestBody Map<Integer, Integer> denominationsToAdd
+    ) {
+        try {
+            AtmMachine atm = atmManagementService.addAtmDenominations(atmId, denominationsToAdd);
+            return ResponseEntity.ok(AtmResponse.from(atm));
+        } catch (Exception e) {
+            log.error("Error adding denominations to ATM: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Failed to add denominations to ATM",
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
 }
