@@ -206,9 +206,14 @@ public class AtmManagementService {
         Map<Integer, Integer> availableDenominations = atm.getDenominations();
         Map<Integer, Integer> result = new HashMap<>();
 
-        // Kiểm tra số tiền phải là số nguyên
-        if (amount.remainder(BigDecimal.ONE).compareTo(BigDecimal.ZERO) != 0) {
+        // Kiểm tra số tiền phải lớn hơn 0
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new InvalidOperationException("Amount must be greater than 0");
+        }
+
+        // Kiểm tra số tiền phải là số nguyên
+        if (amount.scale() > 0) {
+            throw new InvalidOperationException("Amount must be a whole number");
         }
 
         int targetAmount = amount.intValue();
@@ -247,19 +252,40 @@ public class AtmManagementService {
             }
 
             // Tối ưu cho mệnh giá lớn
-            // Xem xét dùng thêm một tờ mệnh giá lớn nếu mệnh giá nhỏ không đủ
             if (remainingAmount > 0 && i < denominations.size() - 1) {
+                // Tính tổng số tờ tiền hiện tại
+                int currentTotalBills = result.values().stream()
+                        .mapToInt(Integer::intValue)
+                        .sum();
+
+                // Kiểm tra xem việc thêm 1 tờ có vượt quá giới hạn 50 tờ không
+                if (currentTotalBills + 1 > 50) {
+                    continue;
+                }
+
                 // Tính số tiền có thể rút với mệnh giá nhỏ hơn
                 int possibleWithSmaller = calculatePossibleAmount(
                         denominations.subList(i + 1, denominations.size()),
                         availableDenominations,
                         remainingAmount);
 
-                // Nếu mệnh giá nhỏ không đủ và còn tờ mệnh giá lớn
-                if (possibleWithSmaller < remainingAmount && actualCount < availableCount) {
-                    // Thêm một tờ mệnh giá hiện tại
-                    result.put(denom, actualCount + 1);
-                    remainingAmount = remainingAmount - denom;
+                // Tính số tiền sau khi thêm 1 tờ mệnh giá lớn
+                int remainingAfterExtra = remainingAmount - denom;
+
+                // Chỉ thêm tờ mệnh giá lớn nếu:
+                // 1. Mệnh giá nhỏ không đủ để rút hết số tiền còn lại
+                // 2. Còn đủ tờ tiền mệnh giá lớn trong ATM
+                // 3. Việc thêm tờ mệnh giá lớn không làm số tiền âm
+                if (possibleWithSmaller < remainingAmount
+                        && actualCount < availableCount
+                        && remainingAfterExtra >= 0) {
+
+                    // Cập nhật số lượng tờ tiền mệnh giá lớn
+                    int newCount = result.getOrDefault(denom, 0) + 1;
+                    result.put(denom, newCount);
+
+                    // Cập nhật số tiền còn lại
+                    remainingAmount = remainingAfterExtra;
                 }
             }
         }
@@ -297,7 +323,7 @@ public class AtmManagementService {
      * -> Có thể rút: $70 ($20 x 2 + $10 x 3)
      */
     private int calculatePossibleAmount(List<Integer> denominations, Map<Integer, Integer> availableDenominations,
-                                        int targetAmount) {
+            int targetAmount) {
         int possibleAmount = 0; // Tổng số tiền có thể rút được
         int remaining = targetAmount; // Số tiền còn lại cần xử lý
 
