@@ -14,6 +14,7 @@ import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.service.email.EmailEventService;
 import com.elevatebanking.service.nonImp.EmailService;
 import com.elevatebanking.service.notification.NotificationDeliveryService;
 import com.google.common.cache.Cache;
@@ -48,6 +49,7 @@ public class TransactionEventProcessor {
     private final IAccountService accountService;
     private final TransactionRepository transactionRepository;
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
+    private final EmailEventService emailEventService;
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
     private final EmailService emailService;
     private final KafkaEventSender kafkaEventSender;
@@ -85,11 +87,10 @@ public class TransactionEventProcessor {
             ack.acknowledge();
             return;
         }
-//        if (lock.tryLock()) {
+        // if (lock.tryLock()) {
 
         try {
             event.addProcessStep("EVENT_RECEIVED");
-
 
             if (event.isExpired() || isDuplicateEvent(event)) {
                 handleExpiredOrDuplicate(event, ack);
@@ -175,12 +176,14 @@ public class TransactionEventProcessor {
         //
         event.addProcessStep(String.format("STATE_TRANSITION_CHECK: %s -> %s", currentStatus, event.getStatus()));
 
-//        Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
-//                TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED, TransactionStatus.FAILED),
-//                TransactionStatus.COMPLETED, Set.of(),
-//                TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK)
-//        );
-//        return validTransitions.getOrDefault(currentStatus, Set.of()).contains(event.getStatus());
+        // Map<TransactionStatus, Set<TransactionStatus>> validTransitions = Map.of(
+        // TransactionStatus.PENDING, Set.of(TransactionStatus.COMPLETED,
+        // TransactionStatus.FAILED),
+        // TransactionStatus.COMPLETED, Set.of(),
+        // TransactionStatus.FAILED, Set.of(TransactionStatus.ROLLED_BACK)
+        // );
+        // return validTransitions.getOrDefault(currentStatus,
+        // Set.of()).contains(event.getStatus());
 
         if (currentStatus == TransactionStatus.COMPLETED) {
             log.info("Transaction already completed, ignoring event: {}", event.getTransactionId());
@@ -291,7 +294,8 @@ public class TransactionEventProcessor {
         sendNotificationEvent(event, buildCompletedMessage(event));
 
         try {
-            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(
+                    () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
             // get email user from transaction
             String subject = buildNotificationTitle(transaction.getType(), transaction.getStatus());
@@ -302,10 +306,19 @@ public class TransactionEventProcessor {
             emailService.sendTransactionEmail(userId, subject, content);
             log.info("Email sent for transaction: {}", event.getTransactionId());
 
+            EmailEvent emailEvent = EmailEvent.builder()
+                    .to(transaction.getFromAccount().getUser().getEmail())
+                    .subject(subject)
+                    .content(content)
+                    .deduplicationId(event.getTransactionId())
+                    .build();
+
+            log.info("Emitting email event for transaction: {}", event.getTransactionId());
+            emailEventService.sendEmailEvent(emailEvent);
+
         } catch (Exception e) {
             log.error("Error sending email event: {}", e.getMessage());
         }
-
 
         Map<String, Object> data = new HashMap<>();
         data.put("transactionId", event.getTransactionId());
@@ -332,7 +345,8 @@ public class TransactionEventProcessor {
         event.addProcessStep("ERROR_HANDLING: " + e.getMessage());
         if (e instanceof NonRetryableException || !event.isRetryable()) {
             event.addProcessStep("NON_RETRYABLE_ERROR");
-            log.error("Non-retryable error processing event checking: {} - {}", event.getTransactionId(), e.getMessage());
+            log.error("Non-retryable error processing event checking: {} - {}", event.getTransactionId(),
+                    e.getMessage());
             sendToDLQ(event, "Non-retryable error: " + e.getMessage());
             updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
             sendFailureNotification(event);
@@ -441,7 +455,8 @@ public class TransactionEventProcessor {
         log.info("Sending notification event: {} {}", event.getTransactionId(), message);
         try {
 
-            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(
+                    () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
             // xac dinh loai thong bao va priority dua tren transaction status
             NotificationEvent.NotificationType notificationType;
@@ -461,7 +476,7 @@ public class TransactionEventProcessor {
             };
 
             // xay dung title dua tren loai giao dich
-//            String title = buildNotificationTitle(event.getType(), event.getStatus());
+            // String title = buildNotificationTitle(event.getType(), event.getStatus());
             String title = buildNotificationTitle(transaction.getType(), transaction.getStatus());
             // tao notification event
             NotificationEvent notificationEvent = NotificationEvent.builder()
@@ -476,16 +491,17 @@ public class TransactionEventProcessor {
                     .build();
 
             // gui event to kafka
-//            notificationEventKafkaTemplate.send("elevate.notifications",
-//                    notificationEvent.getEventId(), notificationEvent);
+            // notificationEventKafkaTemplate.send("elevate.notifications",
+            // notificationEvent.getEventId(), notificationEvent);
             kafkaEventSender.sendWithRetry("elevate.notifications", notificationEvent.getEventId(), notificationEvent);
 
-
-//            kafkaEventSender.sendWithRetry("elevate.notifications", notificationEvent.getEventId(), notificationEvent)
-//                    .addCallback(
-//                            result -> log.info("Notification sent successfully: {}", notificationEvent.getEventId()),
-//                            ex -> log.error("Failed to send notification: ")
-//                    );
+            // kafkaEventSender.sendWithRetry("elevate.notifications",
+            // notificationEvent.getEventId(), notificationEvent)
+            // .addCallback(
+            // result -> log.info("Notification sent successfully: {}",
+            // notificationEvent.getEventId()),
+            // ex -> log.error("Failed to send notification: ")
+            // );
 
             log.info("Notification event sent: {} - {}", notificationEvent.getEventId(), notificationEvent);
 
@@ -610,8 +626,8 @@ public class TransactionEventProcessor {
         try {
             transactionRepository.findById(transactionId)
                     .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
-//            transaction.setStatus(status);
-//            transactionRepository.save(transaction);
+            // transaction.setStatus(status);
+            // transactionRepository.save(transaction);
             transactionRepository.updateStatus(transactionId, status);
             log.info("Transaction status updated: {} - {}", transactionId, status);
         } catch (Exception e) {

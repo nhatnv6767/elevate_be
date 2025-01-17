@@ -171,20 +171,6 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction = transactionRepository.save(transaction);
         publishTransactionEvent(transaction, "transaction.initiated");
         return transaction;
-
-        // validationService.validateTransferTransaction(fromAccount, toAccount,
-        // amount);
-        // Transaction transaction = buildTransaction(fromAccount, toAccount, amount,
-        // description,
-        // TransactionType.TRANSFER);
-        // transaction = initializeAndSaveTransaction(transaction);
-        // try {
-        // executeTransfer(fromAccountId, toAccountId, amount);
-        // return completeTransaction(transaction);
-        // } catch (Exception e) {
-        // handleTransactionError(transaction, "Error executing transfer", e);
-        // throw new RuntimeException("Error executing transfer", e);
-        // }
     }
 
     @Override

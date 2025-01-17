@@ -115,6 +115,7 @@ public class EmailService {
 
         String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
         sendEmail(user.getEmail(), subject, emailContent);
+        log.info("Email sent successfully");
     }
 
     public void sendSystemAlert(String subject, String content) {

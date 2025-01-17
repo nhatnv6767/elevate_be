@@ -169,6 +169,7 @@ public class KafkaConfig {
         return buildProducerFactory();
     }
 
+
     // template beans
 
     @Bean
