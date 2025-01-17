@@ -1,4 +1,25 @@
 spring:
+  cassandra:
+    contact-points: ${SPRING_CASSANDRA_CONTACT_POINTS}
+    port: ${SPRING_CASSANDRA_PORT}
+    keyspace-name: ${SPRING_CASSANDRA_KEYSPACE_NAME}
+    local-datacenter: ${SPRING_CASSANDRA_LOCAL_DATACENTER}
+    username: ${SPRING_CASSANDRA_USERNAME}
+    password: ${SPRING_CASSANDRA_PASSWORD}
+    schema-action: ${SPRING_CASSANDRA_SCHEMA_ACTION}
+    request:
+      timeout: ${SPRING_CASSANDRA_REQUEST_TIMEOUT}
+    connection:
+      connect-timeout: ${SPRING_CASSANDRA_CONNECTION_CONNECT_TIMEOUT}
+      init-query-timeout: ${SPRING_CASSANDRA_CONNECTION_INIT_QUERY_TIMEOUT}
+    controlconnection:
+      timeout: ${SPRING_CASSANDRA_CONTROLCONNECTION_TIMEOUT}
+
+
+  redis:
+    key-prefix: "email_dedupe:"
+    key-ttl: 300 # 5 minutes TTL
+
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
@@ -63,14 +84,20 @@ spring:
       host: 192.168.1.128
       port: 6379
       database: 0
-      timeout: 60000
-      connect-timeout: 60000
+      #      timeout: 60000
+      timeout: 5000
+      connect-timeout: 5000
+      retry:
+        max-attempts: 3
+        initial-interval: 1000
+        multiplier: 1.5
       lettuce:
         pool:
-          max-active: 8
+          max-active: 16
           max-idle: 8
-          min-idle: 2
-          max-wait: -1ms
+          min-idle: 4
+          max-wait: 1000ms
+    #          max-wait: -1ms
     jpa:
       repositories:
         bootstrap-mode: deferred
@@ -109,6 +136,8 @@ spring:
         request.timeout.ms: 10000
         retry.backoff.ms: 1000
         retries: 3
+      retries: 3
+      retry-backoff-ms: 1000
     topics:
       transaction: elevate.transactions
       transaction-retry: elevate.transactions.retry
@@ -119,6 +148,11 @@ spring:
       email-retry: elevate.emails.retry
       email-dlq: elevate.emails.dlq
     consumer:
+      enable-auto-commit: false
+      isolation-level: read_committed
+      max-poll-records: 500
+      max-poll-interval-ms: 300000
+      connection-timeout-ms: 60000
       groups:
         transaction: elevate-transaction-group
         transaction-retry: elevate-transaction-retry-group
@@ -196,13 +230,53 @@ springdoc:
       paths-to-match: /api/v1/accounts/**
     - group: transactions
       paths-to-match: /api/v1/transactions/**
+    - group: transfers
+      paths-to-match: /api/v1/transfers/**
+    - group: health
+      paths-to-match: /api/v1/health/**
+    - group: atm
+      paths-to-match: /api/v1/atm/**
+
 
 # JWT Configuration
 jwt:
   #  secret: your_jwt_secret_key_should_be_very_long_and_secure_at_least_256_bits
-  secret: Zc8xS9lJIZBYUwyi8MiGi6dj1XBVp2rhA8SSNPhkPG8=
+  secret: 4Ube4ZBG8kOi58ykfh2VzXQpNsFgAyxQ
   expiration: 2592000000
   refresh-expiration: 86400000000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"  # Expose all actuator endpoints
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        all: true  # Enable histogram metrics for all measurements
+    enable:
+      all: true  # Enable all metrics
+
+  # Prometheus configuration
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+        descriptions: true
+        step: 1m
+
+# Logging configuration for tracing
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+  level:
+    org.springframework.data.cassandra: DEBUG
+    com.datastax.oss.driver: WARN
 
 transaction:
   limits:
@@ -212,7 +286,7 @@ transaction:
         daily-limit: 5000000
         monthly-limit: 50000000
         max-transactions-per-minute: 3
-        max-transactions-per-day: 20
+        max-transactions-per-day: 100
       premium:
         single-transaction-limit: 5000000
         daily-limit: 25000000

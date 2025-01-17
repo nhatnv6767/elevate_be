@@ -13,6 +13,7 @@ import java.util.Map;
 @NoArgsConstructor // Thêm constructor mặc định
 @AllArgsConstructor
 public class EmailEvent {
+    private String deduplicationId;
     private String to;
     private String subject;
     private String content;
