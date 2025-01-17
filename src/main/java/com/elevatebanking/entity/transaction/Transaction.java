@@ -3,6 +3,7 @@ package com.elevatebanking.entity.transaction;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.TransactionType;
+import com.elevatebanking.mapper.HashMapConverter;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
@@ -14,6 +15,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "transactions")
@@ -54,6 +56,13 @@ public class Transaction {
     @Size(max = 500, message = "Description cannot exceed 500 characters")
     @Column
     private String description;
+
+    @Column(name = "atm_id")
+    private String atmId;
+
+    @Column(name = "dispensed_denominations", columnDefinition = "text")
+    @Convert(converter = HashMapConverter.class)
+    private Map<Integer, Integer> dispensedDenominations;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

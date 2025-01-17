@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -43,6 +44,9 @@ public class AtmManagementService {
 
     @Transactional
     public AtmMachine updateAtmDenominations(String atmId, Map<Integer, Integer> newDenominations) {
+        if (atmId == null || atmId.trim().isEmpty()) {
+            throw new InvalidOperationException("ATM ID cannot be null or empty");
+        }
         AtmMachine atm = getAtmById(atmId);
         // validate denominations
         validateDenominations(newDenominations);
@@ -89,6 +93,9 @@ public class AtmManagementService {
 
     @Transactional(readOnly = true)
     public AtmMachine getAtmById(String atmId) {
+        if (atmId == null || atmId.trim().isEmpty()) {
+            throw new InvalidOperationException("ATM ID cannot be null or empty");
+        }
         return atmRepository.findById(atmId).orElseThrow(() -> new ResourceNotFoundException("Atm not found"));
     }
 
@@ -139,8 +146,7 @@ public class AtmManagementService {
 
     public Map<Integer, Integer> subtractDenominations(
             Map<Integer, Integer> atmDenoms,
-            Map<Integer, Integer> requestedDenoms
-    ) {
+            Map<Integer, Integer> requestedDenoms) {
         Map<Integer, Integer> result = new HashMap<>(atmDenoms);
         for (Map.Entry<Integer, Integer> entry : requestedDenoms.entrySet()) {
             Integer denom = entry.getKey();
@@ -148,8 +154,7 @@ public class AtmManagementService {
             Integer available = result.getOrDefault(denom, 0);
             if (available < requested) {
                 throw new InvalidOperationException(
-                        String.format("Not enough %d bills available in ATM", denom)
-                );
+                        String.format("Not enough %d bills available in ATM", denom));
             }
             result.put(denom, available - requested);
         }
@@ -180,5 +185,69 @@ public class AtmManagementService {
 
         updateAtmCache(atm);
         return atmRepository.save(atm);
+    }
+
+    /**
+     * Tính toán số lượng tờ tiền tối ưu cho một giao dịch rút tiền ATM.
+     * 
+     * Chi tiết nghiệp vụ:
+     * 1. Đầu vào:
+     * - atmId: ID của máy ATM
+     * - amount: Số tiền cần rút (dạng BigDecimal)
+     * 
+     * 2. Quy trình xử lý:
+     * - Lấy thông tin máy ATM và danh sách mệnh giá tiền hiện có
+     * - Chuyển đổi số tiền cần rút sang đơn vị cent (nhân 100) và làm tròn
+     * - Sắp xếp các mệnh giá theo thứ tự giảm dần
+     * - Với mỗi mệnh giá:
+     * + Kiểm tra số lượng tờ tiền có sẵn trong ATM
+     * + Tính số lượng tờ tiền cần thiết bằng cách chia số tiền còn lại cho mệnh giá
+     * + Chọn số lượng tờ tiền thực tế = min(số lượng cần, số lượng có sẵn)
+     * + Cập nhật số tiền còn lại cần rút
+     * - Nếu còn tiền chưa rút được -> báo lỗi không đủ tiền
+     * 
+     * 3. Kết quả trả về:
+     * - Map<Integer, Integer> chứa cặp <mệnh giá, số lượng tờ tiền>
+     * - Ví dụ: {100: 5, 50: 1, 20: 2} nghĩa là 5 tờ 100$, 1 tờ 50$, 2 tờ 20$
+     */
+    public Map<Integer, Integer> calculateOptimalDenominations(String atmId, BigDecimal amount) {
+        AtmMachine atm = getAtmById(atmId);
+        Map<Integer, Integer> availableDenominations = atm.getDenominations();
+        Map<Integer, Integer> result = new HashMap<>();
+
+        // Chuyển đổi số tiền sang cent và làm tròn đến 0 chữ số thập phân
+        int remainingAmount = amount
+                .multiply(new BigDecimal("100"))
+                .setScale(0, RoundingMode.HALF_UP)
+                .intValue();
+
+        List<Integer> denominations = new ArrayList<>(availableDenominations.keySet());
+        denominations.sort(Collections.reverseOrder());
+
+        for (Integer denom : denominations) {
+            if (remainingAmount <= 0)
+                break;
+
+            int availableCount = availableDenominations.get(denom);
+
+            // Sửa lại công thức tính số lượng tờ tiền cần thiết
+            // Vì remainingAmount đã là cent, chỉ cần chia cho denom
+            int neededCount = remainingAmount / denom;
+
+            int actualCount = Math.min(neededCount, availableCount);
+
+            if (actualCount > 0) {
+                result.put(denom, actualCount);
+                // Cập nhật số tiền còn lại (vẫn tính bằng cent)
+                remainingAmount -= actualCount * denom;
+            }
+        }
+
+        // Nếu còn tiền chưa rút được -> không đủ tiền trong ATM
+        if (remainingAmount > 0) {
+            throw new InvalidOperationException("ATM doesn't have enough bills to process this withdrawal");
+        }
+
+        return result;
     }
 }

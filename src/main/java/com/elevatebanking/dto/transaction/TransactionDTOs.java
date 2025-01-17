@@ -6,6 +6,7 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class TransactionDTOs {
 
@@ -56,13 +57,21 @@ public class TransactionDTOs {
     }
 
 
-    @Data
+    @Getter
+    @Setter
     @NoArgsConstructor
     @AllArgsConstructor
     public static class WithdrawRequest extends TransactionRequest {
         @NotBlank(message = "Account number is required")
         @Pattern(regexp = "^[0-9]{10,20}$", message = "Invalid account number format")
         private String accountNumber;
+
+        @NotBlank(message = "ATM ID is required")
+        private String atmId;
+
+        // Map of denomination -> count that user wants to withdraw
+        // For example: {100: 5, 50: 2} means user wants 5 x $100 bills and 2 x $50 bills
+        private Map<Integer, Integer> requestedDenominations;
     }
 
 
@@ -93,6 +102,10 @@ public class TransactionDTOs {
         private String fromAccount;
         private String description;
         private LocalDateTime timestamp;
+        // add new fields
+        // the actual bills dispensed
+        private Map<Integer, Integer> dispensedDenominations;
+        private String atmId;
     }
 
     @Data
