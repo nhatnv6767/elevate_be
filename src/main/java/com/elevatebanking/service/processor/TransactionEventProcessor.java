@@ -51,7 +51,7 @@ public class TransactionEventProcessor {
     private final KafkaTemplate<String, TransactionEvent> kafkaTemplate;
     private final EmailEventService emailEventService;
     private final KafkaTemplate<String, NotificationEvent> notificationEventKafkaTemplate;
-    private final EmailService emailService;
+    //    private final EmailService emailService;
     private final KafkaEventSender kafkaEventSender;
     private final NotificationDeliveryService notificationDeliveryService;
     private final Cache<String, TransactionEvent> processedEvents = CacheBuilder.newBuilder()
@@ -302,20 +302,49 @@ public class TransactionEventProcessor {
             String content = buildCompletedMessage(event);
 
             // get userId from transaction based on type
-            String userId = getUserIdFromTransaction(transaction);
-            emailService.sendTransactionEmail(userId, subject, content);
-            log.info("Email sent for transaction: {}", event.getTransactionId());
 
-            EmailEvent emailEvent = EmailEvent.builder()
-                    .to(transaction.getFromAccount().getUser().getEmail())
-                    .subject(subject)
-                    .content(content)
-                    .deduplicationId(event.getTransactionId())
-                    .build();
+//            String userId = getUserIdFromTransaction(transaction);
+//            emailService.sendTransactionEmail(userId, subject, content);
+//            log.info("Email sent for transaction: {}", event.getTransactionId());
+//
+//            EmailEvent emailEvent = EmailEvent.builder()
+//                    .to(transaction.getFromAccount().getUser().getEmail())
+//                    .subject(subject)
+//                    .content(content)
+//                    .deduplicationId(event.getTransactionId())
+//                    .build();
+//
+//            log.info("Emitting email event for transaction: {}", event.getTransactionId());
+//            emailEventService.sendEmailEvent(emailEvent);
 
-            log.info("Emitting email event for transaction: {}", event.getTransactionId());
-            emailEventService.sendEmailEvent(emailEvent);
+            String recipientEmail = getRecipientEmail(transaction);
+            if (recipientEmail != null) {
+                EmailEvent emailEvent = EmailEvent.builder()
+                        .to(recipientEmail)
+                        .subject(subject)
+                        .content(content)
+                        .deduplicationId(event.getTransactionId())
+                        .build();
+                log.info("Emitting email event for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
+                emailEventService.sendEmailEvent(emailEvent);
+            }
 
+            if (transaction.getType() == TransactionType.TRANSFER) {
+                String senderEmail = transaction.getFromAccount().getUser().getEmail();
+                if (senderEmail != null) {
+                    EmailEvent senderEmailEvent = EmailEvent.builder()
+                            .to(senderEmail)
+                            .subject(subject)
+                            .content(content)
+                            .deduplicationId(event.getTransactionId() + "-sender")
+                            .build();
+                    log.info("Emitting email event for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
+                    emailEventService.sendEmailEvent(senderEmailEvent);
+                }
+            }
+
+        } catch (ResourceNotFoundException e) {
+            log.error("Transaction not found when sending email: {}", event.getTransactionId());
         } catch (Exception e) {
             log.error("Error sending email event: {}", e.getMessage());
         }
@@ -334,9 +363,66 @@ public class TransactionEventProcessor {
         log.info("Notification sent for transaction: {}", event.getTransactionId());
     }
 
+    private String getRecipientEmail(Transaction transaction) {
+        try {
+            switch (transaction.getType()) {
+                case TRANSFER, DEPOSIT -> {
+                    return transaction.getToAccount().getUser().getEmail();
+                }
+                case WITHDRAWAL -> {
+                    return transaction.getFromAccount().getUser().getEmail();
+                }
+                default -> {
+                    log.warn("Unknown transaction type: {}", transaction.getType());
+                    return null;
+                }
+            }
+        } catch (NullPointerException e) {
+            log.error("Error getting recipient email for transaction {} : {}", transaction.getId(), e.getMessage());
+            return null;
+        }
+    }
+
     private void handleTransactionFailed(TransactionEvent event) {
         log.info("Handling transaction failed event: {}", event.getTransactionId());
         updateTransactionStatus(event.getTransactionId(), TransactionStatus.FAILED);
+
+        try {
+            Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
+            String subject = buildNotificationTitle(transaction.getType(), transaction.getStatus());
+            String content = buildFailureMessage(event);
+
+            String recipientEmail = getRecipientEmail(transaction);
+            if (recipientEmail != null) {
+                EmailEvent emailEvent = EmailEvent.builder()
+                        .to(recipientEmail)
+                        .subject(subject)
+                        .content(content)
+                        .deduplicationId(event.getTransactionId())
+                        .build();
+                log.info("Emitting email event for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
+                emailEventService.sendEmailEvent(emailEvent);
+            }
+
+            if (transaction.getType() == TransactionType.TRANSFER) {
+                String senderEmail = transaction.getFromAccount().getUser().getEmail();
+                if (senderEmail != null) {
+                    EmailEvent senderEmailEvent = EmailEvent.builder()
+                            .to(senderEmail)
+                            .subject(subject)
+                            .content(content)
+                            .deduplicationId(event.getTransactionId() + "-sender")
+                            .build();
+                    log.info("Emitting email event for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
+                    emailEventService.sendEmailEvent(senderEmailEvent);
+                }
+            }
+        } catch (ResourceNotFoundException e) {
+            log.error("Transaction not found when sending failure email: {}", event.getTransactionId());
+        } catch (Exception e) {
+            log.error("Error sending email event: {}", e.getMessage());
+        }
+
         sendFailureNotification(event);
     }
 

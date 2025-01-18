@@ -126,16 +126,29 @@ public class TransactionServiceImpl implements ITransactionService {
                                        String description) {
         Transaction transaction = null;
         try {
+            // 1. Validate accounts
             Account fromAccount = accountService.getAccountById(fromAccountId)
                     .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
             Account toAccount = accountService.getAccountById(toAccountId)
                     .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
+            // 2. validate transfer conditions
             validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description,
-                    TransactionType.TRANSFER);
-            executeTransfer(fromAccountId, toAccountId, amount);
-            //
-            return completeTransaction(transaction);
+//            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description,
+//                    TransactionType.TRANSFER);
+
+            transaction = buildTransaction(fromAccount, toAccount, amount, description, TransactionType.TRANSFER);
+            transaction = initializeAndSaveTransaction(transaction);
+
+            try {
+                executeTransfer(fromAccountId, toAccountId, amount);
+                //
+                return completeTransaction(transaction);
+            } catch (Exception e) {
+                handleTransactionError(transaction, "Error executing transfer", e);
+                compensationService.compensateTransaction(transaction, "Error executing transfer: " + e.getMessage());
+                log.error("Error executing transfer: {}", e.getMessage());
+                throw new TransactionProcessingException("Error executing transfer", transaction.getId(), true);
+            }
         } catch (Exception e) {
             log.error("Transfer failed to transaction {}", e.getMessage());
 
