@@ -219,6 +219,11 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
 
+
+    // https://mvnrepository.com/artifact/com.stripe/stripe-java
+    implementation group: 'com.stripe', name: 'stripe-java', version: '22.21.0'
+
+
 }
 
 sourceSets {

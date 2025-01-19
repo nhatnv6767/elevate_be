@@ -1,20 +1,32 @@
 package com.elevatebanking.controller.atm;
 
+import com.elevatebanking.dto.atm.AtmDTOs.*;
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.atm.AtmMachine;
 import com.elevatebanking.entity.log.AuditLog;
+import com.elevatebanking.entity.transaction.Transaction;
+import com.elevatebanking.entity.user.User;
+import com.elevatebanking.event.EmailEvent;
+import com.elevatebanking.event.EmailType;
 import com.elevatebanking.exception.InvalidOperationException;
+import com.elevatebanking.exception.PaymentProcessingException;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.exception.TooManyAttemptsException;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
 import com.elevatebanking.service.atm.AtmManagementService;
+import com.elevatebanking.service.email.EmailEventService;
 import com.elevatebanking.service.nonImp.AuditLogService;
+import com.elevatebanking.service.nonImp.EmailService;
+import com.elevatebanking.service.stripe.StripeService;
 import com.elevatebanking.service.transaction.TransactionValidationService;
 import com.elevatebanking.service.transaction.config.TransactionLockManager;
 import com.elevatebanking.util.SecurityUtils;
 import com.github.dockerjava.api.exception.UnauthorizedException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.PaymentIntent;
+import com.stripe.param.PaymentIntentCreateParams;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +41,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -44,6 +58,9 @@ public class ATMController {
     private final TransactionValidationService validationService;
     private final AuditLogService auditLogService;
     private final AtmManagementService atmManagementService;
+    private final EmailService emailService;
+    private final EmailEventService emailEventService;
+    private final StripeService stripeService;
 
     private static final BigDecimal MAX_WITHDRAWAL_AMOUNT = new BigDecimal("5000");
     private static final BigDecimal MAX_DEPOSIT_AMOUNT = new BigDecimal("10000");
@@ -152,10 +169,119 @@ public class ATMController {
         }
     }
 
-    // private BigDecimal calculateTotal(Map<Integer, Integer> denominations) {
-    // return denominations.entrySet().stream()
-    // .map(entry -> new BigDecimal(entry.getKey() * entry.getValue()))
-    // .reduce(BigDecimal.ZERO, BigDecimal::add);
-    // }
+    @PostMapping("/deposit/stripe")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> stripeDeposit(@Valid @RequestBody StripeDepositRequest request) throws StripeException, InterruptedException {
+        String userId = securityUtils.getCurrentUserId();
+        String lockKey = "stripe_deposit:" + userId;
+
+        try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, validationService)) {
+            if (!lockManager.acquireLock()) {
+                throw new TooManyAttemptsException("System is busy, please try again in a few seconds");
+            }
+
+            // validate account
+            Account account = accountService.getAccountByNumber(request.getAccountNumber()).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+            if (!accountService.isAccountOwner(account.getId(), userId)) {
+                throw new UnauthorizedException("Not authorized to access this account");
+            }
+
+            // create payment metadata
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("userId", userId);
+            metadata.put("accountNumber", request.getAccountNumber());
+            metadata.put("description", request.getDescription());
+            Map<String, String> stripeMetadata = new HashMap<>();
+            metadata.forEach((key, value) -> stripeMetadata.put(key, String.valueOf(value)));
+
+            // process stripe
+            PaymentIntent paymentIntent = stripeService.createPaymentIntent(
+                    request.getAmount(),
+                    request.getCurrency(),
+                    request.getPaymentMethodId(),
+                    stripeMetadata
+            );
+            // create transaction if payment succeeded
+            if ("succeeded".equals(paymentIntent.getStatus())) {
+                TransactionResponse transaction = transactionService.deposit(request);
+                sendDepositConfirmation(account, transaction, paymentIntent);
+
+                auditLogService.logEvent(
+                        userId,
+                        "STRIPE_DEPOSIT",
+                        "TRANSACTION",
+                        transaction.getTransactionId(),
+                        request,
+                        Map.of(
+                                "status", "SUCCESS",
+                                "amount", request.getAmount(),
+                                "paymentIntentId", paymentIntent.getId()
+                        ),
+                        AuditLog.AuditStatus.SUCCESS
+                );
+                return ResponseEntity.ok(StripeDepositResponse.stripeBuilder()
+                        .transactionId(transaction.getTransactionId())
+                        .paymentIntentId(paymentIntent.getId())
+                        .amount(request.getAmount())
+                        .status("SUCCESS")
+                        .timestamp(LocalDateTime.now())
+                        .build());
+
+            }
+
+            throw new PaymentProcessingException("Payment processing failed");
+        } catch (Exception e) {
+            log.error("Stripe deposit failed for user: {}", userId, e);
+            auditLogService.logEvent(
+                    userId,
+                    "STRIPE_DEPOSIT_FAILED",
+                    "TRANSACTION",
+                    null,
+                    request,
+                    Map.of("error", e.getMessage()),
+                    AuditLog.AuditStatus.FAILED
+            );
+            throw e;
+        }
+    }
+
+    private void sendDepositConfirmation(Account account, TransactionResponse transaction, PaymentIntent paymentIntent) {
+        String subject = "Deposit Confirmation";
+        String content = String.format(
+                "Dear %s,\n\n" +
+                        "Your deposit of %s %s has been processed successfully.\n\n" +
+                        "Transaction Details:\n" +
+                        "- Transaction ID: %s\n" +
+                        "- Payment ID: %s\n" +
+                        "- Account: %s\n" +
+                        "- Amount: %s %s\n" +
+                        "- Date: %s\n\n" +
+                        "Current Balance: %s\n\n" +
+                        "Thank you for using our service.\n\n" +
+                        "Best regards,\n" +
+                        "Elevate Banking Team",
+                account.getUser().getFullName(),
+                transaction.getAmount(),
+                paymentIntent.getCurrency().toUpperCase(),
+                transaction.getTransactionId(),
+                paymentIntent.getId(),
+                account.getAccountNumber(),
+                transaction.getAmount(),
+                paymentIntent.getCurrency().toUpperCase(),
+                transaction.getTimestamp(),
+                account.getBalance()
+        );
+
+        EmailEvent emailEvent = EmailEvent.builder()
+                .to(account.getUser().getEmail())
+                .subject(subject)
+                .content(content)
+                .type(EmailType.TRANSACTION)
+                .deduplicationId(transaction.getTransactionId())
+                .build();
+
+        emailEventService.sendEmailEvent(emailEvent);
+    }
+
 
 }

@@ -92,6 +92,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/accounts/**").permitAll()
                         .requestMatchers("/api/v1/transfers/**").permitAll()
                         .requestMatchers("/api/v1/atm/**").permitAll()
+                        .requestMatchers("/api/v1/stripe/webhook/**").permitAll()
                         .requestMatchers("/api/v1/profile/**").authenticated()
                         .requestMatchers("/api/v1/users/**").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/v1/test/**").permitAll()

@@ -279,6 +279,16 @@ logging:
     org.springframework.data.cassandra: DEBUG
     com.datastax.oss.driver: WARN
 
+# STRIPE
+stripe:
+  publishable:
+    key: ${STRIPE_PUBLISHABLE_KEY}
+  secret:
+    key: ${STRIPE_SECRET_KEY}
+  webhook:
+    secret:
+      key: ${STRIPE_WEBHOOK_KEY}
+
 transaction:
   limits:
     tiers:
