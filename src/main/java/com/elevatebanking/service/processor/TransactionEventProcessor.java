@@ -92,6 +92,12 @@ public class TransactionEventProcessor {
         try {
             event.addProcessStep("EVENT_RECEIVED");
 
+            if ("transaction.completed".equals(event.getEventType())) {
+                handleTransactionCompleted(event);
+                ack.acknowledge();
+                return;
+            }
+
             if (event.isExpired() || isDuplicateEvent(event)) {
                 handleExpiredOrDuplicate(event, ack);
                 return;
@@ -107,19 +113,14 @@ public class TransactionEventProcessor {
                 return;
             }
 
-            if (transaction.getStatus() == TransactionStatus.COMPLETED) {
-                log.info("Transaction already completed: {}", event.getTransactionId());
-                ack.acknowledge();
-                return;
-            }
 
             switch (event.getEventType()) {
                 case "transaction.initiated":
                     handleTransactionInitiated(event);
                     break;
-                case "transaction.completed":
-                    handleTransactionCompleted(event);
-                    break;
+//                case "transaction.completed":
+//                    handleTransactionCompleted(event);
+//                    break;
                 case "transaction.failed":
                     handleTransactionFailed(event);
                     break;
@@ -134,6 +135,44 @@ public class TransactionEventProcessor {
             lock.unlock();
         }
 
+    }
+
+    private void sendTransactionEmails(Transaction transaction, TransactionEvent event) {
+        try {
+            String subject = buildNotificationTitle(transaction.getType(), TransactionStatus.COMPLETED);
+            String content = buildCompletedMessage(event);
+
+            // send to recipient
+            String recipientEmail = getRecipientEmail(transaction);
+            if (recipientEmail != null) {
+                EmailEvent emailEvent = EmailEvent.builder()
+                        .to(recipientEmail)
+                        .subject(subject)
+                        .content(content)
+                        .deduplicationId(event.getTransactionId())
+                        .build();
+                emailEventService.sendEmailEvent(emailEvent);
+                log.info("Email sent for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
+            }
+
+            // send sender if transfer
+            if (transaction.getType() == TransactionType.TRANSFER) {
+                String senderEmail = transaction.getFromAccount().getUser().getEmail();
+                if (senderEmail != null) {
+                    EmailEvent senderEvent = EmailEvent.builder()
+                            .to(senderEmail)
+                            .subject(subject)
+                            .content(content)
+                            .deduplicationId(event.getTransactionId() + "-sender")
+                            .build();
+                    emailEventService.sendEmailEvent(senderEvent);
+                    log.info("Email sent for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error sending transaction emails: {}", e.getMessage());
+            throw e;
+        }
     }
 
     private void handleExpiredOrDuplicate(TransactionEvent event, Acknowledgment ack) {
@@ -297,56 +336,16 @@ public class TransactionEventProcessor {
             Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(
                     () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
-            // get email user from transaction
-            String subject = buildNotificationTitle(transaction.getType(), transaction.getStatus());
-            String content = buildCompletedMessage(event);
+            // send email notification
+            sendTransactionEmails(transaction, event);
+            // send event notification
+            sendNotificationEvent(event, buildCompletedMessage(event));
+            // update transaction status to completed
+            updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
+            log.info("Transaction completed: {}", event.getTransactionId());
 
-            // get userId from transaction based on type
-
-//            String userId = getUserIdFromTransaction(transaction);
-//            emailService.sendTransactionEmail(userId, subject, content);
-//            log.info("Email sent for transaction: {}", event.getTransactionId());
-//
-//            EmailEvent emailEvent = EmailEvent.builder()
-//                    .to(transaction.getFromAccount().getUser().getEmail())
-//                    .subject(subject)
-//                    .content(content)
-//                    .deduplicationId(event.getTransactionId())
-//                    .build();
-//
-//            log.info("Emitting email event for transaction: {}", event.getTransactionId());
-//            emailEventService.sendEmailEvent(emailEvent);
-
-            String recipientEmail = getRecipientEmail(transaction);
-            if (recipientEmail != null) {
-                EmailEvent emailEvent = EmailEvent.builder()
-                        .to(recipientEmail)
-                        .subject(subject)
-                        .content(content)
-                        .deduplicationId(event.getTransactionId())
-                        .build();
-                log.info("Emitting email event for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
-                emailEventService.sendEmailEvent(emailEvent);
-            }
-
-            if (transaction.getType() == TransactionType.TRANSFER) {
-                String senderEmail = transaction.getFromAccount().getUser().getEmail();
-                if (senderEmail != null) {
-                    EmailEvent senderEmailEvent = EmailEvent.builder()
-                            .to(senderEmail)
-                            .subject(subject)
-                            .content(content)
-                            .deduplicationId(event.getTransactionId() + "-sender")
-                            .build();
-                    log.info("Emitting email event for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
-                    emailEventService.sendEmailEvent(senderEmailEvent);
-                }
-            }
-
-        } catch (ResourceNotFoundException e) {
-            log.error("Transaction not found when sending email: {}", event.getTransactionId());
         } catch (Exception e) {
-            log.error("Error sending email event: {}", e.getMessage());
+            log.error("Error sending email event: {}...", e.getMessage());
         }
 
         Map<String, Object> data = new HashMap<>();
