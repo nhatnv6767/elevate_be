@@ -147,7 +147,8 @@ public class TransactionEventProcessor {
             Account recipientAccount = getRecipientAccount(transaction);
             if (recipientAccount != null && recipientAccount.getUser() != null) {
                 EmailEvent emailEvent = EmailEvent.createTransactionEmail(recipientAccount.getUser().getId(), subject, content);
-                emailEvent.setDeduplicationId(event.getTransactionId());
+//                emailEvent.setDeduplicationId(event.getTransactionId());
+                emailEvent.setDeduplicationId(event.getTransactionId() + ":withdrawal:" + recipientAccount.getAccountNumber());
                 emailEventService.sendEmailEvent(emailEvent);
                 log.info("Email sent for transaction: {} to recipient: {}", event.getTransactionId(), recipientAccount.getUser().getEmail());
             }

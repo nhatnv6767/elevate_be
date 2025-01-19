@@ -69,6 +69,9 @@ public class EmailEvent {
         if (to == null || to.trim().isEmpty()) {
             throw new IllegalArgumentException("Recipient email cannot be null or empty");
         }
+        if (deduplicationId == null || deduplicationId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Deduplication ID must be set");
+        }
         validateTemplateData();
         addProcessStep("VALIDATED");
     }
