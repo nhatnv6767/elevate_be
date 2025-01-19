@@ -2,8 +2,10 @@ package com.elevatebanking.service.notification;
 
 import com.elevatebanking.entity.notification.NotificationPreference;
 import com.elevatebanking.entity.notification.NotificationTemplate;
+import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.NotificationChannelRepository;
+import com.elevatebanking.service.email.EmailEventService;
 import com.elevatebanking.service.nonImp.EmailService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @Service
@@ -20,6 +23,7 @@ import java.util.Map;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class NotificationDeliveryService {
     EmailService emailService;
+    EmailEventService emailEventService;
     NotificationChannelRepository channelRepository;
     NotificationPreferenceService preferenceService;
     NotificationTemplateService templateService;
@@ -117,11 +121,24 @@ public class NotificationDeliveryService {
 
     void sendEmail(String userId, String subject, String content) {
         try {
-            emailService.sendTransactionEmail(userId, subject, content);
-            // TODO: Implement the email service
-//            emailService.sendEmail(userId, subject, content);
+            String deduplicationId = String.format("email:%s:%s:%s",
+                    userId,
+                    subject.replaceAll("\\s+", "_"),
+                    LocalDateTime.now().toLocalDate());
+
+            EmailEvent emailEvent = EmailEvent.createTransactionEmail(
+                    userId,
+                    subject,
+                    content
+            );
+            
+            emailEvent.setDeduplicationId(deduplicationId);
+
+            emailEventService.sendEmailEvent(emailEvent);
+            log.info("Email sent successfully for user: {}, deduplication key: {}", userId, deduplicationId);
         } catch (Exception e) {
-            log.error("Failed to send email to user: {}", userId, e);
+            log.error("Failed to create email event for user: {}", userId, e);
+            throw e;
         }
     }
 

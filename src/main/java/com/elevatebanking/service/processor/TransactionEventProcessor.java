@@ -321,10 +321,6 @@ public class TransactionEventProcessor {
     }
 
     private void handleTransactionCompleted(TransactionEvent event) {
-//        log.info("Starting handle completed transaction: {}", event.getTransactionId());
-//        updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
-//        log.info("Preparing to send notification for transaction: {}", event.getTransactionId());
-//        sendNotificationEvent(event, buildCompletedMessage(event));
 
         try {
             log.info("Starting handle completed transaction: {}", event.getTransactionId());
@@ -332,9 +328,25 @@ public class TransactionEventProcessor {
                     () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
             // send email notification
-            sendTransactionEmails(transaction, event);
-            // send event notification
-            sendNotificationEvent(event, buildCompletedMessage(event));
+//            sendTransactionEmails(transaction, event);
+
+            String subject = buildNotificationTitle(transaction.getType(), TransactionStatus.COMPLETED);
+            String content = buildCompletedMessage(event);
+
+            NotificationEvent notificationEvent = NotificationEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .userId(transaction.getFromAccount().getUser().getId())
+                    .title(subject)
+                    .message(content)
+                    .transactionId(event.getTransactionId())
+                    .type(NotificationEvent.NotificationType.TRANSACTION_COMPLETED.name())
+                    .priority(NotificationEvent.Priority.MEDIUM.name())
+                    .timestamp(LocalDateTime.now())
+                    .build();
+            kafkaEventSender.sendWithRetry("elevate.notifications",
+                    notificationEvent.getEventId(),
+                    notificationEvent);
+
             // update transaction status to completed
             updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
             log.info("Transaction completed: {}", event.getTransactionId());
