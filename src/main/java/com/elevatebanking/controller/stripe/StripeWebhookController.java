@@ -50,6 +50,7 @@ public class StripeWebhookController {
         }
     }
 
+
     private void handleSuccessfulPayment(PaymentIntent paymentIntent) {
         String transactionId = paymentIntent.getMetadata().get("transactionId");
         if (transactionId != null) {

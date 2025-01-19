@@ -171,7 +171,8 @@ public class ATMController {
 
     @PostMapping("/deposit/stripe")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> stripeDeposit(@Valid @RequestBody StripeDepositRequest request) throws StripeException, InterruptedException {
+    public ResponseEntity<?> stripeDeposit(@Valid @RequestBody StripeDepositRequest request)
+            throws StripeException, InterruptedException {
         String userId = securityUtils.getCurrentUserId();
         String lockKey = "stripe_deposit:" + userId;
 
@@ -181,9 +182,20 @@ public class ATMController {
             }
 
             // validate account
-            Account account = accountService.getAccountByNumber(request.getAccountNumber()).orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+            Account account = accountService.getAccountByNumber(request.getAccountNumber())
+                    .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
             if (!accountService.isAccountOwner(account.getId(), userId)) {
                 throw new UnauthorizedException("Not authorized to access this account");
+            }
+
+            String paymentMethodId = request.getPaymentMethodId();
+            if (paymentMethodId == null && request.getCardInfo() != null) {
+                paymentMethodId = stripeService.createPaymentMethod(request.getCardInfo());
+                request.setPaymentMethodId(paymentMethodId);
+            }
+
+            if (paymentMethodId == null) {
+                throw new InvalidOperationException("Payment method information is required");
             }
 
             // create payment metadata
@@ -198,9 +210,8 @@ public class ATMController {
             PaymentIntent paymentIntent = stripeService.createPaymentIntent(
                     request.getAmount(),
                     request.getCurrency(),
-                    request.getPaymentMethodId(),
-                    stripeMetadata
-            );
+                    paymentMethodId,
+                    stripeMetadata);
             // create transaction if payment succeeded
             if ("succeeded".equals(paymentIntent.getStatus())) {
                 TransactionResponse transaction = transactionService.deposit(request);
@@ -215,10 +226,8 @@ public class ATMController {
                         Map.of(
                                 "status", "SUCCESS",
                                 "amount", request.getAmount(),
-                                "paymentIntentId", paymentIntent.getId()
-                        ),
-                        AuditLog.AuditStatus.SUCCESS
-                );
+                                "paymentIntentId", paymentIntent.getId()),
+                        AuditLog.AuditStatus.SUCCESS);
                 return ResponseEntity.ok(StripeDepositResponse.stripeBuilder()
                         .transactionId(transaction.getTransactionId())
                         .paymentIntentId(paymentIntent.getId())
@@ -239,13 +248,13 @@ public class ATMController {
                     null,
                     request,
                     Map.of("error", e.getMessage()),
-                    AuditLog.AuditStatus.FAILED
-            );
+                    AuditLog.AuditStatus.FAILED);
             throw e;
         }
     }
 
-    private void sendDepositConfirmation(Account account, TransactionResponse transaction, PaymentIntent paymentIntent) {
+    private void sendDepositConfirmation(Account account, TransactionResponse transaction,
+                                         PaymentIntent paymentIntent) {
         String subject = "Deposit Confirmation";
         String content = String.format(
                 "Dear %s,\n\n" +
@@ -269,8 +278,7 @@ public class ATMController {
                 transaction.getAmount(),
                 paymentIntent.getCurrency().toUpperCase(),
                 transaction.getTimestamp(),
-                account.getBalance()
-        );
+                account.getBalance());
 
         EmailEvent emailEvent = EmailEvent.builder()
                 .to(account.getUser().getEmail())
@@ -282,6 +290,5 @@ public class ATMController {
 
         emailEventService.sendEmailEvent(emailEvent);
     }
-
 
 }

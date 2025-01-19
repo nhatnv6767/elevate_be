@@ -47,11 +47,22 @@ public class AtmDTOs {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class StripeDepositRequest extends TransactionDTOs.DepositRequest {
-        @NotBlank(message = "Payment method id is required")
+        // Cách 1: Sử dụng payment method ID có sẵn
         private String paymentMethodId;
+
+        // Cách 2: Gửi thông tin thẻ trực tiếp (chỉ dùng trong development)
+        private CardInfo cardInfo;
 
         private String currency = "USD";
         private Map<String, Object> metadata;
+
+        @Data
+        public static class CardInfo {
+            private String number;
+            private Integer expMonth;
+            private Integer expYear;
+            private String cvc;
+        }
     }
 
     @Getter
@@ -69,8 +80,7 @@ public class AtmDTOs {
                 String paymentIntentId,
                 BigDecimal amount,
                 String status,
-                LocalDateTime timestamp
-        ) {
+                LocalDateTime timestamp) {
             super(transactionId, "STRIPE_DEPOSIT", amount, status, null, null, null, timestamp);
             this.paymentIntentId = paymentIntentId;
         }
