@@ -158,7 +158,8 @@ public class TransactionEventProcessor {
                 User sender = transaction.getFromAccount().getUser();
                 if (sender != null) {
                     EmailEvent senderEvent = EmailEvent.createTransactionEmail(sender.getId(), subject, content);
-                    senderEvent.setDeduplicationId(event.getTransactionId() + "-sender");
+//                    senderEvent.setDeduplicationId(event.getTransactionId() + "-sender");
+                    senderEvent.setDeduplicationId(event.getTransactionId() + ":completed:sender");
                     emailEventService.sendEmailEvent(senderEvent);
                     log.info("Email sent for transaction: {} to sender: {}", event.getTransactionId(), sender.getEmail());
                 }
@@ -321,7 +322,6 @@ public class TransactionEventProcessor {
     }
 
     private void handleTransactionCompleted(TransactionEvent event) {
-
         try {
             log.info("Starting handle completed transaction: {}", event.getTransactionId());
             Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(

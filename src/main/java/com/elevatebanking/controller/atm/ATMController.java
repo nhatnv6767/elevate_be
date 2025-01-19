@@ -255,40 +255,45 @@ public class ATMController {
 
     private void sendDepositConfirmation(Account account, TransactionResponse transaction,
                                          PaymentIntent paymentIntent) {
-        String subject = "Deposit Confirmation";
-        String content = String.format(
-                "Dear %s,\n\n" +
-                        "Your deposit of %s %s has been processed successfully.\n\n" +
-                        "Transaction Details:\n" +
-                        "- Transaction ID: %s\n" +
-                        "- Payment ID: %s\n" +
-                        "- Account: %s\n" +
-                        "- Amount: %s %s\n" +
-                        "- Date: %s\n\n" +
-                        "Current Balance: %s\n\n" +
-                        "Thank you for using our service.\n\n" +
-                        "Best regards,\n" +
-                        "Elevate Banking Team",
-                account.getUser().getFullName(),
-                transaction.getAmount(),
-                paymentIntent.getCurrency().toUpperCase(),
-                transaction.getTransactionId(),
-                paymentIntent.getId(),
-                account.getAccountNumber(),
-                transaction.getAmount(),
-                paymentIntent.getCurrency().toUpperCase(),
-                transaction.getTimestamp(),
-                account.getBalance());
+        try {
+            String subject = "Deposit Confirmation";
+            String content = String.format(
+                    "Dear %s,\n\n" +
+                            "Your deposit of %s %s has been processed successfully.\n\n" +
+                            "Transaction Details:\n" +
+                            "- Transaction ID: %s\n" +
+                            "- Payment ID: %s\n" +
+                            "- Account: %s\n" +
+                            "- Amount: %s %s\n" +
+                            "- Date: %s\n\n" +
+                            "Current Balance: %s\n\n" +
+                            "Thank you for using our service.\n\n" +
+                            "Best regards,\n" +
+                            "Elevate Banking Team",
+                    account.getUser().getFullName(),
+                    transaction.getAmount(),
+                    paymentIntent.getCurrency().toUpperCase(),
+                    transaction.getTransactionId(),
+                    paymentIntent.getId(),
+                    account.getAccountNumber(),
+                    transaction.getAmount(),
+                    paymentIntent.getCurrency().toUpperCase(),
+                    transaction.getTimestamp(),
+                    account.getBalance());
 
-        EmailEvent emailEvent = EmailEvent.builder()
-                .to(account.getUser().getEmail())
-                .subject(subject)
-                .content(content)
-                .type(EmailType.TRANSACTION)
-                .deduplicationId(transaction.getTransactionId())
-                .build();
+//        EmailEvent emailEvent = EmailEvent.builder()
+//                .to(account.getUser().getEmail())
+//                .subject(subject)
+//                .content(content)
+//                .type(EmailType.TRANSACTION)
+//                .deduplicationId(transaction.getTransactionId())
+//                .build();
 
-        emailEventService.sendEmailEvent(emailEvent);
+            EmailEvent emailEvent = EmailEvent.createTransactionEmail(account.getUser().getEmail(), subject, content);
+            emailEventService.sendEmailEvent(emailEvent);
+        } catch (Exception e) {
+            log.error("Failed to send deposit confirmation email", e);
+        }
     }
 
 }
