@@ -275,6 +275,7 @@ logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
   level:
+    com.elevatebanking.service.email: DEBUG
     org.springframework.data.cassandra: DEBUG
     com.datastax.oss.driver: WARN
 

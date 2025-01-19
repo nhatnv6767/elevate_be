@@ -107,7 +107,7 @@ public class PasswordResetTokenService {
                 });
 
                 // Gửi email reset password qua Kafka
-                EmailEvent emailEvent = EmailEvent.passwordResetEvent(email, user.getUsername(), token).build();
+                EmailEvent emailEvent = EmailEvent.createPasswordResetEmail(email, user.getUsername(), token);
                 kafkaTemplate.send("elevate.emails", emailEvent)
                         .whenComplete((result, ex) -> {
                             if (ex != null) {

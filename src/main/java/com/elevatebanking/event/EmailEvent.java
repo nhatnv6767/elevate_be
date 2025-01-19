@@ -4,22 +4,27 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Data
 @Builder
 @NoArgsConstructor // Thêm constructor mặc định
 @AllArgsConstructor
+@Slf4j
 public class EmailEvent {
+    private String eventId;
     private String deduplicationId;
     private String to;
     private String subject;
     private String content;
-    private String type;
+    private EmailType type;
     private Map<String, Object> templateData;
     private Map<String, Object> metadata;
+    private LocalDateTime timestamp;
+    private List<String> processSteps;
 
     public Map<String, Object> getMetadata() {
         if (metadata == null) {
@@ -28,35 +33,95 @@ public class EmailEvent {
         return metadata;
     }
 
-    public static EmailEventBuilder passwordResetEvent(String email, String username, String token) {
+    public void addProcessStep(String step) {
+        if (processSteps == null) {
+            processSteps = new ArrayList<>();
+        }
+        processSteps.add(step + " at " + LocalDateTime.now());
+    }
+
+    private void validateTemplateData() {
+        if (templateData == null) {
+            templateData = new HashMap<>();
+        }
+        Set<String> requiredFields = type.getRequiredTemplateFields();
+        Set<String> missingFields = new HashSet<>();
+
+        for (String field : requiredFields) {
+            if (!templateData.containsKey(field) || templateData.get(field) == null) {
+                missingFields.add(field);
+                log.warn("Missing required template field for {}: {}", type, field);
+            }
+        }
+
+        if (!missingFields.isEmpty()) {
+            String error = String.format("Missing required template fields for %s: %s", type, missingFields);
+            log.error(error);
+            throw new IllegalArgumentException(error);
+        }
+
+    }
+
+    public void validate() {
+        if (type == null) {
+            throw new IllegalArgumentException("Email type cannot be null");
+        }
+        if (to == null || to.trim().isEmpty()) {
+            throw new IllegalArgumentException("Recipient email cannot be null or empty");
+        }
+        validateTemplateData();
+        addProcessStep("VALIDATED");
+    }
+
+    private static class CustomEmailEventBuilder extends EmailEventBuilder {
+        @Override
+        public EmailEvent build() {
+            if (super.eventId == null) {
+                super.eventId = UUID.randomUUID().toString();
+            }
+            if (super.timestamp == null) {
+                super.timestamp = LocalDateTime.now();
+            }
+            EmailEvent event = super.build();
+            event.addProcessStep("CREATED");
+            return event;
+        }
+    }
+
+    public static EmailEventBuilder builder() {
+        return new CustomEmailEventBuilder();
+    }
+
+
+    public static EmailEvent createPasswordResetEmail(String email, String username, String token) {
         Map<String, Object> templateData = new HashMap<>();
         templateData.put("username", username);
         templateData.put("token", token);
 
-        return EmailEvent.builder()
+        return builder()
                 .to(email)
-                .type("PASSWORD_RESET")
-                .subject("Reset Your Password - Elevate Banking")
-                .templateData(templateData);
-        // return EmailEvent.builder()
-        // .to(email)
-        // .subject("Reset Your Password - Elevate Banking")
-        // .templateData(Map.of(
-        // "username", username,
-        // "token", token
-        // ));
+                .type(EmailType.PASSWORD_RESET)
+                .subject(EmailType.PASSWORD_RESET.getDefaultSubject())
+                .templateData(templateData)
+                .build();
     }
 
-    public static EmailEventBuilder transactionEvent(String email, String subject, String content) {
+    public static EmailEvent createTransactionEmail(String email, String subject, String message) {
         Map<String, Object> templateData = new HashMap<>();
         templateData.put("subject", subject);
-        templateData.put("message", content);
+        templateData.put("message", message);
         templateData.put("bankName", "Elevate Banking");
-        return EmailEvent.builder()
+        templateData.put("supportEmail", "support@elevatebanking.com");
+        return builder()
                 .to(email)
-                .type("TRANSACTION")
+                .type(EmailType.TRANSACTION)
                 .subject(subject)
-                .content(content)
-                .templateData(templateData);
+                .content(message)
+                .templateData(templateData).build();
+    }
+
+    public String debugInfo() {
+        return String.format("EmailEvent[id=%s, type=%s, to=%s, subject=%s, templateData=%s]",
+                eventId, type, to, subject, templateData);
     }
 }

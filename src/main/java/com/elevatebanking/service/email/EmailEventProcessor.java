@@ -39,31 +39,35 @@ public class EmailEventProcessor {
         String emailId = UUID.randomUUID().toString();
         MDC.put("emailId", emailId);
         MDC.put("transactionId", event.getDeduplicationId() != null ? event.getDeduplicationId() : emailId);
-        log.info("Processing email event: {}", event.getTo());
+        log.debug("Received email event for processing: {}", event.debugInfo());
 
         String processedKey = getProcessedKey(event);
         if (Boolean.TRUE.equals(redisTemplate.hasKey(processedKey))) {
-            log.info("Email already processed: {}", event.getTo());
+            log.info("Email already processed: {}", event.debugInfo());
             ack.acknowledge();
             return;
         }
 
         try {
             processTemplateData(event);
+            log.debug("Processed template data: {}", event.debugInfo());
 
             if (!validateTemplateData(event)) {
-                log.error("Template data is null for email event: {}", event.getTo());
+//                log.error("Template data is null for email event: {}", event.getTo());
+                log.error("Template data validation failed: {}", event.debugInfo());
                 handleProcessingError(event, new RuntimeException("Template data is null"), ack);
                 return;
             }
 
             switch (event.getType()) {
-                case "PASSWORD_RESET":
+                case PASSWORD_RESET:
+                    log.debug("Processing password reset email: {}", event.debugInfo());
                     String token = (String) event.getTemplateData().get("token");
                     String username = (String) event.getTemplateData().get("username");
                     emailService.sendResetPasswordEmail(event.getTo(), token, username);
                     break;
-                case "TRANSACTION":
+                case TRANSACTION:
+                    log.debug("Processing transaction email: {}", event.debugInfo());
                     emailService.sendTransactionEmail(
                             event.getTo(),
                             event.getSubject(),
@@ -73,9 +77,9 @@ public class EmailEventProcessor {
 
             // Mark as processed in Redis with TTL
             redisTemplate.opsForValue().set(processedKey, "true", REDIS_KEY_TTL, TimeUnit.MINUTES);
-
+            log.info("Successfully processed email: {}", event.debugInfo());
             ack.acknowledge();
-            log.info("Successfully processed email event: {}", event.getTo());
+//            log.info("Successfully processed email event: {}", event.getTo());
 
         } catch (Exception e) {
             log.error("Error processing email event: {}", event, e);
@@ -127,12 +131,12 @@ public class EmailEventProcessor {
         }
 
         switch (event.getType()) {
-            case "PASSWORD_RESET":
+            case PASSWORD_RESET:
                 return templateData.containsKey("username") &&
                         templateData.containsKey("token") &&
                         templateData.get("username") != null &&
                         templateData.get("token") != null;
-            case "TRANSACTION":
+            case TRANSACTION:
                 return templateData.containsKey("subject") &&
                         templateData.containsKey("message") &&
                         templateData.get("subject") != null &&

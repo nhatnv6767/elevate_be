@@ -145,18 +145,8 @@ public class TransactionEventProcessor {
             // send to recipient
             String recipientEmail = getRecipientEmail(transaction);
             if (recipientEmail != null) {
-                EmailEvent emailEvent = EmailEvent.builder()
-                        .to(recipientEmail)
-                        .subject(subject)
-                        .content(content)
-                        .deduplicationId(event.getTransactionId())
-                        .templateData(Map.of(
-                                "subject", subject,
-                                "message", content,
-                                "bankName", "Elevate Banking",
-                                "supportEmail", "support@elevatebanking.com"
-                        ))
-                        .build();
+                EmailEvent emailEvent = EmailEvent.createTransactionEmail(recipientEmail, subject, content);
+                emailEvent.setDeduplicationId(event.getTransactionId());
                 emailEventService.sendEmailEvent(emailEvent);
                 log.info("Email sent for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
             }
@@ -165,17 +155,8 @@ public class TransactionEventProcessor {
             if (transaction.getType() == TransactionType.TRANSFER) {
                 String senderEmail = transaction.getFromAccount().getUser().getEmail();
                 if (senderEmail != null) {
-                    EmailEvent senderEvent = EmailEvent.builder()
-                            .to(senderEmail)
-                            .subject(subject)
-                            .content(content)
-                            .deduplicationId(event.getTransactionId() + "-sender")
-                            .templateData(Map.of(
-                                    "subject", subject,
-                                    "message", content,
-                                    "bankName", "Elevate Banking",
-                                    "supportEmail", "support@elevatebanking.com"))
-                            .build();
+                    EmailEvent senderEvent = EmailEvent.createTransactionEmail(senderEmail, subject, content);
+                    senderEvent.setDeduplicationId(event.getTransactionId() + "-sender");
                     emailEventService.sendEmailEvent(senderEvent);
                     log.info("Email sent for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
                 }
