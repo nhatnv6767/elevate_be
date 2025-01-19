@@ -28,6 +28,7 @@ public class NotificationDeliveryService {
     public void sendNotification(String userId, String templateCode, Map<String, Object> data) {
         try {
 
+
             if (isSystemAlert(templateCode)) {
                 handleSystemAlert(templateCode, data);
                 return;
@@ -43,6 +44,17 @@ public class NotificationDeliveryService {
 
             String content = templateService.renderTemplate(template, data);
 
+            if (templateCode.equals("TRANSACTION_COMPLETED")) {
+                if (preferences.isPushEnabled()) {
+                    sendPushNotification(userId, template.getSubjectTemplate(), content);
+                }
+
+                if (preferences.isSmsEnabled()) {
+                    sendSms(userId, content);
+                }
+                return;
+            }
+
             if (preferences.isEmailEnabled()) {
                 sendEmailSafely(userId, template.getSubjectTemplate(), content);
             }
@@ -54,6 +66,7 @@ public class NotificationDeliveryService {
             if (preferences.isSmsEnabled()) {
                 sendSms(userId, content);
             }
+
         } catch (Exception e) {
             log.error("Failed to send notification to user: {}", userId, e);
         }

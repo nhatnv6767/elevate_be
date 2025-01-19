@@ -150,6 +150,12 @@ public class TransactionEventProcessor {
                         .subject(subject)
                         .content(content)
                         .deduplicationId(event.getTransactionId())
+                        .templateData(Map.of(
+                                "subject", subject,
+                                "message", content,
+                                "bankName", "Elevate Banking",
+                                "supportEmail", "support@elevatebanking.com"
+                        ))
                         .build();
                 emailEventService.sendEmailEvent(emailEvent);
                 log.info("Email sent for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
@@ -164,6 +170,11 @@ public class TransactionEventProcessor {
                             .subject(subject)
                             .content(content)
                             .deduplicationId(event.getTransactionId() + "-sender")
+                            .templateData(Map.of(
+                                    "subject", subject,
+                                    "message", content,
+                                    "bankName", "Elevate Banking",
+                                    "supportEmail", "support@elevatebanking.com"))
                             .build();
                     emailEventService.sendEmailEvent(senderEvent);
                     log.info("Email sent for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
@@ -327,12 +338,13 @@ public class TransactionEventProcessor {
     }
 
     private void handleTransactionCompleted(TransactionEvent event) {
-        log.info("Starting handle completed transaction: {}", event.getTransactionId());
-        updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
-        log.info("Preparing to send notification for transaction: {}", event.getTransactionId());
-        sendNotificationEvent(event, buildCompletedMessage(event));
+//        log.info("Starting handle completed transaction: {}", event.getTransactionId());
+//        updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
+//        log.info("Preparing to send notification for transaction: {}", event.getTransactionId());
+//        sendNotificationEvent(event, buildCompletedMessage(event));
 
         try {
+            log.info("Starting handle completed transaction: {}", event.getTransactionId());
             Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(
                     () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
@@ -348,18 +360,6 @@ public class TransactionEventProcessor {
             log.error("Error sending email event: {}...", e.getMessage());
         }
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("transactionId", event.getTransactionId());
-        data.put("amount", event.getAmount());
-        if (event.getFromAccount() != null) {
-            data.put("fromAccount", event.getFromAccount());
-        }
-        if (event.getToAccount() != null) {
-            data.put("toAccount", event.getToAccount());
-        }
-        data.put("timestamp", event.getTimestamp());
-        notificationDeliveryService.sendNotification(event.getUserId(), "TRANSACTION_COMPLETED", data);
-        log.info("Notification sent for transaction: {}", event.getTransactionId());
     }
 
     private String getRecipientEmail(Transaction transaction) {
@@ -824,12 +824,12 @@ public class TransactionEventProcessor {
                         event.getToAccount().getAccountNumber()));
                 break;
             case DEPOSIT:
-                message.append(String.format("Deposit of %s to account %s completed successfully.",
+                message.append(String.format("Deposit of $%s to account %s completed successfully.",
                         event.getAmount(),
                         event.getToAccount().getAccountNumber()));
                 break;
             case WITHDRAWAL:
-                message.append(String.format("Withdrawal of %s from account %s completed successfully.",
+                message.append(String.format("Withdrawal of $%s from account %s completed successfully.",
                         event.getAmount(),
                         event.getFromAccount().getAccountNumber()));
                 break;
