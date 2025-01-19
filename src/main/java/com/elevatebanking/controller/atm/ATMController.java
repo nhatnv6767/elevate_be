@@ -183,7 +183,8 @@ public class ATMController {
 
             // validate account
             Account account = accountService.getAccountByNumber(request.getAccountNumber())
-                    .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            String.format("Account %s not found", request.getAccountNumber())));
             if (!accountService.isAccountOwner(account.getId(), userId)) {
                 throw new UnauthorizedException("Not authorized to access this account");
             }
@@ -290,6 +291,7 @@ public class ATMController {
 //                .build();
 
             EmailEvent emailEvent = EmailEvent.createTransactionEmail(account.getUser().getEmail(), subject, content);
+            emailEvent.setDeduplicationId(transaction.getTransactionId());
             emailEventService.sendEmailEvent(emailEvent);
         } catch (Exception e) {
             log.error("Failed to send deposit confirmation email", e);

@@ -74,7 +74,7 @@ public class AtmDTOs {
         private String paymentStatus;
         private Map<String, Object> paymentMetadata;
 
-        // Constructor để hỗ trợ building
+
         public StripeDepositResponse(
                 String transactionId,
                 String paymentIntentId,
@@ -83,6 +83,17 @@ public class AtmDTOs {
                 LocalDateTime timestamp) {
             super(transactionId, "STRIPE_DEPOSIT", amount, status, null, null, null, timestamp);
             this.paymentIntentId = paymentIntentId;
+        }
+
+        public StripeDepositResponse(String transactionId, String type, BigDecimal amount,
+                                     String status, String fromAccount, String toAccount,
+                                     String description, LocalDateTime timestamp,
+                                     String paymentIntentId, String paymentStatus,
+                                     Map<String, Object> paymentMetadata) {
+            super(transactionId, type, amount, status, fromAccount, toAccount, description, timestamp);
+            this.paymentIntentId = paymentIntentId;
+            this.paymentStatus = paymentStatus;
+            this.paymentMetadata = paymentMetadata;
         }
 
         // Thêm builder method tĩnh

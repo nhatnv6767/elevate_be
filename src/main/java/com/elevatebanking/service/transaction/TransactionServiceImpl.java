@@ -68,7 +68,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction buildTransaction(Account fromAccount, Account toAccount, BigDecimal amount, String description,
-            TransactionType type) {
+                                         TransactionType type) {
         Transaction transaction = new Transaction();
         transaction.setFromAccount(fromAccount);
         transaction.setToAccount(toAccount);
@@ -123,7 +123,7 @@ public class TransactionServiceImpl implements ITransactionService {
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     // TODO: who calls this method?
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
-            String description) {
+                                       String description) {
         Transaction transaction = null;
         try {
             Account fromAccount = accountService.getAccountById(fromAccountId)
@@ -158,7 +158,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction createInitialTransaction(String fromAccountId, String toAccountId, BigDecimal amount,
-            String description, TransactionType type) {
+                                                 String description, TransactionType type) {
         // Validate accounts and balance before creating transaction
         Transaction transaction = new Transaction();
         transaction.setFromAccount(validateAndGetAccount(fromAccountId, "Source account not found"));
@@ -277,7 +277,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction createInitialTransaction(Account fromAccount, Account toAccount, BigDecimal amount,
-            TransactionType type, String description) {
+                                                 TransactionType type, String description) {
         Transaction transaction = new Transaction();
         transaction.setFromAccount(fromAccount);
         transaction.setToAccount(toAccount);
@@ -466,6 +466,7 @@ public class TransactionServiceImpl implements ITransactionService {
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.completed");
+            return mapToTransactionResponse(transaction);
         } catch (Exception e) {
             log.error("Error processing deposit: {}", e.getMessage());
             if (transaction != null) {
@@ -475,8 +476,6 @@ public class TransactionServiceImpl implements ITransactionService {
             }
             throw new RuntimeException("Error processing deposit");
         }
-
-        return mapToTransactionResponse(transaction);
 
     }
 
@@ -531,7 +530,7 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     @Transactional(readOnly = true)
     public Page<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate,
-            LocalDateTime endDate, Pageable pageable) {
+                                                                  LocalDateTime endDate, Pageable pageable) {
         startDate = startDate != null ? startDate : LocalDateTime.now().minusMonths(1);
         endDate = endDate != null ? endDate : LocalDateTime.now();
 
@@ -569,12 +568,12 @@ public class TransactionServiceImpl implements ITransactionService {
     private TransactionResponse mapToTransactionResponse(Transaction transaction) {
         return TransactionResponse.builder()
                 .transactionId(transaction.getId())
-                .type(transaction.getType().name())
+                .type(TransactionType.DEPOSIT.name())
                 .amount(transaction.getAmount())
                 .status(transaction.getStatus().name())
                 .fromAccount(
                         transaction.getFromAccount() != null ? transaction.getFromAccount().getAccountNumber() : null)
-                .toAccount(transaction.getToAccount() != null ? transaction.getToAccount().getAccountNumber() : null)
+                .toAccount(transaction.getToAccount().getAccountNumber())
                 .description(transaction.getDescription())
                 .timestamp(transaction.getCreatedAt())
                 .build();

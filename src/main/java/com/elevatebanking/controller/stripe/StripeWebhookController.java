@@ -7,6 +7,8 @@ import com.elevatebanking.repository.TransactionRepository;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.stripe.StripeService;
 import com.stripe.exception.SignatureVerificationException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.Charge;
 import com.stripe.model.Event;
 import com.stripe.model.PaymentIntent;
 import com.stripe.net.Webhook;
@@ -16,6 +18,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/stripe/webhook")
@@ -33,12 +37,27 @@ public class StripeWebhookController {
     ) {
         try {
             Event event = stripeService.validateWebhookEvent(payload, sigHeader);
+            Object stripeObject = event.getData().getObject();
             switch (event.getType()) {
+                case "payment_intent.created":
+                    if (stripeObject instanceof PaymentIntent) {
+                        handlePaymentIntentCreated((PaymentIntent) stripeObject);
+                    }
+                    break;
                 case "payment_intent.succeeded":
-                    handleSuccessfulPayment((PaymentIntent) event.getData().getObject());
+                    if (stripeObject instanceof PaymentIntent) {
+                        handleSuccessfulPayment((PaymentIntent) stripeObject);
+                    }
+                    break;
+                case "charge.succeeded":
+                    if (stripeObject instanceof Charge) {
+                        handleChargeSucceeded((Charge) stripeObject);
+                    }
                     break;
                 case "payment_intent.payment_failed":
-                    handleFailedPayment((PaymentIntent) event.getData().getObject());
+                    if (stripeObject instanceof PaymentIntent) {
+                        handleFailedPayment((PaymentIntent) stripeObject);
+                    }
                     break;
                 default:
                     log.warn("Unhandled event type: {}", event.getType());
@@ -47,6 +66,21 @@ public class StripeWebhookController {
         } catch (SignatureVerificationException e) {
             log.error("Invalid webhook signature", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        } catch (ClassCastException e) {
+            log.error("Error casting stripe object: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+    }
+
+    private void handleChargeSucceeded(Charge charge) {
+        try {
+            String paymentIntentId = charge.getPaymentIntent();
+            if (paymentIntentId != null) {
+                PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
+                handleSuccessfulPayment(paymentIntent);
+            }
+        } catch (StripeException e) {
+            log.error("Error retrieving PaymentIntent", e);
         }
     }
 
@@ -73,5 +107,21 @@ public class StripeWebhookController {
                 transactionRepository.save(transaction);
             }
         }
+    }
+
+
+    private void handlePaymentIntentCreated(PaymentIntent paymentIntent) {
+        // Log payment intent created
+        log.info("Payment Intent created: {}", paymentIntent.getId());
+
+        // Get metadata from payment intent
+        Map<String, String> metadata = paymentIntent.getMetadata();
+        String accountNumber = metadata.get("accountNumber");
+        String amount = metadata.get("amount");
+
+        // Log payment details for tracking
+        log.info("New payment initiated - Account: {}, Amount: {}",
+                accountNumber, amount);
+
     }
 }
