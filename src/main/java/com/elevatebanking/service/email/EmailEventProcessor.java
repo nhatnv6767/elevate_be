@@ -57,9 +57,19 @@ public class EmailEventProcessor {
                 return;
             }
 
-            String token = (String) event.getTemplateData().get("token");
-            String username = (String) event.getTemplateData().get("username");
-            emailService.sendResetPasswordEmail(event.getTo(), token, username);
+            switch (event.getType()) {
+                case "PASSWORD_RESET":
+                    String token = (String) event.getTemplateData().get("token");
+                    String username = (String) event.getTemplateData().get("username");
+                    emailService.sendResetPasswordEmail(event.getTo(), token, username);
+                    break;
+                case "TRANSACTION":
+                    emailService.sendTransactionEmail(
+                            event.getTo(),
+                            event.getSubject(),
+                            event.getContent());
+                    break;
+            }
 
             // Mark as processed in Redis with TTL
             redisTemplate.opsForValue().set(processedKey, "true", REDIS_KEY_TTL, TimeUnit.MINUTES);
@@ -111,11 +121,26 @@ public class EmailEventProcessor {
 
     private boolean validateTemplateData(EmailEvent event) {
         Map<String, Object> templateData = event.getTemplateData();
-        return templateData != null &&
-                templateData.containsKey("username") &&
-                templateData.containsKey("token") &&
-                templateData.get("username") != null &&
-                templateData.get("token") != null;
+
+        if (templateData == null) {
+            return false;
+        }
+
+        switch (event.getType()) {
+            case "PASSWORD_RESET":
+                return templateData.containsKey("username") &&
+                        templateData.containsKey("token") &&
+                        templateData.get("username") != null &&
+                        templateData.get("token") != null;
+            case "TRANSACTION":
+                return templateData.containsKey("subject") &&
+                        templateData.containsKey("message") &&
+                        templateData.get("subject") != null &&
+                        templateData.get("message") != null;
+            default:
+                log.warn("Unknown email type: {}", event.getType());
+                return false;
+        }
     }
 
     @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.groups.email-retry}", containerFactory = "emailKafkaListenerContainerFactory")

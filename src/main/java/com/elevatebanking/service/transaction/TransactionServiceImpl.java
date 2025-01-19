@@ -68,7 +68,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction buildTransaction(Account fromAccount, Account toAccount, BigDecimal amount, String description,
-                                         TransactionType type) {
+            TransactionType type) {
         Transaction transaction = new Transaction();
         transaction.setFromAccount(fromAccount);
         transaction.setToAccount(toAccount);
@@ -123,32 +123,19 @@ public class TransactionServiceImpl implements ITransactionService {
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     // TODO: who calls this method?
     public Transaction processTransfer(String fromAccountId, String toAccountId, BigDecimal amount,
-                                       String description) {
+            String description) {
         Transaction transaction = null;
         try {
-            // 1. Validate accounts
             Account fromAccount = accountService.getAccountById(fromAccountId)
                     .orElseThrow(() -> new ResourceNotFoundException("Source account not found"));
             Account toAccount = accountService.getAccountById(toAccountId)
                     .orElseThrow(() -> new ResourceNotFoundException("Destination account not found"));
-            // 2. validate transfer conditions
             validationService.validateTransferTransaction(fromAccount, toAccount, amount);
-//            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description,
-//                    TransactionType.TRANSFER);
-
-            transaction = buildTransaction(fromAccount, toAccount, amount, description, TransactionType.TRANSFER);
-            transaction = initializeAndSaveTransaction(transaction);
-
-            try {
-                executeTransfer(fromAccountId, toAccountId, amount);
-                //
-                return completeTransaction(transaction);
-            } catch (Exception e) {
-                handleTransactionError(transaction, "Error executing transfer", e);
-                compensationService.compensateTransaction(transaction, "Error executing transfer: " + e.getMessage());
-                log.error("Error executing transfer: {}", e.getMessage());
-                throw new TransactionProcessingException("Error executing transfer", transaction.getId(), true);
-            }
+            transaction = createInitialTransaction(fromAccountId, toAccountId, amount, description,
+                    TransactionType.TRANSFER);
+            executeTransfer(fromAccountId, toAccountId, amount);
+            //
+            return completeTransaction(transaction);
         } catch (Exception e) {
             log.error("Transfer failed to transaction {}", e.getMessage());
 
@@ -171,7 +158,7 @@ public class TransactionServiceImpl implements ITransactionService {
     }
 
     private Transaction createInitialTransaction(String fromAccountId, String toAccountId, BigDecimal amount,
-                                                 String description, TransactionType type) {
+            String description, TransactionType type) {
         // Validate accounts and balance before creating transaction
         Transaction transaction = new Transaction();
         transaction.setFromAccount(validateAndGetAccount(fromAccountId, "Source account not found"));
@@ -273,7 +260,8 @@ public class TransactionServiceImpl implements ITransactionService {
 
                 if (Boolean.TRUE.equals(isFirstNotification)) {
                     kafkaTemplate.send("elevate.transactions", eventType, event)
-                            .thenAccept(result -> log.info("Transaction event sent successfully: {}", event.getTransactionId()))
+                            .thenAccept(result -> log.info("Transaction event sent successfully: {}",
+                                    event.getTransactionId()))
                             .exceptionally(ex -> {
                                 log.error("Failed to send transaction event: {}", ex.getMessage());
                                 return null; // Không throw exception để tránh rollback transaction
@@ -284,12 +272,12 @@ public class TransactionServiceImpl implements ITransactionService {
             }
         } catch (Exception e) {
             log.error("Error publishing transaction event: {}", e.getMessage());
-//            throw new RuntimeException("Failed to publish transaction event", e);
+            // throw new RuntimeException("Failed to publish transaction event", e);
         }
     }
 
     private Transaction createInitialTransaction(Account fromAccount, Account toAccount, BigDecimal amount,
-                                                 TransactionType type, String description) {
+            TransactionType type, String description) {
         Transaction transaction = new Transaction();
         transaction.setFromAccount(fromAccount);
         transaction.setToAccount(toAccount);
@@ -505,7 +493,7 @@ public class TransactionServiceImpl implements ITransactionService {
         Transaction transaction = createWithdrawalTransaction(account, request);
 
         try {
-//            processWithdrawal(account.getId(), request.getAmount());
+            // processWithdrawal(account.getId(), request.getAmount());
             executeWithdrawal(account.getId(), request.getAmount());
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCreatedAt(LocalDateTime.now());
@@ -543,7 +531,7 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     @Transactional(readOnly = true)
     public Page<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate,
-                                                                  LocalDateTime endDate, Pageable pageable) {
+            LocalDateTime endDate, Pageable pageable) {
         startDate = startDate != null ? startDate : LocalDateTime.now().minusMonths(1);
         endDate = endDate != null ? endDate : LocalDateTime.now();
 

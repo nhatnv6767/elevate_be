@@ -17,6 +17,7 @@ public class EmailEvent {
     private String to;
     private String subject;
     private String content;
+    private String type;
     private Map<String, Object> templateData;
     private Map<String, Object> metadata;
 
@@ -34,6 +35,7 @@ public class EmailEvent {
 
         return EmailEvent.builder()
                 .to(email)
+                .type("PASSWORD_RESET")
                 .subject("Reset Your Password - Elevate Banking")
                 .templateData(templateData);
         // return EmailEvent.builder()
@@ -43,5 +45,18 @@ public class EmailEvent {
         // "username", username,
         // "token", token
         // ));
+    }
+
+    public static EmailEventBuilder transactionEvent(String email, String subject, String content) {
+        Map<String, Object> templateData = new HashMap<>();
+        templateData.put("subject", subject);
+        templateData.put("message", content);
+        templateData.put("bankName", "Elevate Banking");
+        return EmailEvent.builder()
+                .to(email)
+                .type("TRANSACTION")
+                .subject(subject)
+                .content(content)
+                .templateData(templateData);
     }
 }
