@@ -95,13 +95,12 @@ public class TransactionValidationService {
         try {
             setCurrentTransactionType(TransactionType.TRANSFER);
 
-            validateBasicRules(fromAccount, toAccount, amount);
+            validateBasicRules(fromAccount, toAccount, amount, TransactionType.TRANSFER);
             validateTransferLimits(fromAccount, amount);
         } finally {
             currentTransactionType.remove();
         }
     }
-
 
     private void validateBasicWithdrawalRules(Account account, BigDecimal amount) {
         validateAccountStatus(account);
@@ -112,14 +111,54 @@ public class TransactionValidationService {
     public void validateDepositTransaction(Account account, BigDecimal amount) throws InterruptedException {
         try {
             setCurrentTransactionType(TransactionType.DEPOSIT);
-            validateBasicRules(account, account, amount);
+            validateBasicRules(null, account, amount, TransactionType.DEPOSIT);
             validateTransferLimits(account, amount);
         } finally {
             currentTransactionType.remove();
         }
     }
 
-    private void validateBasicRules(Account fromAccount, Account toAccount, BigDecimal amount) {
+    public void validateBasicRules(Account fromAccount, Account toAccount, BigDecimal amount, TransactionType type) {
+        // Validate amount
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("Amount must be positive");
+        }
+
+        // Validate accounts
+        if (type == TransactionType.TRANSFER) {
+            // Chỉ kiểm tra same account cho giao dịch transfer
+            validateSameAccount(fromAccount, toAccount);
+        }
+
+        // Validate account status
+        if (fromAccount != null && fromAccount.getStatus() != AccountStatus.ACTIVE) {
+            throw new InvalidOperationException("Source account is not active");
+        }
+        if (toAccount != null && toAccount.getStatus() != AccountStatus.ACTIVE) {
+            throw new InvalidOperationException("Destination account is not active");
+        }
+
+        if (fromAccount != null) {
+            validateAccountStatus(fromAccount);
+            validateTransactionAmount(amount);
+        }
+
+        if (toAccount != null) {
+            validateAccountStatus(toAccount);
+            validateTransactionAmount(amount);
+        }
+
+        // Validate sufficient balance for withdrawals and transfers
+        if ((type == TransactionType.WITHDRAWAL || type == TransactionType.TRANSFER)
+                && fromAccount != null) {
+            validateSufficientBalance(fromAccount, amount);
+        }
+    }
+
+    private void validateBasicRules_Source(Account fromAccount, Account toAccount, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("Amount must be positive");
+        }
         validateAccountStatus(fromAccount);
         validateAccountStatus(toAccount);
         validateTransactionAmount(amount);
@@ -210,7 +249,8 @@ public class TransactionValidationService {
             List<Transaction> dailyTransactions = transactionRepository
                     .findTransactionsByUserAndDateRange(userId, startOfDay, LocalDateTime.now());
             BigDecimal total = dailyTransactions.stream()
-                    .filter(transaction -> (transaction.getStatus() == TransactionStatus.COMPLETED && transaction.getType() == TransactionType.TRANSFER))
+                    .filter(transaction -> (transaction.getStatus() == TransactionStatus.COMPLETED
+                            && transaction.getType() == TransactionType.TRANSFER))
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             log.debug("Calculated daily total for user {}: {}", userId, total);
@@ -231,7 +271,8 @@ public class TransactionValidationService {
             List<Transaction> monthlyTransactions = transactionRepository
                     .findTransactionsByUserAndDateRange(userId, startOfMonth, LocalDateTime.now());
             return monthlyTransactions.stream()
-                    .filter(transaction -> (transaction.getStatus() == TransactionStatus.COMPLETED && transaction.getType() == TransactionType.TRANSFER))
+                    .filter(transaction -> (transaction.getStatus() == TransactionStatus.COMPLETED
+                            && transaction.getType() == TransactionType.TRANSFER))
                     .map(Transaction::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         } catch (Exception e) {
@@ -478,7 +519,6 @@ public class TransactionValidationService {
         return currentTransactionType.get();
     }
 
-
     private void validateLimit(Long current, Long max, String period) {
         if (current > max) {
             throw new TransactionLimitExceededException(
@@ -701,12 +741,11 @@ public class TransactionValidationService {
 
     public void releaseLock(String lockKey, String expectedValue) {
         try {
-            String script =
-                    "if redis.call('get', KEYS[1]) == ARGV[1] then " +
-                            "    return redis.call('del', KEYS[1]) " +
-                            "else " +
-                            "    return 0 " +
-                            "end";
+            String script = "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                    "    return redis.call('del', KEYS[1]) " +
+                    "else " +
+                    "    return 0 " +
+                    "end";
 
             redisTemplate.execute(new DefaultRedisScript<>(script, Long.class), Collections.singletonList(lockKey),
                     expectedValue);
@@ -746,16 +785,19 @@ public class TransactionValidationService {
         String monthlyKey = String.format("monthly_total:%s:%s", userId, currentMonth);
 
         BigDecimal cachedDailyTotal = new BigDecimal(Objects.requireNonNull(redisTemplate.opsForValue().get(dailyKey)));
-        BigDecimal cachedMonthlyTotal = new BigDecimal(Objects.requireNonNull(redisTemplate.opsForValue().get(monthlyKey)));
+        BigDecimal cachedMonthlyTotal = new BigDecimal(
+                Objects.requireNonNull(redisTemplate.opsForValue().get(monthlyKey)));
         BigDecimal calculatedDailyTotal = calculateDailyTotal(userId);
         BigDecimal calculatedMonthlyTotal = calculateMonthlyTotal(userId);
 
         if (!cachedDailyTotal.equals(calculatedDailyTotal)) {
-            log.warn("Daily total mismatch for user {}: Cached: {}, Calculated: {}", userId, cachedDailyTotal, calculatedDailyTotal);
+            log.warn("Daily total mismatch for user {}: Cached: {}, Calculated: {}", userId, cachedDailyTotal,
+                    calculatedDailyTotal);
             redisTemplate.opsForValue().set(dailyKey, cachedDailyTotal.toString(), 1, TimeUnit.DAYS);
         }
         if (!cachedMonthlyTotal.equals(calculatedMonthlyTotal)) {
-            log.warn("Monthly total mismatch for user {}: Cached: {}, Calculated: {}", userId, cachedMonthlyTotal, calculatedMonthlyTotal);
+            log.warn("Monthly total mismatch for user {}: Cached: {}, Calculated: {}", userId, cachedMonthlyTotal,
+                    calculatedMonthlyTotal);
             redisTemplate.opsForValue().set(monthlyKey, cachedMonthlyTotal.toString(), 30, TimeUnit.DAYS);
         }
     }
