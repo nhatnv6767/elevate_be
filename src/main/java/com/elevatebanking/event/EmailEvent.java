@@ -106,14 +106,14 @@ public class EmailEvent {
                 .build();
     }
 
-    public static EmailEvent createTransactionEmail(String email, String subject, String message) {
+    public static EmailEvent createTransactionEmail(String userId, String subject, String message) {
         Map<String, Object> templateData = new HashMap<>();
         templateData.put("subject", subject);
         templateData.put("message", message);
         templateData.put("bankName", "Elevate Banking");
         templateData.put("supportEmail", "support@elevatebanking.com");
         return builder()
-                .to(email)
+                .to(userId)
                 .type(EmailType.TRANSACTION)
                 .subject(subject)
                 .content(message)

@@ -5,6 +5,7 @@ import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.enums.TransactionStatus;
 import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
+import com.elevatebanking.entity.user.User;
 import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.event.NotificationEvent;
 import com.elevatebanking.event.TransactionEvent;
@@ -143,22 +144,22 @@ public class TransactionEventProcessor {
             String content = buildCompletedMessage(event);
 
             // send to recipient
-            String recipientEmail = getRecipientEmail(transaction);
-            if (recipientEmail != null) {
-                EmailEvent emailEvent = EmailEvent.createTransactionEmail(recipientEmail, subject, content);
+            Account recipientAccount = getRecipientAccount(transaction);
+            if (recipientAccount != null && recipientAccount.getUser() != null) {
+                EmailEvent emailEvent = EmailEvent.createTransactionEmail(recipientAccount.getUser().getId(), subject, content);
                 emailEvent.setDeduplicationId(event.getTransactionId());
                 emailEventService.sendEmailEvent(emailEvent);
-                log.info("Email sent for transaction: {} to recipient: {}", event.getTransactionId(), recipientEmail);
+                log.info("Email sent for transaction: {} to recipient: {}", event.getTransactionId(), recipientAccount.getUser().getEmail());
             }
 
             // send sender if transfer
             if (transaction.getType() == TransactionType.TRANSFER) {
-                String senderEmail = transaction.getFromAccount().getUser().getEmail();
-                if (senderEmail != null) {
-                    EmailEvent senderEvent = EmailEvent.createTransactionEmail(senderEmail, subject, content);
+                User sender = transaction.getFromAccount().getUser();
+                if (sender != null) {
+                    EmailEvent senderEvent = EmailEvent.createTransactionEmail(sender.getId(), subject, content);
                     senderEvent.setDeduplicationId(event.getTransactionId() + "-sender");
                     emailEventService.sendEmailEvent(senderEvent);
-                    log.info("Email sent for transaction: {} to sender: {}", event.getTransactionId(), senderEmail);
+                    log.info("Email sent for transaction: {} to sender: {}", event.getTransactionId(), sender.getEmail());
                 }
             }
         } catch (Exception e) {
@@ -341,6 +342,17 @@ public class TransactionEventProcessor {
             log.error("Error sending email event: {}...", e.getMessage());
         }
 
+    }
+
+    private Account getRecipientAccount(Transaction transaction) {
+        return switch (transaction.getType()) {
+            case TRANSFER, DEPOSIT -> transaction.getToAccount();
+            case WITHDRAWAL -> transaction.getFromAccount();
+            default -> {
+                log.warn("Unknown transaction type: {}", transaction.getType());
+                yield null;
+            }
+        };
     }
 
     private String getRecipientEmail(Transaction transaction) {

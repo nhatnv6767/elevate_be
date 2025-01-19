@@ -107,15 +107,19 @@ public class EmailService {
             throw new IllegalArgumentException("UserId cannot be null");
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.warn("User not found for email notification: {}", userId);
-                    return new ResourceNotFoundException("User not found");
-                });
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> {
+                        log.warn("User not found for email notification: {}", userId);
+                        return new ResourceNotFoundException("User not found");
+                    });
 
-        String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
-        sendEmail(user.getEmail(), subject, emailContent);
-        log.info("Email sent successfully");
+            String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
+            sendEmail(user.getEmail(), subject, emailContent);
+            log.info("Transaction email sent successfully to user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.error("Failed to send transaction email to user {}: {}", userId, e.getMessage());
+        }
     }
 
     public void sendSystemAlert(String subject, String content) {
