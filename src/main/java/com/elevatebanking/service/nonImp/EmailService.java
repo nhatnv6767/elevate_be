@@ -5,6 +5,8 @@ import com.elevatebanking.event.EmailEvent;
 import com.elevatebanking.exception.EmailSendException;
 import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.repository.UserRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,9 @@ import org.springframework.stereotype.Service;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import org.thymeleaf.context.Context;
+
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -51,11 +56,28 @@ public class EmailService {
 
     private String prepareEmailContentTransaction(String subject, String content, String template) {
         Context context = new Context();
-        context.setVariable("subject", subject);
-        context.setVariable("message", content);
-        context.setVariable("bankName", "Elevate Banking");
-        context.setVariable("supportEmail", fromEmail);
-        return templateEngine.process(template, context);
+        try {
+            // Parse message content nếu có định dạng JSON
+            if (content.startsWith("{") && content.endsWith("}")) {
+                ObjectMapper mapper = new ObjectMapper();
+                Map<String, Object> contentMap = mapper.readValue(content,
+                        new TypeReference<Map<String, Object>>() {
+                        });
+                contentMap.forEach(context::setVariable);
+            } else {
+                context.setVariable("message", content);
+            }
+
+            context.setVariable("subject", subject);
+            context.setVariable("bankName", "Elevate Banking");
+            context.setVariable("supportEmail", fromEmail);
+            context.setVariable("timestamp", LocalDateTime.now());
+
+            return templateEngine.process(template, context);
+        } catch (Exception e) {
+            log.error("Error preparing email content: {}", e.getMessage());
+            throw new EmailSendException("Failed to prepare email content", e);
+        }
     }
 
     private String prepareEmailContent(String subject, String content, String templateName) {
@@ -108,6 +130,14 @@ public class EmailService {
         }
 
         try {
+
+            if (userId.contains("@")) {
+                String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
+                sendEmail(userId, subject, emailContent);
+                log.info("Transaction email sent successfully to: {}", userId);
+                return;
+            }
+
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> {
                         log.warn("User not found for email notification: {}", userId);
@@ -117,8 +147,12 @@ public class EmailService {
             String emailContent = prepareEmailContentTransaction(subject, content, "email/transaction-notification");
             sendEmail(user.getEmail(), subject, emailContent);
             log.info("Transaction email sent successfully to user: {}", user.getEmail());
+        } catch (ResourceNotFoundException e) {
+            log.error("User not found when sending transaction email - userId: {}", userId);
+            throw e;
         } catch (Exception e) {
-            log.error("Failed to send transaction email to user {}: {}", userId, e.getMessage());
+            log.error("Failed to send transaction email - userId: {}, error: {}", userId, e.getMessage(), e);
+            throw new EmailSendException("Failed to send transaction email", e);
         }
     }
 

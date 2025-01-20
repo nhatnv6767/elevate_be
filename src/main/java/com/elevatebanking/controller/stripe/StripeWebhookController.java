@@ -73,14 +73,17 @@ public class StripeWebhookController {
     }
 
     private void handleChargeSucceeded(Charge charge) {
-        try {
-            String paymentIntentId = charge.getPaymentIntent();
-            if (paymentIntentId != null) {
-                PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
-                handleSuccessfulPayment(paymentIntent);
+        String paymentIntentId = charge.getPaymentIntent();
+        if (paymentIntentId != null) {
+            try {
+                PaymentIntent intent = PaymentIntent.retrieve(paymentIntentId);
+                String accountNumber = intent.getMetadata().get("accountNumber");
+                String amount = String.valueOf(charge.getAmount());
+                log.info("Charge succeeded for payment {} - Account: {}, Amount: {}",
+                        intent.getId(), accountNumber, amount);
+            } catch (StripeException e) {
+                log.error("Error retrieving PaymentIntent: {}", e.getMessage());
             }
-        } catch (StripeException e) {
-            log.error("Error retrieving PaymentIntent", e);
         }
     }
 
@@ -111,17 +114,17 @@ public class StripeWebhookController {
 
 
     private void handlePaymentIntentCreated(PaymentIntent paymentIntent) {
-        // Log payment intent created
         log.info("Payment Intent created: {}", paymentIntent.getId());
-
-        // Get metadata from payment intent
         Map<String, String> metadata = paymentIntent.getMetadata();
+        if (metadata == null || !metadata.containsKey("accountNumber")) {
+            log.warn("Missing required metadata in payment intent");
+            return;
+        }
         String accountNumber = metadata.get("accountNumber");
-        String amount = metadata.get("amount");
-
-        // Log payment details for tracking
-        log.info("New payment initiated - Account: {}, Amount: {}",
-                accountNumber, amount);
+        String amount = String.valueOf(paymentIntent.getAmount());
+        log.info("New payment initiated - Account: {}, Amount: {}", accountNumber, amount);
 
     }
+
+
 }

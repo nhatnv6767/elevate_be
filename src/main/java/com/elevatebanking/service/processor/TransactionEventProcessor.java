@@ -327,29 +327,48 @@ public class TransactionEventProcessor {
             Transaction transaction = transactionRepository.findById(event.getTransactionId()).orElseThrow(
                     () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
-            // send email notification
-//            sendTransactionEmails(transaction, event);
+
+            String userId;
+
+            if (transaction.getType() == TransactionType.DEPOSIT) {
+                userId = transaction.getToAccount().getUser().getId();
+            } else if (transaction.getType() == TransactionType.WITHDRAWAL) {
+                userId = transaction.getFromAccount().getUser().getId();
+            } else {  // TRANSFER
+                userId = transaction.getFromAccount().getUser().getId();
+            }
 
             String subject = buildNotificationTitle(transaction.getType(), TransactionStatus.COMPLETED);
             String content = buildCompletedMessage(event);
 
-            NotificationEvent notificationEvent = NotificationEvent.builder()
-                    .eventId(UUID.randomUUID().toString())
-                    .userId(transaction.getFromAccount().getUser().getId())
-                    .title(subject)
-                    .message(content)
-                    .transactionId(event.getTransactionId())
-                    .type(NotificationEvent.NotificationType.TRANSACTION_COMPLETED.name())
-                    .priority(NotificationEvent.Priority.MEDIUM.name())
-                    .timestamp(LocalDateTime.now())
-                    .build();
-            kafkaEventSender.sendWithRetry("elevate.notifications",
-                    notificationEvent.getEventId(),
-                    notificationEvent);
+//            NotificationEvent notificationEvent = NotificationEvent.builder()
+//                    .eventId(UUID.randomUUID().toString())
+//                    .userId(transaction.getFromAccount().getUser().getId())
+//                    .title(subject)
+//                    .message(content)
+//                    .transactionId(event.getTransactionId())
+//                    .type(NotificationEvent.NotificationType.TRANSACTION_COMPLETED.name())
+//                    .priority(NotificationEvent.Priority.MEDIUM.name())
+//                    .timestamp(LocalDateTime.now())
+//                    .build();
+//            kafkaEventSender.sendWithRetry("elevate.notifications",
+//                    notificationEvent.getEventId(),
+//                    notificationEvent);
+//
+//            // update transaction status to completed
+//            updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
+//            log.info("Transaction completed: {}", event.getTransactionId());
 
-            // update transaction status to completed
-            updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
-            log.info("Transaction completed: {}", event.getTransactionId());
+            EmailEvent emailEvent = EmailEvent.builder()
+                    .eventId(UUID.randomUUID().toString())
+                    .to(userId)
+                    .subject(subject)
+                    .content(content)
+                    .deduplicationId(event.getTransactionId())
+                    .build();
+
+            emailEventService.sendEmailEvent(emailEvent);
+            log.info("Email sent for transaction: {}", event.getTransactionId());
 
         } catch (Exception e) {
             log.error("Error sending email event: {}...", e.getMessage());

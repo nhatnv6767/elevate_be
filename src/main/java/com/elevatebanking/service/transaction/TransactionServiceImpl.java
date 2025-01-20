@@ -248,6 +248,7 @@ public class TransactionServiceImpl implements ITransactionService {
             throw new IllegalArgumentException("Event type cannot be null or empty");
         }
 
+
         try {
             TransactionEvent event = new TransactionEvent(transaction, eventType);
             if (transaction.getStatus() == TransactionStatus.COMPLETED ||
@@ -568,12 +569,13 @@ public class TransactionServiceImpl implements ITransactionService {
     private TransactionResponse mapToTransactionResponse(Transaction transaction) {
         return TransactionResponse.builder()
                 .transactionId(transaction.getId())
-                .type(TransactionType.DEPOSIT.name())
+                .type(transaction.getType() != null ? transaction.getType().name() : null)
                 .amount(transaction.getAmount())
                 .status(transaction.getStatus().name())
-                .fromAccount(
-                        transaction.getFromAccount() != null ? transaction.getFromAccount().getAccountNumber() : null)
-                .toAccount(transaction.getToAccount().getAccountNumber())
+                .fromAccount(transaction.getFromAccount() != null ?
+                        transaction.getFromAccount().getAccountNumber() : null)
+                .toAccount(transaction.getToAccount() != null ?
+                        transaction.getToAccount().getAccountNumber() : null)
                 .description(transaction.getDescription())
                 .timestamp(transaction.getCreatedAt())
                 .build();
