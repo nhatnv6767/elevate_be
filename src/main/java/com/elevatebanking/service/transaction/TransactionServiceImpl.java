@@ -443,10 +443,6 @@ public class TransactionServiceImpl implements ITransactionService {
     public TransactionResponse deposit(DepositRequest request) throws InterruptedException {
         log.info("Processing deposit request: account {}, amount: {}", request.getAccountNumber(), request.getAmount());
 
-        // validateTransactionAmount(request.getAmount());
-        // if(request.getAmount().compareTo(SINGLE_TRANSFER_LIMIT) > 0){
-        // throw new InvalidOperationException("Amount exceeds single transfer limit");
-        // }
         Account account = accountService.getAccountByNumber(request.getAccountNumber())
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found"));
         // accountService.validateAccount(account.getId(), null);
@@ -463,7 +459,10 @@ public class TransactionServiceImpl implements ITransactionService {
         publishTransactionEvent(transaction, "transaction.initiated");
 
         try {
-            processDeposit(account.getId(), request.getAmount());
+//            processDeposit(account.getId(), request.getAmount());
+            BigDecimal newBalance = account.getBalance().add(request.getAmount());
+            accountService.updateBalance(account.getId(), newBalance);
+            
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.completed");

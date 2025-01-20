@@ -49,6 +49,8 @@ public class EmailEventProcessor {
         }
 
         try {
+
+            event.validate();
             processTemplateData(event);
             log.debug("Processed template data: {}", event.debugInfo());
 

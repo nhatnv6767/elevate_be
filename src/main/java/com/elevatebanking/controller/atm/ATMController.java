@@ -232,9 +232,15 @@ public class ATMController {
                 return ResponseEntity.ok(StripeDepositResponse.stripeBuilder()
                         .transactionId(transaction.getTransactionId())
                         .paymentIntentId(paymentIntent.getId())
+                        .type("STRIPE_DEPOSIT")
                         .amount(request.getAmount())
                         .status("SUCCESS")
+                        .fromAccount(paymentMethodId)
+                        .toAccount(request.getAccountNumber())
+                        .description(request.getDescription())
                         .timestamp(LocalDateTime.now())
+                        .paymentStatus(paymentIntent.getStatus())
+                        .paymentMetadata(metadata)
                         .build());
 
             }
@@ -279,7 +285,7 @@ public class ATMController {
                     account.getAccountNumber(),
                     transaction.getAmount(),
                     paymentIntent.getCurrency().toUpperCase(),
-                    transaction.getTimestamp(),
+                    transaction.getTimestamp() != null ? transaction.getTimestamp() : LocalDateTime.now(),
                     account.getBalance());
 
 //        EmailEvent emailEvent = EmailEvent.builder()

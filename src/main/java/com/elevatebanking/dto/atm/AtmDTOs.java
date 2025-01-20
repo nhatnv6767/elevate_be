@@ -109,6 +109,11 @@ public class AtmDTOs {
                 return this;
             }
 
+            public StripeDepositResponseBuilder type(String type) {
+                response.setType(type);
+                return this;
+            }
+
             public StripeDepositResponseBuilder paymentIntentId(String paymentIntentId) {
                 response.setPaymentIntentId(paymentIntentId);
                 return this;
@@ -124,8 +129,33 @@ public class AtmDTOs {
                 return this;
             }
 
+            public StripeDepositResponseBuilder fromAccount(String fromAccount) {
+                response.setFromAccount(fromAccount);
+                return this;
+            }
+
+            public StripeDepositResponseBuilder toAccount(String toAccount) {
+                response.setToAccount(toAccount);
+                return this;
+            }
+
+            public StripeDepositResponseBuilder description(String description) {
+                response.setDescription(description);
+                return this;
+            }
+
             public StripeDepositResponseBuilder timestamp(LocalDateTime timestamp) {
                 response.setTimestamp(timestamp);
+                return this;
+            }
+
+            public StripeDepositResponseBuilder paymentStatus(String paymentStatus) {
+                response.setPaymentStatus(paymentStatus);
+                return this;
+            }
+
+            public StripeDepositResponseBuilder paymentMetadata(Map<String, Object> paymentMetadata) {
+                response.setPaymentMetadata(paymentMetadata);
                 return this;
             }
 

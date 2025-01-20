@@ -7,6 +7,7 @@ import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
 import com.elevatebanking.entity.user.User;
 import com.elevatebanking.event.EmailEvent;
+import com.elevatebanking.event.EmailType;
 import com.elevatebanking.event.NotificationEvent;
 import com.elevatebanking.event.TransactionEvent;
 import com.elevatebanking.exception.InvalidOperationException;
@@ -328,47 +329,30 @@ public class TransactionEventProcessor {
                     () -> new ResourceNotFoundException("Transaction not found: " + event.getTransactionId()));
 
 
-            String userId;
+            String userId = getUserIdFromTransaction(transaction);
 
-            if (transaction.getType() == TransactionType.DEPOSIT) {
-                userId = transaction.getToAccount().getUser().getId();
-            } else if (transaction.getType() == TransactionType.WITHDRAWAL) {
-                userId = transaction.getFromAccount().getUser().getId();
-            } else {  // TRANSFER
-                userId = transaction.getFromAccount().getUser().getId();
-            }
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("transactionId", transaction.getId());
+            templateData.put("amount", transaction.getAmount());
+            templateData.put("accountNumber", transaction.getType()
+                    == TransactionType.DEPOSIT ? transaction.getToAccount().getAccountNumber()
+                    : transaction.getFromAccount().getAccountNumber());
 
             String subject = buildNotificationTitle(transaction.getType(), TransactionStatus.COMPLETED);
             String content = buildCompletedMessage(event);
 
-//            NotificationEvent notificationEvent = NotificationEvent.builder()
-//                    .eventId(UUID.randomUUID().toString())
-//                    .userId(transaction.getFromAccount().getUser().getId())
-//                    .title(subject)
-//                    .message(content)
-//                    .transactionId(event.getTransactionId())
-//                    .type(NotificationEvent.NotificationType.TRANSACTION_COMPLETED.name())
-//                    .priority(NotificationEvent.Priority.MEDIUM.name())
-//                    .timestamp(LocalDateTime.now())
-//                    .build();
-//            kafkaEventSender.sendWithRetry("elevate.notifications",
-//                    notificationEvent.getEventId(),
-//                    notificationEvent);
-//
-//            // update transaction status to completed
-//            updateTransactionStatus(event.getTransactionId(), TransactionStatus.COMPLETED);
-//            log.info("Transaction completed: {}", event.getTransactionId());
-
             EmailEvent emailEvent = EmailEvent.builder()
                     .eventId(UUID.randomUUID().toString())
                     .to(userId)
+                    .type(EmailType.TRANSACTION)
                     .subject(subject)
+                    .templateData(templateData)
                     .content(content)
                     .deduplicationId(event.getTransactionId())
                     .build();
 
             emailEventService.sendEmailEvent(emailEvent);
-            log.info("Email sent for transaction: {}", event.getTransactionId());
+            log.info("Transaction email event created for: {}", transaction.getId());
 
         } catch (Exception e) {
             log.error("Error sending email event: {}...", e.getMessage());

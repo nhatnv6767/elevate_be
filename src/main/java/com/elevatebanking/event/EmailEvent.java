@@ -11,7 +11,7 @@ import java.util.*;
 
 @Data
 @Builder
-@NoArgsConstructor // Thêm constructor mặc định
+@NoArgsConstructor
 @AllArgsConstructor
 @Slf4j
 public class EmailEvent {
