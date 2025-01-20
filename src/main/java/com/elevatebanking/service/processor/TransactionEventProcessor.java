@@ -341,15 +341,18 @@ public class TransactionEventProcessor {
             String subject = buildNotificationTitle(transaction.getType(), TransactionStatus.COMPLETED);
             String content = buildCompletedMessage(event);
 
-            EmailEvent emailEvent = EmailEvent.builder()
-                    .eventId(UUID.randomUUID().toString())
-                    .to(userId)
-                    .type(EmailType.TRANSACTION)
-                    .subject(subject)
-                    .templateData(templateData)
-                    .content(content)
-                    .deduplicationId(event.getTransactionId())
-                    .build();
+//            EmailEvent emailEvent = EmailEvent.builder()
+//                    .eventId(UUID.randomUUID().toString())
+//                    .to(userId)
+//                    .type(EmailType.TRANSACTION)
+//                    .subject(subject)
+//                    .templateData(templateData)
+//                    .content(content)
+//                    .deduplicationId(event.getTransactionId())
+//                    .build();
+
+            EmailEvent emailEvent = EmailEvent.createTransactionEmail(userId, subject, content);
+            emailEvent.setDeduplicationId(event.getTransactionId());
 
             emailEventService.sendEmailEvent(emailEvent);
             log.info("Transaction email event created for: {}", transaction.getId());

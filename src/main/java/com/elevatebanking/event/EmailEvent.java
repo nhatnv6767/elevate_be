@@ -109,6 +109,16 @@ public class EmailEvent {
                 .build();
     }
 
+    //            EmailEvent emailEvent = EmailEvent.builder()
+//                    .eventId(UUID.randomUUID().toString())
+//                    .to(userId)
+//                    .type(EmailType.TRANSACTION)
+//                    .subject(subject)
+//                    .templateData(templateData)
+//                    .content(content)
+//                    .deduplicationId(event.getTransactionId())
+//                    .build();
+
     public static EmailEvent createTransactionEmail(String userId, String subject, String message) {
         Map<String, Object> templateData = new HashMap<>();
         templateData.put("subject", subject);
