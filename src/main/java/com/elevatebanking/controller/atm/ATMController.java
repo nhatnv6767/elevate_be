@@ -15,10 +15,12 @@ import com.elevatebanking.exception.ResourceNotFoundException;
 import com.elevatebanking.exception.TooManyAttemptsException;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.service.atm.AtmCacheService;
 import com.elevatebanking.service.atm.AtmManagementService;
 import com.elevatebanking.service.email.EmailEventService;
 import com.elevatebanking.service.nonImp.AuditLogService;
 import com.elevatebanking.service.nonImp.EmailService;
+import com.elevatebanking.service.stripe.StripeAsyncService;
 import com.elevatebanking.service.stripe.StripeService;
 import com.elevatebanking.service.transaction.TransactionValidationService;
 import com.elevatebanking.service.transaction.config.TransactionLockManager;
@@ -44,6 +46,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @RestController
 @RequestMapping("/api/v1/atm")
@@ -61,6 +67,8 @@ public class ATMController {
     private final EmailService emailService;
     private final EmailEventService emailEventService;
     private final StripeService stripeService;
+    private final AtmCacheService atmCacheService;
+    private final StripeAsyncService stripeAsyncService;
 
     private static final BigDecimal MAX_WITHDRAWAL_AMOUNT = new BigDecimal("5000");
     private static final BigDecimal MAX_DEPOSIT_AMOUNT = new BigDecimal("10000");
@@ -92,7 +100,8 @@ public class ATMController {
             }
 
             // validate ATM exists and is active
-            AtmMachine atm = atmManagementService.getAtmById(request.getAtmId());
+//            AtmMachine atm = atmManagementService.getAtmById(request.getAtmId());
+            AtmMachine atm = atmCacheService.getAtmWithCache(request.getAtmId());
             if (!"ACTIVE".equals(atm.getStatus())) {
                 throw new InvalidOperationException("ATM is not active");
             }
@@ -172,7 +181,7 @@ public class ATMController {
     @PostMapping("/deposit/stripe")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> stripeDeposit(@Valid @RequestBody StripeDepositRequest request)
-            throws StripeException, InterruptedException {
+            throws StripeException, InterruptedException, ExecutionException, TimeoutException {
         String userId = securityUtils.getCurrentUserId();
         String lockKey = "stripe_deposit:" + userId;
 
@@ -208,14 +217,20 @@ public class ATMController {
             metadata.forEach((key, value) -> stripeMetadata.put(key, String.valueOf(value)));
 
             // process stripe
-            PaymentIntent paymentIntent = stripeService.createPaymentIntent(
-                    request.getAmount(),
-                    request.getCurrency(),
-                    paymentMethodId,
-                    stripeMetadata);
-            // create transaction if payment succeeded
+//            PaymentIntent paymentIntent = stripeService.createPaymentIntent(
+//                    request.getAmount(),
+//                    request.getCurrency(),
+//                    paymentMethodId,
+//                    stripeMetadata);
+
+            CompletableFuture<PaymentIntent> paymentFuture = stripeAsyncService.processPayment(request, stripeMetadata);
+
+            TransactionResponse transaction = transactionService.deposit(request);
+            PaymentIntent paymentIntent = paymentFuture.get(5, TimeUnit.SECONDS);
+
             if ("succeeded".equals(paymentIntent.getStatus())) {
-                TransactionResponse transaction = transactionService.deposit(request);
+
+
                 sendDepositConfirmation(account, transaction, paymentIntent);
 
                 auditLogService.logEvent(

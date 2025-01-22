@@ -1,5 +1,7 @@
 package com.elevatebanking.entity.atm;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.cassandra.core.mapping.Column;
@@ -10,6 +12,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
+@JsonTypeName("com.elevatebanking.entity.atm.AtmMachine")
 @Table("atm_machines")
 @Data
 @NoArgsConstructor

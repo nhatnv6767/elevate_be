@@ -222,7 +222,7 @@ dependencies {
 
     // https://mvnrepository.com/artifact/com.stripe/stripe-java
     implementation group: 'com.stripe', name: 'stripe-java', version: '22.21.0'
-
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
 }
 
