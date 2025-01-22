@@ -4,11 +4,10 @@ import com.elevatebanking.dto.atm.AtmDTOs.*;
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
 import com.elevatebanking.entity.atm.AtmMachine;
+import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.log.AuditLog;
 import com.elevatebanking.entity.transaction.Transaction;
-import com.elevatebanking.entity.user.User;
 import com.elevatebanking.event.EmailEvent;
-import com.elevatebanking.event.EmailType;
 import com.elevatebanking.exception.InvalidOperationException;
 import com.elevatebanking.exception.PaymentProcessingException;
 import com.elevatebanking.exception.ResourceNotFoundException;
@@ -28,7 +27,6 @@ import com.elevatebanking.util.SecurityUtils;
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
-import com.stripe.param.PaymentIntentCreateParams;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,10 +35,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -316,6 +311,66 @@ public class ATMController {
             emailEventService.sendEmailEvent(emailEvent);
         } catch (Exception e) {
             log.error("Failed to send deposit confirmation email", e);
+        }
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Get ATM transaction receipt")
+    @GetMapping("/receipt/{transactionId}")
+    public ResponseEntity<?> getReceipt(@PathVariable String transactionId) {
+        String userId = securityUtils.getCurrentUserId();
+        String lockKey = "receipt:" + userId;
+        try (TransactionLockManager lockManager = new TransactionLockManager(lockKey, validationService)) {
+            if (!lockManager.acquireLock()) {
+                throw new TooManyAttemptsException("System is busy, please try again in a few seconds");
+            }
+            Transaction transaction = transactionService.getTransactionById(transactionId).orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
+            Account account = transaction.getType() == TransactionType.WITHDRAWAL ?
+                    transaction.getFromAccount() : transaction.getToAccount();
+
+            boolean isAuthorized = false;
+
+            if (transaction.getFromAccount() != null) {
+                isAuthorized = accountService.isAccountOwner(transaction.getFromAccount().getId(), userId);
+            }
+
+            if (!isAuthorized && transaction.getToAccount() != null) {
+                isAuthorized = accountService.isAccountOwner(transaction.getToAccount().getId(), userId);
+            }
+
+
+            if (!isAuthorized) {
+                throw new UnauthorizedException("Not authorized to access this account");
+            }
+
+            TransactionResponse response = transactionService.getTransaction(transactionId);
+
+            auditLogService.logEvent(
+                    userId,
+                    "VIEW_RECEIPT",
+                    "TRANSACTION",
+                    transactionId,
+                    Map.of("transactionId", transactionId),
+                    Map.of(
+                            "status", "SUCCESS",
+                            "transactionType", transaction.getType(),
+                            "accountNumber", account.getAccountNumber()
+                    ),
+                    AuditLog.AuditStatus.SUCCESS
+            );
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error retrieving receipt for transaction: {}", transactionId, e);
+            auditLogService.logEvent(
+                    userId,
+                    "VIEW_RECEIPT_FAILED",
+                    "TRANSACTION",
+                    transactionId,
+                    Map.of("transactionId", transactionId),
+                    Map.of("error", e.getMessage()),
+                    AuditLog.AuditStatus.FAILED
+            );
+            throw e;
         }
     }
 
