@@ -2,8 +2,11 @@ package com.elevatebanking.controller.transaction;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
 import com.elevatebanking.entity.account.Account;
+import com.elevatebanking.entity.enums.TransactionType;
+import com.elevatebanking.entity.log.AuditLog;
 import com.elevatebanking.service.IAccountService;
 import com.elevatebanking.service.ITransactionService;
+import com.elevatebanking.service.nonImp.AuditLogService;
 import com.elevatebanking.util.SecurityUtils;
 import com.github.dockerjava.api.exception.UnauthorizedException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +26,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/transactions")
@@ -33,6 +38,7 @@ public class TransactionController {
     private final ITransactionService transactionService;
     private final IAccountService accountService;
     private final SecurityUtils securityUtils;
+    private final AuditLogService auditLogService;
 
 
     @Operation(summary = "Process a new transfer between accounts")
@@ -111,6 +117,36 @@ public class TransactionController {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return auth.getAuthorities().stream()
                 .anyMatch(r -> r.getAuthority().equals("ROLE_ADMIN") || r.getAuthority().equals("ROLE_TELLER"));
+    }
+
+
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/api/v1/transactions/my-transactions")
+    public ResponseEntity<Page<TransactionHistoryResponse>> getUserTransactions(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate,
+            @RequestParam(required = false) TransactionType type,
+            @PageableDefault(size = 20) Pageable page) {
+
+        String userId = securityUtils.getCurrentUserId();
+        try {
+            Page<TransactionHistoryResponse> transactions = transactionService
+                    .getUserTransactions(userId, startDate, endDate, type, page);
+
+            return ResponseEntity.ok(transactions);
+        } catch (Exception e) {
+            log.error("Error fetching user transactions: {}", userId, e);
+            auditLogService.logEvent(
+                    userId,
+                    "VIEW_USER_TRANSACTIONS_FAILED",
+                    "TRANSACTION",
+                    null,
+                    Map.of("transactionId", "null"),
+                    Map.of("error", e.getMessage()),
+                    AuditLog.AuditStatus.FAILED
+            );
+            throw e;
+        }
     }
 
 }

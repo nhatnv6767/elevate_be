@@ -1,6 +1,7 @@
 package com.elevatebanking.service;
 
 import com.elevatebanking.dto.transaction.TransactionDTOs.*;
+import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -40,4 +41,6 @@ public interface ITransactionService {
     TransactionResponse getTransaction(String id);
 
     Page<TransactionHistoryResponse> getTransactionHistory(String accountId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+
+    Page<TransactionHistoryResponse> getUserTransactions(String userId, LocalDateTime startDate, LocalDateTime endDate, TransactionType type, Pageable page);
 }

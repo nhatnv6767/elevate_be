@@ -462,7 +462,7 @@ public class TransactionServiceImpl implements ITransactionService {
 //            processDeposit(account.getId(), request.getAmount());
             BigDecimal newBalance = account.getBalance().add(request.getAmount());
             accountService.updateBalance(account.getId(), newBalance);
-            
+
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction = transactionRepository.save(transaction);
             publishTransactionEvent(transaction, "transaction.completed");
@@ -562,6 +562,36 @@ public class TransactionServiceImpl implements ITransactionService {
                 throw new RuntimeException("Error mapping transaction", e);
             }
 
+        });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TransactionHistoryResponse> getUserTransactions(String userId, LocalDateTime startDate, LocalDateTime endDate, TransactionType type, Pageable page) {
+        startDate = startDate != null ? startDate : LocalDateTime.now().minusMonths(1);
+        endDate = endDate != null ? endDate : LocalDateTime.now();
+
+        log.debug("Fetching user transactions: userId={}, startDate={}, endDate={}, type={}",
+                userId, startDate, endDate, type);
+
+        Page<Transaction> transactions = transactionRepository.findUserTransactions(
+                userId, startDate, endDate, type, page);
+
+        if (startDate.isAfter(endDate)) {
+            throw new InvalidOperationException("Start date cannot be after end date");
+        }
+
+        if (ChronoUnit.MONTHS.between(startDate, endDate) > 12) {
+            throw new InvalidOperationException("Date range cannot exceed 12 months");
+        }
+
+        return transactions.map(transaction -> {
+            try {
+                return mapToTransactionHistoryResponse(transaction);
+            } catch (Exception e) {
+                log.error("Error mapping transaction: {} - {}", transaction.getId(), e.getMessage());
+                throw new RuntimeException("Error mapping transaction", e);
+            }
         });
     }
 

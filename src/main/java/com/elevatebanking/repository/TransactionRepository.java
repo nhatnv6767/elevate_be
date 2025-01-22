@@ -1,6 +1,7 @@
 package com.elevatebanking.repository;
 
 import com.elevatebanking.entity.enums.TransactionStatus;
+import com.elevatebanking.entity.enums.TransactionType;
 import com.elevatebanking.entity.transaction.Transaction;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -119,4 +120,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
     @Query("SELECT count(t) FROM Transaction t WHERE t.fromAccount.user.id = :userId AND t.createdAt >= :startOfDay AND t.createdAt <= :now AND t.status = 'COMPLETED'")
     Long countCompletedTransactionsByUserAndDateRange(String userId, LocalDateTime startOfDay, LocalDateTime now);
+
+    @Query("SELECT t FROM Transaction t WHERE " +
+            "t.fromAccount.user.id = :userId OR t.toAccount.user.id = :userId " +
+            "AND (:type is null OR t.type = :type) " +
+            "AND t.createdAt BETWEEN :startDate AND :endDate")
+    Page<Transaction> findUserTransactions(
+            @Param("userId") String userId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            @Param("type") TransactionType type,
+            Pageable pageable
+    );
+
 }
